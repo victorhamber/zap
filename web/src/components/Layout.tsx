@@ -13,7 +13,9 @@ export function Layout() {
   const isInbox = loc.pathname.startsWith("/whatsapp");
 
   return (
-    <div className="min-h-screen flex bg-zinc-950">
+    <div
+      className={`flex bg-zinc-950 ${isInbox ? "h-screen overflow-hidden" : "min-h-screen"}`}
+    >
       <aside className="w-60 shrink-0 border-r border-zinc-800/80 bg-zinc-950/90 backdrop-blur flex flex-col">
         <div className="p-5 border-b border-zinc-800/80">
           <div className="flex items-center gap-3">
@@ -61,10 +63,16 @@ export function Layout() {
           </button>
         </div>
       </aside>
-      <main className={`flex-1 min-w-0 ${isInbox ? "overflow-hidden" : "overflow-auto"}`}>
+      <main
+        className={`flex-1 min-w-0 flex flex-col ${
+          isInbox ? "min-h-0 overflow-hidden" : "overflow-auto"
+        }`}
+      >
         <div
           className={
-            isInbox ? "h-full max-w-none" : "p-6 md:p-8 max-w-6xl mx-auto"
+            isInbox
+              ? "flex-1 min-h-0 flex flex-col w-full"
+              : "p-6 md:p-8 max-w-6xl mx-auto w-full"
           }
         >
           <Outlet />

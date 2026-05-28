@@ -211,9 +211,9 @@ export function WhatsAppInbox() {
   const activeTags = selected?.contact?.tags ?? [];
 
   return (
-    <div className="flex h-[calc(100vh-0px)] -m-6 md:-m-8 bg-[#0b141a] text-[#e9edef] overflow-hidden rounded-none border border-zinc-800/50">
-      {/* Lista de conversas */}
-      <aside className="w-full max-w-[420px] shrink-0 flex flex-col border-r border-[#2a3942] bg-[#111b21]">
+    <div className="flex flex-1 min-h-0 w-full bg-[#0b141a] text-[#e9edef] overflow-hidden">
+      {/* Lista de conversas — ~35% como WhatsApp Web */}
+      <aside className="flex w-[393px] max-w-[38vw] min-w-[260px] shrink-0 flex-col border-r border-[#2a3942] bg-[#111b21] min-h-0">
         <header className="h-[59px] px-4 flex items-center gap-3 bg-[#202c33] shrink-0">
           <div className="h-10 w-10 rounded-full bg-[#6b7c85] flex items-center justify-center text-sm font-medium">
             Z
@@ -249,7 +249,7 @@ export function WhatsAppInbox() {
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
           {loadingChats && chats.length === 0 && (
             <p className="p-4 text-sm text-[#8696a0]">Carregando conversas…</p>
           )}
@@ -304,10 +304,10 @@ export function WhatsAppInbox() {
         </div>
       </aside>
 
-      {/* Painel da conversa */}
-      <section className="flex-1 flex flex-col min-w-0 bg-[#0b141a]">
+      {/* Painel da conversa — ocupa o restante */}
+      <section className="flex flex-1 flex-col min-w-0 min-h-0 bg-[#0b141a]">
         {!selected ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-center px-8 bg-[#222e35] border-b-[6px] border-[#00a884]">
+          <div className="flex flex-1 min-h-0 flex-col items-center justify-center text-center px-8 bg-[#222e35] border-b-[6px] border-[#00a884]">
             <div className="max-w-md">
               <h2 className="text-2xl font-light text-[#e9edef] mb-3">Zap Web</h2>
               <p className="text-sm text-[#8696a0] leading-relaxed">
@@ -317,7 +317,7 @@ export function WhatsAppInbox() {
             </div>
           </div>
         ) : (
-          <>
+          <div className="flex flex-1 flex-col min-h-0 min-w-0">
             <header className="h-[59px] px-4 flex items-center gap-3 bg-[#202c33] shrink-0 border-l border-[#2a3942]">
               <div className="h-10 w-10 rounded-full bg-[#6b7c85] flex items-center justify-center text-sm font-semibold">
                 {initials(selected.name)}
@@ -404,9 +404,9 @@ export function WhatsAppInbox() {
               </div>
             )}
 
-            {/* Mensagens */}
+            {/* Mensagens — área rolável entre cabeçalho e composer */}
             <div
-              className="flex-1 overflow-y-auto px-4 md:px-16 py-4 space-y-1"
+              className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-8 md:px-12 lg:px-20 py-4 space-y-1 border-l border-[#2a3942]/50"
               style={{
                 backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.02'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`
               }}
@@ -429,7 +429,7 @@ export function WhatsAppInbox() {
                   className={`flex ${m.fromMe ? "justify-end" : "justify-start"}`}
                 >
                   <div
-                    className={`max-w-[65%] rounded-lg px-3 py-1.5 shadow-sm ${
+                    className={`max-w-[min(65%,520px)] rounded-lg px-3 py-1.5 shadow-sm break-words ${
                       m.fromMe
                         ? "bg-[#005c4b] text-[#e9edef] rounded-tr-none"
                         : "bg-[#202c33] text-[#e9edef] rounded-tl-none"
@@ -449,8 +449,8 @@ export function WhatsAppInbox() {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Composer */}
-            <footer className="px-4 py-3 bg-[#202c33] flex gap-2 items-end shrink-0">
+            {/* Composer — fixo embaixo */}
+            <footer className="px-4 py-3 bg-[#202c33] flex gap-2 items-end shrink-0 border-l border-[#2a3942]">
               <textarea
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
@@ -474,7 +474,7 @@ export function WhatsAppInbox() {
                 ➤
               </button>
             </footer>
-          </>
+          </div>
         )}
       </section>
     </div>
