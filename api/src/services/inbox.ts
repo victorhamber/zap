@@ -1,5 +1,7 @@
 import * as wpp from "./wppconnect.js";
 import { listStoredMessages, saveInboxMessage } from "./inboxStore.js";
+import { buildWppSendTarget, sendWppApi, sendWppText } from "./wppSend.js";
+import { saveUploadFromData } from "./uploads.js";
 
 export type ChatKind = "direct" | "group" | "community";
 
@@ -20,6 +22,7 @@ export type NormalizedMessage = {
   fromMe: boolean;
   timestamp: number;
   type: string;
+  mediaUrl?: string | null;
 };
 
 export type FetchMessagesOptions = {
@@ -262,9 +265,9 @@ function chatDedupeKey(c: NormalizedChat): string {
 
 function preferChatId(a: string, b: string): string {
   const rank = (id: string) => {
+    if (id.endsWith("@g.us")) return 5;
+    if (id.endsWith("@lid")) return 4;
     if (id.endsWith("@c.us")) return 3;
-    if (id.endsWith("@g.us")) return 3;
-    if (id.endsWith("@lid")) return 2;
     if (id.endsWith("@s.whatsapp.net")) return 2;
     return 1;
   };
@@ -357,7 +360,7 @@ export async function fetchChats(): Promise<FetchChatsResult> {
   }> = [
     {
       name: "list-chats",
-      run: () => wpp.callSessionApi("/list-chats", "POST", {}),
+      run: () => wpp.callSessionApi("/list-chats", "POST", { onlyUsers: true }),
       parse: normalizeChats
     },
     {
@@ -415,18 +418,25 @@ export async function sendChatMessage(
   message: string,
   isGroup = false
 ): Promise<void> {
-  const chatPhone = resolveChatId(chatId, isGroup);
-  await wpp.callSessionApi("/send-message", "POST", {
-    phone: chatPhone,
-    message,
-    isGroup: isGroup || chatPhone.includes("@g.us")
-  });
+  const target = buildWppSendTarget(chatId, isGroup);
+  await sendWppText(chatId, message, isGroup);
   await saveInboxMessage({
-    chatId: chatPhone,
+    chatId: target.jid,
     body: message,
     fromMe: true,
     type: "chat"
   });
+}
+
+async function resolveMediaPath(url: string): Promise<string> {
+  if (url.startsWith("http://") || url.startsWith("https://")) return url;
+  const saved = await saveUploadFromData(url);
+  return saved.url;
+}
+
+function base64FromDataUrl(url: string): string {
+  const i = url.indexOf(",");
+  return i >= 0 ? url.slice(i + 1) : url;
 }
 
 export async function sendChatMedia(
@@ -435,64 +445,75 @@ export async function sendChatMedia(
   url: string,
   options?: { caption?: string; isGroup?: boolean; filename?: string }
 ): Promise<void> {
-  const phone = resolveChatId(chatId, options?.isGroup);
-  const isGroup = options?.isGroup || phone.includes("@g.us");
-  const base = { phone, isGroup };
-
+  const target = buildWppSendTarget(chatId, options?.isGroup);
+  const base = {
+    phone: target.phone,
+    isGroup: target.isGroup,
+    isLid: target.isLid,
+    isNewsletter: target.isNewsletter
+  };
   const caption = options?.caption ?? "";
+  let storedMediaUrl: string | null = null;
 
-  if (type === "image") {
-    await wpp.callSessionApi("/send-image", "POST", {
-      ...base,
-      path: url,
+  const runMediaSend = async (lid = false) => {
+    const payload = { ...base, isLid: lid || base.isLid };
+
+    if (type === "audio" && url.startsWith("data:")) {
+      await sendWppApi("/send-voice-base64", {
+        ...payload,
+        base64Ptt: base64FromDataUrl(url)
+      });
+      storedMediaUrl = url;
+      return;
+    }
+
+    const path = await resolveMediaPath(url);
+    storedMediaUrl = path;
+
+    if (type === "image") {
+      await sendWppApi("/send-image", { ...payload, path, caption });
+      return;
+    }
+    if (type === "video") {
+      await sendWppApi("/send-file", {
+        ...payload,
+        path,
+        caption,
+        filename: options?.filename ?? "video.mp4"
+      });
+      return;
+    }
+    if (type === "audio") {
+      await sendWppApi("/send-voice", { ...payload, path });
+      return;
+    }
+    await sendWppApi("/send-file", {
+      ...payload,
+      path,
+      filename: options?.filename ?? "documento",
       caption
     });
-    await saveInboxMessage({
-      chatId: phone,
-      body: caption || "📷 Imagem",
-      fromMe: true,
-      type: "image"
-    });
-    return;
-  }
-  if (type === "video") {
-    await wpp.callSessionApi("/send-file", "POST", {
-      ...base,
-      path: url,
-      caption
-    });
-    await saveInboxMessage({
-      chatId: phone,
-      body: caption || "🎬 Vídeo",
-      fromMe: true,
-      type: "video"
-    });
-    return;
-  }
-  if (type === "audio") {
-    await wpp.callSessionApi("/send-voice", "POST", {
-      ...base,
-      path: url
-    });
-    await saveInboxMessage({
-      chatId: phone,
-      body: "🎤 Áudio",
-      fromMe: true,
-      type: "audio"
-    });
-    return;
+  };
+
+  try {
+    await runMediaSend(false);
+  } catch (first) {
+    if (base.isLid || base.isGroup) throw first;
+    await runMediaSend(true);
   }
 
-  await wpp.callSessionApi("/send-file", "POST", {
-    ...base,
-    path: url,
-    filename: options?.filename ?? "documento",
-    caption
-  });
+  const labels: Record<string, string> = {
+    image: caption || "📷 Imagem",
+    video: caption || "🎬 Vídeo",
+    audio: "🎤 Áudio",
+    document: caption || "📎 Documento"
+  };
+
   await saveInboxMessage({
-    chatId: phone,
-    body: caption || "📎 Documento",
+    chatId: target.jid,
+    body: labels[type],
     fromMe: true,
-    type: "document"
+    type,
+    mediaUrl: storedMediaUrl
   });
 }

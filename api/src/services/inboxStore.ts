@@ -73,11 +73,29 @@ function messageBodyFromType(type: string, text: string): string {
   return "";
 }
 
+function extractMediaUrl(body: Record<string, unknown>): string | null {
+  const keys = ["mediaUrl", "fileUrl", "clientUrl", "deprecatedMms3Url"] as const;
+  for (const key of keys) {
+    const v = body[key];
+    if (typeof v === "string" && v.startsWith("http")) return v;
+  }
+  const raw = body.body;
+  const mime = String(body.mimetype ?? body.mimeType ?? "image/jpeg");
+  if (typeof raw === "string" && raw.length > 300) {
+    if (raw.startsWith("data:")) return raw;
+    if (/^[A-Za-z0-9+/=\s]+$/.test(raw.slice(0, 120))) {
+      return `data:${mime};base64,${raw.replace(/\s/g, "")}`;
+    }
+  }
+  return null;
+}
+
 export async function saveInboxMessage(params: {
   chatId: string;
   body: string;
   fromMe: boolean;
   type?: string;
+  mediaUrl?: string | null;
   waMessageId?: string | null;
   timestamp?: Date;
 }): Promise<void> {
@@ -106,6 +124,7 @@ export async function saveInboxMessage(params: {
       body,
       fromMe: params.fromMe,
       type,
+      mediaUrl: params.mediaUrl ?? null,
       waMessageId,
       timestamp
     }
@@ -139,7 +158,8 @@ export async function listStoredMessages(
     body: r.body,
     fromMe: r.fromMe,
     timestamp: r.timestamp.getTime(),
-    type: r.type
+    type: r.type,
+    mediaUrl: r.mediaUrl
   }));
 
   return {
@@ -153,6 +173,7 @@ export function parseWppWebhookMessage(body: Record<string, unknown>): {
   text: string;
   fromMe: boolean;
   type: string;
+  mediaUrl: string | null;
   waMessageId: string | null;
   timestamp: Date;
 } | null {
@@ -203,11 +224,14 @@ export function parseWppWebhookMessage(body: Record<string, unknown>): {
     ts = body.t > 1e12 ? body.t : body.t * 1000;
   }
 
+  const mediaUrl = extractMediaUrl(body);
+
   return {
     chatId,
     text,
     fromMe,
     type,
+    mediaUrl,
     waMessageId: waMessageId || null,
     timestamp: new Date(ts)
   };

@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { api } from "../../api/client";
 
 export type QuickReply = { id: string; title: string; text: string };
 
@@ -10,6 +11,24 @@ type Props = {
   quickReplies: QuickReply[];
   disabled?: boolean;
 };
+
+async function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadDataUrl(data: string, mime?: string): Promise<string> {
+  const r = await api<{ ok: boolean; url?: string; message?: string }>("/api/inbox/upload", {
+    method: "POST",
+    body: JSON.stringify({ data, mime })
+  });
+  if (!r.ok || !r.url) throw new Error(r.message ?? "Falha no upload");
+  return r.url;
+}
 
 export function InboxComposer({
   draft,
@@ -23,8 +42,10 @@ export function InboxComposer({
   const [mediaUrl, setMediaUrl] = useState("");
   const [mediaCaption, setMediaCaption] = useState("");
   const [recording, setRecording] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function startRecording() {
     try {
@@ -39,8 +60,7 @@ export function InboxComposer({
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
         const reader = new FileReader();
         reader.onload = () => {
-          const dataUrl = reader.result as string;
-          onSendMedia("audio", dataUrl);
+          onSendMedia("audio", reader.result as string);
         };
         reader.readAsDataURL(blob);
       };
@@ -55,6 +75,34 @@ export function InboxComposer({
   function stopRecording() {
     recorderRef.current?.stop();
     setRecording(false);
+  }
+
+  async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || disabled) return;
+
+    setUploading(true);
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      const mime = file.type || "application/octet-stream";
+      let type: "image" | "video" | "audio" | "document" = "document";
+      if (mime.startsWith("image/")) type = "image";
+      else if (mime.startsWith("video/")) type = "video";
+      else if (mime.startsWith("audio/")) type = "audio";
+
+      if (type === "audio" && dataUrl.startsWith("data:")) {
+        onSendMedia("audio", dataUrl);
+      } else {
+        const url = await uploadDataUrl(dataUrl, mime);
+        onSendMedia(type, url);
+      }
+      setShowAttach(false);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Erro ao enviar arquivo");
+    } finally {
+      setUploading(false);
+    }
   }
 
   return (
@@ -78,11 +126,28 @@ export function InboxComposer({
 
       {showAttach && (
         <div className="mx-3 mt-2 p-3 rounded-lg bg-[#2a3942] space-y-2 text-sm">
-          <p className="text-xs text-[#8696a0]">URL pública do arquivo (imagem, vídeo, PDF ou áudio)</p>
+          <p className="text-xs text-[#8696a0]">
+            Envie arquivo do computador ou cole URL pública (imagem, vídeo, PDF ou áudio)
+          </p>
+          <button
+            type="button"
+            disabled={disabled || uploading}
+            onClick={() => fileInputRef.current?.click()}
+            className="w-full rounded-lg bg-[#00a884]/20 text-[#00a884] py-2 text-xs disabled:opacity-40"
+          >
+            {uploading ? "Enviando…" : "Escolher arquivo do computador"}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,video/*,audio/*,.pdf,.doc,.docx"
+            className="hidden"
+            onChange={(e) => void onPickFile(e)}
+          />
           <input
             value={mediaUrl}
             onChange={(e) => setMediaUrl(e.target.value)}
-            placeholder="https://..."
+            placeholder="https://... (URL pública)"
             className="w-full rounded bg-[#111b21] px-3 py-2 border-0 text-[#e9edef]"
           />
           <input
@@ -96,7 +161,7 @@ export function InboxComposer({
               <button
                 key={t}
                 type="button"
-                disabled={!mediaUrl.trim() || disabled}
+                disabled={!mediaUrl.trim() || disabled || uploading}
                 onClick={() => {
                   onSendMedia(t, mediaUrl.trim(), mediaCaption.trim() || undefined);
                   setMediaUrl("");
@@ -124,7 +189,7 @@ export function InboxComposer({
         </button>
         <button
           type="button"
-          disabled={disabled}
+          disabled={disabled || uploading}
           onClick={() => (recording ? stopRecording() : startRecording())}
           className={`h-11 w-11 shrink-0 rounded-full text-xl ${
             recording ? "bg-red-500/30 text-red-300 animate-pulse" : "text-[#8696a0] hover:bg-[#2a3942]"
@@ -150,7 +215,7 @@ export function InboxComposer({
         <button
           type="button"
           onClick={onSendText}
-          disabled={disabled || !draft.trim()}
+          disabled={disabled || !draft.trim() || uploading}
           className="h-11 w-11 rounded-full bg-[#00a884] flex items-center justify-center text-[#111b21] disabled:opacity-40 shrink-0"
           aria-label="Enviar"
         >

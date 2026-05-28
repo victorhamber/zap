@@ -14,6 +14,7 @@ import { settingsRoutes } from "./routes/settings.js";
 import { wppRoutes } from "./routes/wpp.js";
 import { inboxRoutes } from "./routes/inbox.js";
 import { bootstrapDatabase } from "./bootstrap.js";
+import { UPLOAD_DIR, ensureUploadDir } from "./services/uploads.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -48,6 +49,9 @@ await app.register(runRoutes);
 await app.register(settingsRoutes);
 await app.register(wppRoutes);
 await app.register(inboxRoutes);
+
+await ensureUploadDir();
+await app.register(staticPlugin, { root: UPLOAD_DIR, prefix: "/uploads/" });
 
 const webDist = path.resolve(__dirname, "../../web/dist");
 await app.register(staticPlugin, { root: webDist, prefix: "/" });

@@ -1,0 +1,1 @@
+ALTER TABLE "InboxMessage" ADD COLUMN IF NOT EXISTS "mediaUrl" TEXT;

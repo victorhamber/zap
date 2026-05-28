@@ -63,6 +63,7 @@ export async function webhookRoutes(app: FastifyInstance) {
         body: parsed.text,
         fromMe: parsed.fromMe,
         type: parsed.type,
+        mediaUrl: parsed.mediaUrl,
         waMessageId: parsed.waMessageId,
         timestamp: parsed.timestamp
       });

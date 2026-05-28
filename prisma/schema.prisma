@@ -35,6 +35,7 @@ model InboxMessage {
   body        String   @default("")
   fromMe      Boolean  @default(false)
   type        String   @default("chat")
+  mediaUrl    String?
   waMessageId String?
   timestamp   DateTime @default(now())
   createdAt   DateTime @default(now())

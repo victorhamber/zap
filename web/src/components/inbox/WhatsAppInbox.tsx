@@ -32,6 +32,7 @@ type Message = {
   fromMe: boolean;
   timestamp: number;
   type: string;
+  mediaUrl?: string | null;
 };
 
 type FlowOption = { id: string; name: string; inboundTags: string[] };
@@ -59,6 +60,49 @@ function initials(name: string): string {
   const p = name.trim().split(/\s+/);
   if (p.length >= 2) return (p[0][0] + p[1][0]).toUpperCase();
   return name.slice(0, 2).toUpperCase();
+}
+
+function InboxMessageContent({ message: m }: { message: Message }) {
+  const url = m.mediaUrl?.trim();
+  const isMedia =
+    url &&
+    (m.type === "image" ||
+      m.type === "sticker" ||
+      m.type === "video" ||
+      m.type === "audio" ||
+      m.type === "ptt");
+
+  if (isMedia && (m.type === "image" || m.type === "sticker")) {
+    return (
+      <div className="space-y-1">
+        <img src={url} alt="" className="max-w-full rounded-md max-h-72 object-contain" />
+        {m.body && !m.body.startsWith("📷") && (
+          <p className="text-sm whitespace-pre-wrap">{m.body}</p>
+        )}
+      </div>
+    );
+  }
+  if (isMedia && m.type === "video") {
+    return (
+      <div className="space-y-1">
+        <video src={url} controls className="max-w-full rounded-md max-h-72" />
+        {m.body && !m.body.startsWith("🎬") && (
+          <p className="text-sm whitespace-pre-wrap">{m.body}</p>
+        )}
+      </div>
+    );
+  }
+  if (isMedia && (m.type === "audio" || m.type === "ptt")) {
+    return (
+      <div className="space-y-1">
+        <audio src={url} controls className="w-full min-w-[220px]" />
+        {m.body && !m.body.startsWith("🎤") && (
+          <p className="text-sm whitespace-pre-wrap">{m.body}</p>
+        )}
+      </div>
+    );
+  }
+  return <p className="text-sm whitespace-pre-wrap">{m.body || "—"}</p>;
 }
 
 function formatTime(ts: number): string {
@@ -89,6 +133,7 @@ export function WhatsAppInbox() {
   const [newTagColor, setNewTagColor] = useState("#25D366");
   const [showTagForm, setShowTagForm] = useState(false);
   const [msgHint, setMsgHint] = useState("");
+  const [sendError, setSendError] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const loadTags = useCallback(async () => {
@@ -230,6 +275,7 @@ export function WhatsAppInbox() {
 
   async function sendMessage() {
     if (!selected || !draft.trim()) return;
+    setSendError("");
     const r = await api<{ ok: boolean; message?: string }>("/api/inbox/send", {
       method: "POST",
       body: JSON.stringify({
@@ -239,7 +285,7 @@ export function WhatsAppInbox() {
       })
     });
     if (!r.ok) {
-      setError(r.message ?? "Falha ao enviar");
+      setSendError(r.message ?? "Falha ao enviar");
       return;
     }
     setDraft("");
@@ -263,8 +309,9 @@ export function WhatsAppInbox() {
         isGroup: selected.isGroup
       })
     });
-    if (!r.ok) setError(r.message ?? "Falha ao enviar mídia");
+    if (!r.ok) setSendError(r.message ?? "Falha ao enviar mídia");
     else {
+      setSendError("");
       await loadMessages(selected, true);
       await loadChats(true);
     }
@@ -377,7 +424,10 @@ export function WhatsAppInbox() {
             <button
               key={chat.id}
               type="button"
-              onClick={() => setSelected(chat)}
+              onClick={() => {
+                setSelected(chat);
+                setSendError("");
+              }}
               className={`w-full flex gap-3 px-3 py-3 text-left hover:bg-[#202c33] transition border-b border-[#2a3942]/50 ${
                 selected?.id === chat.id ? "bg-[#2a3942]" : ""
               }`}
@@ -547,7 +597,7 @@ export function WhatsAppInbox() {
                         : "bg-[#202c33] text-[#e9edef] rounded-tl-none"
                     }`}
                   >
-                    <p className="text-sm whitespace-pre-wrap">{m.body || "—"}</p>
+                    <InboxMessageContent message={m} />
                     <div
                       className={`text-[10px] mt-0.5 text-right ${
                         m.fromMe ? "text-[#99beb7]" : "text-[#8696a0]"
@@ -561,6 +611,11 @@ export function WhatsAppInbox() {
               <div ref={messagesEndRef} />
             </div>
 
+            {sendError && (
+              <p className="mx-3 mb-1 text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">
+                {sendError}
+              </p>
+            )}
             <InboxComposer
               draft={draft}
               onDraftChange={setDraft}

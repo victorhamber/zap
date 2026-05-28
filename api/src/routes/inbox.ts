@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { prisma } from "../prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import * as inbox from "../services/inbox.js";
+import { saveUploadFromData } from "../services/uploads.js";
 import {
   contactToJson,
   listContactsWithTags,
@@ -81,6 +82,18 @@ export async function inboxRoutes(app: FastifyInstance) {
       return { ok: true, messages, hint, captureSince, localOnly: true };
     } catch (e: any) {
       return { ok: false, message: e?.message ?? String(e), messages: [] };
+    }
+  });
+
+  app.post("/api/inbox/upload", async (req, reply) => {
+    const body = req.body as { data?: string; mime?: string };
+    const data = (body.data ?? "").trim();
+    if (!data) return reply.status(400).send({ ok: false, message: "data obrigatório" });
+    try {
+      const { url } = await saveUploadFromData(data, body.mime);
+      return { ok: true, url };
+    } catch (e: any) {
+      return reply.status(400).send({ ok: false, message: e?.message ?? String(e) });
     }
   });
 
