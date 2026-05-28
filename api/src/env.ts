@@ -18,6 +18,13 @@ const EnvSchema = z.object({
   WPP_INTERNAL_URL: z.string().optional(),
   WPP_SESSION: z.string().default("autofintech"),
   WPP_SECRET_KEY: isProd ? z.string().min(8) : z.string().default("dev-secret-key"),
+  /** false desliga reconexão automática em background */
+  WPP_AUTO_RECONNECT: z
+    .string()
+    .optional()
+    .transform((v) => v !== "false"),
+  WPP_RECONNECT_INTERVAL_SEC: z.coerce.number().int().positive().default(45),
+  WPP_RECONNECT_COOLDOWN_SEC: z.coerce.number().int().positive().default(90),
 
   HOTMART_WEBHOOK_SECRET: z.string().optional(),
   ADMIN_EMAIL: z.string().email().default("admin@trajettu.com"),

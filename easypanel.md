@@ -69,7 +69,17 @@ No serviço **wppconnect** no EasyPanel, monte um volume persistente, por exempl
 
 Confira no log ou na documentação da sua imagem WPP qual pasta usar. Depois do volume, **redeploy só do `zap`** não deve mais derrubar o WhatsApp — desde que o container **wppconnect** não seja recriado.
 
-O Zap tenta **reabrir a sessão automaticamente** após cada deploy se ela estava conectada antes (`tryRestoreSessionAfterDeploy`).
+O Zap tenta **reabrir a sessão automaticamente** após cada deploy e **a cada ~45s** se a conexão cair (watchdog `wppReconnect`), usando o token salvo no Postgres.
+
+Opcional no serviço `zap`:
+
+```env
+WPP_AUTO_RECONNECT=true
+WPP_RECONNECT_INTERVAL_SEC=45
+WPP_RECONNECT_COOLDOWN_SEC=90
+```
+
+`WPP_AUTO_RECONNECT=false` desliga a reconexão em background. **Fechar sessão** no painel marca `PAUSED` (não reconecta sozinho); **Desconectar** marca `LOGOUT`.
 
 ## WPPConnect — erros no log (AggregateError / startAllSessions)
 

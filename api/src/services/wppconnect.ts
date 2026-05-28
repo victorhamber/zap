@@ -460,32 +460,6 @@ export async function startSession(options?: { waitQrCode?: boolean }): Promise<
   return body;
 }
 
-/** Reabre a sessão no WPP após deploy do Zap, se estava conectada antes (token fica no Postgres). */
-export async function tryRestoreSessionAfterDeploy(): Promise<void> {
-  if (!prisma) return;
-  const settings = await prisma.appSettings.findUnique({ where: { id: "default" } });
-  if (!settings?.wppToken) return;
-
-  const wasConnected =
-    settings.connectionStatus?.startsWith("CONNECTED:") ||
-    settings.connectionStatus === "token_ok";
-  if (!wasConnected) return;
-
-  try {
-    await refreshWppToken();
-    const status = await getSessionStatus().catch(() => null);
-    const state = status ? extractSessionState(status) : "";
-    if (status && isWppConnectedState(state)) {
-      console.log(`[wpp] Sessão "${settings.wppSession}" já ativa (${state})`);
-      return;
-    }
-    await startSession({ waitQrCode: false });
-    console.log(`[wpp] Tentativa de restaurar sessão "${settings.wppSession}" após deploy`);
-  } catch (e: any) {
-    console.warn(`[wpp] Restauração automática ignorada: ${e?.message ?? e}`);
-  }
-}
-
 export async function getQrCode(): Promise<{ qrImage: string | null; raw: unknown }> {
   const res = await wppFetch("/qrcode-session", { method: "GET" });
   const body = await readWppJson(res);
@@ -502,7 +476,8 @@ export async function getSessionStatus(): Promise<unknown> {
     throw new Error(`status-session falhou: ${res.status} ${JSON.stringify(body)}`);
   }
   const state = extractSessionState(body);
-  await persistConnectionStatus(state, body);
+  const label = isWppConnectedState(state) ? `CONNECTED:${state}` : state;
+  await persistConnectionStatus(label, body);
   return body;
 }
 
@@ -518,7 +493,7 @@ async function readSessionStateSafe(): Promise<string | null> {
 export async function closeSession(): Promise<{ raw?: unknown; noSession: boolean }> {
   const state = await readSessionStateSafe();
   if (state && isDisconnectedState(state)) {
-    await persistConnectionStatus(`DISCONNECTED:${state}`);
+    await persistConnectionStatus(`PAUSED:${state}`);
     return { noSession: true };
   }
 
@@ -526,12 +501,12 @@ export async function closeSession(): Promise<{ raw?: unknown; noSession: boolea
   const body = await readWppJson(res);
   if (!res.ok) {
     if (httpErrorMeansNoSession(res.status, body)) {
-      await persistConnectionStatus("CLOSED");
+      await persistConnectionStatus("PAUSED:CLOSED");
       return { noSession: true };
     }
     throw new Error(`close-session: ${formatWppError(res.status, body)}`);
   }
-  await persistConnectionStatus("CLOSED", body);
+  await persistConnectionStatus("PAUSED:CLOSED", body);
   return { noSession: false, raw: body };
 }
 

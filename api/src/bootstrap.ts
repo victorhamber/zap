@@ -2,7 +2,10 @@ import bcrypt from "bcrypt";
 import { prisma } from "./prisma.js";
 import { env } from "./env.js";
 import { defaultHotmartGraph } from "./engine/graph.js";
-import { tryRestoreSessionAfterDeploy } from "./services/wppconnect.js";
+import {
+  startWppReconnectWatchdog,
+  tryRestoreSessionAfterDeploy
+} from "./services/wppReconnect.js";
 
 export async function bootstrapDatabase() {
   if (!prisma) return;
@@ -47,4 +50,5 @@ export async function bootstrapDatabase() {
   }
 
   void tryRestoreSessionAfterDeploy();
+  startWppReconnectWatchdog();
 }
