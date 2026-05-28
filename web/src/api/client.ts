@@ -23,7 +23,9 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     }
   });
 
-  if (res.status === 401) {
+  const isLogin = path === "/api/auth/login";
+
+  if (res.status === 401 && !isLogin) {
     clearToken();
     window.location.href = "/login";
     throw new Error("Sessão expirada");
@@ -31,7 +33,14 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(text || `HTTP ${res.status}`);
+    let message = text || `HTTP ${res.status}`;
+    try {
+      const json = JSON.parse(text) as { error?: string };
+      if (json.error) message = json.error;
+    } catch {
+      /* texto puro */
+    }
+    throw new Error(message);
   }
 
   if (res.status === 204) return undefined as T;

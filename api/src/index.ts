@@ -11,6 +11,7 @@ import { flowRoutes } from "./routes/flows.js";
 import { webhookRoutes } from "./routes/webhooks.js";
 import { runRoutes } from "./routes/runs.js";
 import { settingsRoutes } from "./routes/settings.js";
+import { bootstrapDatabase } from "./bootstrap.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -48,6 +49,7 @@ const port = Number(process.env.PORT ?? 3000);
 
 if (prisma) {
   await prisma.$connect();
+  await bootstrapDatabase();
 } else if (process.env.NODE_ENV === "production") {
   app.log.error("DATABASE_URL obrigatório em produção");
   process.exit(1);
