@@ -152,7 +152,9 @@ export async function getWppToken(): Promise<string> {
 }
 
 async function wppFetch(path: string, init: RequestInit, retry = true): Promise<Response> {
-  await wppHumanDelay();
+  const method = (init.method ?? "GET").toUpperCase();
+  if (method !== "GET") await wppHumanDelay();
+
   const settings = await getSettings();
   const base = wppBaseUrl(settings);
   const session = settings.wppSession;
@@ -169,17 +171,28 @@ async function wppFetch(path: string, init: RequestInit, retry = true): Promise<
     headers["content-type"] = "application/json";
   }
 
+  const controller = new AbortController();
+  const timeoutMs = method === "GET" ? 25_000 : 60_000;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
   let res: Response;
   try {
     res = await fetch(url, {
       ...init,
+      signal: controller.signal,
       headers: {
         ...headers,
         ...(init.headers as Record<string, string> | undefined)
       }
     });
   } catch (e: any) {
-    throw new Error(`Falha de rede ao chamar WPP (${base}): ${e?.message ?? e}`);
+    const msg =
+      e?.name === "AbortError"
+        ? `Timeout (${timeoutMs / 1000}s) ao chamar WPP`
+        : (e?.message ?? String(e));
+    throw new Error(`Falha de rede ao chamar WPP (${base}): ${msg}`);
+  } finally {
+    clearTimeout(timer);
   }
 
   if (res.status === 401 && retry) {

@@ -35,7 +35,7 @@ export async function inboxRoutes(app: FastifyInstance) {
 
   app.get("/api/inbox/chats", async () => {
     try {
-      const chats = await inbox.fetchChats();
+      const { chats, sourcesOk, errors } = await inbox.fetchChats();
       const contacts = await listContactsWithTags();
       const byKey = new Map<string, ReturnType<typeof contactToJson>>();
       for (const c of contacts) {
@@ -44,15 +44,25 @@ export async function inboxRoutes(app: FastifyInstance) {
         if (c.phone.includes("@")) byKey.set(c.phone.split("@")[0], j);
       }
 
+      const message =
+        chats.length === 0
+          ? errors.length > 0
+            ? `Nenhuma conversa retornada. ${errors[0]}`
+            : "Nenhuma conversa no WPP. Confira Conexão/QR em Configurações."
+          : undefined;
+
       return {
-        ok: true,
+        ok: chats.length > 0,
         chats: chats.map((ch) => ({
           ...ch,
           contact: byKey.get(ch.id) ?? byKey.get(ch.phone) ?? null
-        }))
+        })),
+        sourcesOk,
+        errors,
+        message
       };
     } catch (e: any) {
-      return { ok: false, message: e?.message ?? String(e), chats: [] };
+      return { ok: false, message: e?.message ?? String(e), chats: [], errors: [] };
     }
   });
 

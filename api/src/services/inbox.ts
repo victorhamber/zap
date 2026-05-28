@@ -192,30 +192,118 @@ export function normalizeMessages(raw: unknown): NormalizedMessage[] {
     .sort((a, b) => a.timestamp - b.timestamp);
 }
 
-async function mergeChatSource(
-  map: Map<string, NormalizedChat>,
-  fetcher: () => Promise<unknown>
-): Promise<void> {
-  try {
-    const raw = await fetcher();
-    for (const c of normalizeChats(raw)) {
-      const key = c.id;
-      const prev = map.get(key);
-      if (!prev || c.timestamp >= prev.timestamp) map.set(key, c);
-    }
-  } catch {
-    /* fonte opcional */
+function extractArray(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) return raw;
+  if (!raw || typeof raw !== "object") return [];
+  const o = raw as Record<string, unknown>;
+  for (const key of ["response", "chats", "data", "contacts", "groups", "records"]) {
+    const val = o[key];
+    if (Array.isArray(val)) return val;
+  }
+  if (o.response && typeof o.response === "object" && !Array.isArray(o.response)) {
+    return Object.values(o.response as Record<string, unknown>);
+  }
+  return [];
+}
+
+function mergeChats(map: Map<string, NormalizedChat>, list: NormalizedChat[]) {
+  for (const c of list) {
+    const prev = map.get(c.id);
+    if (!prev || c.timestamp >= prev.timestamp) map.set(c.id, c);
   }
 }
 
-export async function fetchChats(): Promise<NormalizedChat[]> {
+export function normalizeGroups(raw: unknown): NormalizedChat[] {
+  const list = extractArray(raw);
+  const out: NormalizedChat[] = [];
+  for (const item of list) {
+    if (typeof item === "string") {
+      const id = item.includes("@") ? item : `${item.replace(/\D/g, "")}@g.us`;
+      out.push({
+        id,
+        phone: chatIdToPhone(id),
+        name: item,
+        lastMessage: "",
+        timestamp: Date.now(),
+        isGroup: true,
+        kind: "group",
+        unreadCount: 0
+      });
+      continue;
+    }
+    const c = parseChatItem(item);
+    if (!c) continue;
+    c.kind = idIncludesCommunity(c.id) ? "community" : "group";
+    c.isGroup = true;
+    if (!c.id.includes("@")) c.id = `${c.phone}@g.us`;
+    out.push(c);
+  }
+  return out;
+}
+
+function idIncludesCommunity(id: string): boolean {
+  return id.includes("@newsletter");
+}
+
+export type FetchChatsResult = {
+  chats: NormalizedChat[];
+  sourcesOk: string[];
+  errors: string[];
+};
+
+export async function fetchChats(): Promise<FetchChatsResult> {
   const map = new Map<string, NormalizedChat>();
+  const sourcesOk: string[] = [];
+  const errors: string[] = [];
 
-  await mergeChatSource(map, () => wpp.callSessionApi("/all-chats", "GET"));
-  await mergeChatSource(map, () => wpp.callSessionApi("/list-chats", "GET"));
-  await mergeChatSource(map, () => wpp.callSessionApi("/all-chats-with-messages", "GET"));
+  const tasks: Array<{
+    name: string;
+    run: () => Promise<unknown>;
+    parse: (raw: unknown) => NormalizedChat[];
+  }> = [
+    {
+      name: "all-chats",
+      run: () => wpp.callSessionApi("/all-chats", "GET"),
+      parse: normalizeChats
+    },
+    {
+      name: "list-chats",
+      run: () => wpp.callSessionApi("/list-chats", "POST", {}),
+      parse: normalizeChats
+    },
+    {
+      name: "all-contacts",
+      run: () => wpp.callSessionApi("/all-contacts", "GET"),
+      parse: normalizeChats
+    },
+    {
+      name: "all-groups",
+      run: () => wpp.callSessionApi("/all-groups", "GET"),
+      parse: normalizeGroups
+    }
+  ];
 
-  return [...map.values()].sort((a, b) => b.timestamp - a.timestamp);
+  const results = await Promise.allSettled(tasks.map((t) => t.run()));
+
+  results.forEach((result, i) => {
+    const task = tasks[i];
+    if (result.status === "fulfilled") {
+      const parsed = task.parse(result.value);
+      if (parsed.length > 0) {
+        sourcesOk.push(`${task.name} (${parsed.length})`);
+        mergeChats(map, parsed);
+      } else {
+        errors.push(`${task.name}: resposta vazia`);
+      }
+    } else {
+      const msg =
+        result.reason instanceof Error ? result.reason.message : String(result.reason);
+      errors.push(`${task.name}: ${msg}`);
+    }
+  });
+
+  const chats = [...map.values()].sort((a, b) => b.timestamp - a.timestamp);
+  return { chats, sourcesOk, errors };
 }
 
 function pathPhone(chatId: string): string {

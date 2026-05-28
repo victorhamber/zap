@@ -110,9 +110,20 @@ export function WhatsAppInbox() {
     if (!silent) setLoadingChats(true);
     setError("");
     try {
-      const r = await api<{ ok: boolean; chats: Chat[]; message?: string }>("/api/inbox/chats");
-      if (!r.ok && r.message) setError(r.message);
+      const r = await api<{
+        ok: boolean;
+        chats: Chat[];
+        message?: string;
+        sourcesOk?: string[];
+        errors?: string[];
+      }>("/api/inbox/chats");
       setChats(r.chats ?? []);
+      if (r.chats.length === 0) {
+        const detail = r.message ?? r.errors?.join(" · ") ?? "Sem conversas no WPP.";
+        setError(detail);
+      } else if (r.errors?.length) {
+        setError("");
+      }
     } catch (e: any) {
       setError(e?.message ?? "Erro ao carregar conversas");
     } finally {
@@ -352,9 +363,15 @@ export function WhatsAppInbox() {
             <p className="p-4 text-sm text-[#8696a0]">Carregando conversas…</p>
           )}
           {!loadingChats && filtered.length === 0 && (
-            <p className="p-4 text-sm text-[#8696a0]">
-              Nenhuma conversa nesta aba. Tente &quot;Conversas&quot; ou conecte em Configurações.
-            </p>
+            <div className="p-4 text-sm text-[#8696a0] space-y-2">
+              <p>Nenhuma conversa nesta aba.</p>
+              {error && (
+                <p className="text-amber-200/90 text-xs leading-relaxed">{error}</p>
+              )}
+              <Link to="/settings" className="text-[#00a884] underline text-xs block">
+                Abrir Configurações → Conexão / QR
+              </Link>
+            </div>
           )}
           {filtered.map((chat) => (
             <button

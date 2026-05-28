@@ -3,7 +3,8 @@ import { api } from "../../api/client";
 
 const QUICK_ACTIONS = [
   { id: "groups", label: "Listar grupos", path: "/all-groups", method: "GET" as const },
-  { id: "chats", label: "Listar chats", path: "/all-chats", method: "GET" as const },
+  { id: "chats", label: "Listar chats", path: "/list-chats", method: "POST" as const, body: {} },
+  { id: "allchats", label: "All chats", path: "/all-chats", method: "GET" as const },
   { id: "contacts", label: "Listar contatos", path: "/all-contacts", method: "GET" as const },
   { id: "connection", label: "Verificar conexão", path: "/check-connection-session", method: "GET" as const }
 ];
@@ -17,7 +18,11 @@ export function WppToolsPanel() {
   const [groupId, setGroupId] = useState("");
   const [groupMsg, setGroupMsg] = useState("");
 
-  async function call(path: string, method: "GET" | "POST", payload?: unknown) {
+  async function call(
+    path: string,
+    method: "GET" | "POST",
+    payload?: unknown
+  ) {
     setLoading(true);
     setResult("Carregando…");
     try {
@@ -58,7 +63,9 @@ export function WppToolsPanel() {
             key={a.id}
             type="button"
             disabled={loading}
-            onClick={() => call(a.path, a.method)}
+            onClick={() =>
+              call(a.path, a.method, "body" in a ? (a as { body: object }).body : undefined)
+            }
             className="rounded-xl border border-zinc-700 px-3 py-2 text-sm hover:bg-zinc-900 disabled:opacity-50"
           >
             {a.label}
