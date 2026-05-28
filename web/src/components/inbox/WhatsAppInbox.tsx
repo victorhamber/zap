@@ -62,8 +62,30 @@ function initials(name: string): string {
   return name.slice(0, 2).toUpperCase();
 }
 
+function isBase64Blob(text: string): boolean {
+  const t = text.replace(/\s/g, "");
+  return t.length > 80 && (/^data:/.test(t) || /^[A-Za-z0-9+/=]+$/.test(t.slice(0, 120)));
+}
+
+function mediaUrlFromMessage(m: Message): string | null {
+  const direct = m.mediaUrl?.trim();
+  if (direct) return direct;
+  if (!isBase64Blob(m.body)) return null;
+  if (m.body.startsWith("data:")) return m.body;
+  const mime =
+    m.type === "image" || m.type === "sticker"
+      ? "image/jpeg"
+      : m.type === "video"
+        ? "video/mp4"
+        : m.type === "audio" || m.type === "ptt"
+          ? "audio/ogg"
+          : "application/octet-stream";
+  return `data:${mime};base64,${m.body.replace(/\s/g, "")}`;
+}
+
 function InboxMessageContent({ message: m }: { message: Message }) {
-  const url = m.mediaUrl?.trim();
+  const url = mediaUrlFromMessage(m);
+  const showCaption = m.body && !isBase64Blob(m.body) && !m.body.startsWith("📷") && !m.body.startsWith("🎤") && !m.body.startsWith("🎬");
   const isMedia =
     url &&
     (m.type === "image" ||
@@ -76,9 +98,7 @@ function InboxMessageContent({ message: m }: { message: Message }) {
     return (
       <div className="space-y-1">
         <img src={url} alt="" className="max-w-full rounded-md max-h-72 object-contain" />
-        {m.body && !m.body.startsWith("📷") && (
-          <p className="text-sm whitespace-pre-wrap">{m.body}</p>
-        )}
+        {showCaption && <p className="text-sm whitespace-pre-wrap">{m.body}</p>}
       </div>
     );
   }
@@ -86,9 +106,7 @@ function InboxMessageContent({ message: m }: { message: Message }) {
     return (
       <div className="space-y-1">
         <video src={url} controls className="max-w-full rounded-md max-h-72" />
-        {m.body && !m.body.startsWith("🎬") && (
-          <p className="text-sm whitespace-pre-wrap">{m.body}</p>
-        )}
+        {showCaption && <p className="text-sm whitespace-pre-wrap">{m.body}</p>}
       </div>
     );
   }
@@ -96,9 +114,7 @@ function InboxMessageContent({ message: m }: { message: Message }) {
     return (
       <div className="space-y-1">
         <audio src={url} controls className="w-full min-w-[220px]" />
-        {m.body && !m.body.startsWith("🎤") && (
-          <p className="text-sm whitespace-pre-wrap">{m.body}</p>
-        )}
+        {showCaption && <p className="text-sm whitespace-pre-wrap">{m.body}</p>}
       </div>
     );
   }

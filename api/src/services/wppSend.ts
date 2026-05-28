@@ -52,7 +52,10 @@ function parseWppErrorMessage(err: unknown): string {
   if (/não existe|not exist|chat_not_found/i.test(raw)) {
     return "Contato não encontrado no WhatsApp. Abra a conversa no celular e tente de novo.";
   }
-  return raw.slice(0, 280);
+  if (/InvalidMediaFileType/i.test(raw)) {
+    return "Formato de áudio não aceito. Grave de novo ou envie um arquivo .ogg/.mp3 pelo anexo.";
+  }
+  return raw.slice(0, 200);
 }
 
 async function callSendMessage(

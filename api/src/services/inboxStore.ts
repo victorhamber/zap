@@ -1,5 +1,12 @@
 import { prisma } from "../prisma.js";
 import { extractWaId, type NormalizedMessage } from "./inbox.js";
+import { persistInboundMedia } from "./mediaConvert.js";
+import {
+  captionFromText,
+  isLikelyBase64Payload,
+  labelForMediaType,
+  mimeFromMessageType
+} from "./mediaText.js";
 
 function digitsOnly(s: string): string {
   return s.replace(/\D/g, "");
@@ -63,16 +70,6 @@ export async function resetInboxCapture(clearMessages = true): Promise<void> {
   });
 }
 
-function messageBodyFromType(type: string, text: string): string {
-  if (text.trim()) return text.trim();
-  if (type === "image" || type === "sticker") return "📷 Imagem";
-  if (type === "video") return "🎬 Vídeo";
-  if (type === "audio" || type === "ptt") return "🎤 Áudio";
-  if (type === "document") return "📎 Documento";
-  if (type === "location") return "📍 Localização";
-  return "";
-}
-
 function extractMediaUrl(body: Record<string, unknown>): string | null {
   const keys = ["mediaUrl", "fileUrl", "clientUrl", "deprecatedMms3Url"] as const;
   for (const key of keys) {
@@ -80,14 +77,41 @@ function extractMediaUrl(body: Record<string, unknown>): string | null {
     if (typeof v === "string" && v.startsWith("http")) return v;
   }
   const raw = body.body;
-  const mime = String(body.mimetype ?? body.mimeType ?? "image/jpeg");
-  if (typeof raw === "string" && raw.length > 300) {
+  const type = String(body.type ?? "chat");
+  const mime = String(body.mimetype ?? body.mimeType ?? mimeFromMessageType(type));
+  if (typeof raw === "string" && isLikelyBase64Payload(raw)) {
     if (raw.startsWith("data:")) return raw;
-    if (/^[A-Za-z0-9+/=\s]+$/.test(raw.slice(0, 120))) {
-      return `data:${mime};base64,${raw.replace(/\s/g, "")}`;
-    }
+    return `data:${mime};base64,${raw.replace(/\s/g, "")}`;
   }
   return null;
+}
+
+async function resolveStoredMedia(
+  type: string,
+  text: string,
+  mediaUrl: string | null | undefined
+): Promise<{ body: string; mediaUrl: string | null }> {
+  let url = mediaUrl ?? null;
+  const rawText = text.trim();
+
+  if (!url && isLikelyBase64Payload(rawText)) {
+    try {
+      url = await persistInboundMedia(rawText, mimeFromMessageType(type));
+    } catch {
+      url = rawText.startsWith("data:")
+        ? rawText
+        : `data:${mimeFromMessageType(type)};base64,${rawText.replace(/\s/g, "")}`;
+    }
+  } else if (url && url.startsWith("data:")) {
+    try {
+      url = await persistInboundMedia(url, mimeFromMessageType(type));
+    } catch {
+      /* mantém data URI */
+    }
+  }
+
+  const body = captionFromText(type, rawText);
+  return { body, mediaUrl: url };
 }
 
 export async function saveInboxMessage(params: {
@@ -106,7 +130,11 @@ export async function saveInboxMessage(params: {
   if (!chatId || chatId.includes("status@broadcast")) return;
 
   const type = params.type ?? "chat";
-  const body = messageBodyFromType(type, params.body);
+  const { body, mediaUrl } = await resolveStoredMedia(
+    type,
+    params.body,
+    params.mediaUrl
+  );
   const waMessageId = params.waMessageId?.slice(0, 240) ?? null;
   const timestamp = params.timestamp ?? new Date();
 
@@ -124,7 +152,7 @@ export async function saveInboxMessage(params: {
       body,
       fromMe: params.fromMe,
       type,
-      mediaUrl: params.mediaUrl ?? null,
+      mediaUrl,
       waMessageId,
       timestamp
     }
@@ -153,14 +181,25 @@ export async function listStoredMessages(
     take: limit
   });
 
-  const messages: NormalizedMessage[] = rows.map((r) => ({
-    id: r.id,
-    body: r.body,
-    fromMe: r.fromMe,
-    timestamp: r.timestamp.getTime(),
-    type: r.type,
-    mediaUrl: r.mediaUrl
-  }));
+  const messages: NormalizedMessage[] = rows.map((r) => {
+    let body = r.body;
+    let mediaUrl = r.mediaUrl;
+    if (!mediaUrl && isLikelyBase64Payload(body)) {
+      mediaUrl =
+        body.startsWith("data:") ? body : `data:${mimeFromMessageType(r.type)};base64,${body.replace(/\s/g, "")}`;
+      body = labelForMediaType(r.type) || "Mídia";
+    } else if (isLikelyBase64Payload(body)) {
+      body = labelForMediaType(r.type) || body.slice(0, 40);
+    }
+    return {
+      id: r.id,
+      body,
+      fromMe: r.fromMe,
+      timestamp: r.timestamp.getTime(),
+      type: r.type,
+      mediaUrl
+    };
+  });
 
   return {
     messages,

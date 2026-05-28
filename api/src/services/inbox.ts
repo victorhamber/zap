@@ -1,6 +1,7 @@
 import * as wpp from "./wppconnect.js";
 import { listStoredMessages, saveInboxMessage } from "./inboxStore.js";
 import { buildWppSendTarget, sendWppApi, sendWppText } from "./wppSend.js";
+import { convertWebmDataUrlToOgg } from "./mediaConvert.js";
 import { saveUploadFromData } from "./uploads.js";
 
 export type ChatKind = "direct" | "group" | "community";
@@ -459,11 +460,28 @@ export async function sendChatMedia(
     const payload = { ...base, isLid: lid || base.isLid };
 
     if (type === "audio" && url.startsWith("data:")) {
+      const mime = url.match(/^data:([^;]+)/)?.[1] ?? "audio/webm";
+      let base64Ptt: string;
+      if (mime.includes("webm")) {
+        try {
+          const converted = await convertWebmDataUrlToOgg(url);
+          base64Ptt = converted.base64;
+          storedMediaUrl = converted.url;
+        } catch {
+          const path = await resolveMediaPath(url);
+          await sendWppApi("/send-voice", { ...payload, path });
+          storedMediaUrl = path;
+          return;
+        }
+      } else {
+        base64Ptt = base64FromDataUrl(url);
+        const saved = await saveUploadFromData(url, mime);
+        storedMediaUrl = saved.url;
+      }
       await sendWppApi("/send-voice-base64", {
         ...payload,
-        base64Ptt: base64FromDataUrl(url)
+        base64Ptt
       });
-      storedMediaUrl = url;
       return;
     }
 
