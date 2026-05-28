@@ -11,6 +11,7 @@ import { parseGraph } from "../engine/graph.js";
 import { asString } from "../utils/jsonPathLite.js";
 import { normalizePhone } from "../utils/phone.js";
 import { getContactTagNames } from "../services/contacts.js";
+import { parseWppWebhookMessage, saveInboxMessage } from "../services/inboxStore.js";
 
 export async function webhookRoutes(app: FastifyInstance) {
   app.post("/api/webhooks/hotmart/:flowId", async (req, reply) => {
@@ -44,26 +45,41 @@ export async function webhookRoutes(app: FastifyInstance) {
   app.post("/api/webhooks/wppconnect", async (req) => {
     if (!prisma) return { ok: false };
 
-    const body = req.body as any;
-    const event = body?.event ?? body?.type;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const event = String(body.event ?? body.type ?? "").toLowerCase();
     const isMessage =
       event === "onmessage" ||
       event === "message" ||
-      body?.message ||
-      body?.data?.message;
+      event === "onselfmessage" ||
+      Boolean(body.message) ||
+      Boolean((body.data as Record<string, unknown> | undefined)?.message);
 
     if (!isMessage) return { ok: true, skipped: "not_message" };
 
+    const parsed = parseWppWebhookMessage(body);
+    if (parsed) {
+      await saveInboxMessage({
+        chatId: parsed.chatId,
+        body: parsed.text,
+        fromMe: parsed.fromMe,
+        type: parsed.type,
+        waMessageId: parsed.waMessageId,
+        timestamp: parsed.timestamp
+      });
+    }
+
     const from =
-      asString(body?.from) ??
-      asString(body?.sender?.id) ??
-      asString(body?.data?.from) ??
-      asString(body?.chatId);
+      parsed?.chatId ??
+      asString(body.from) ??
+      asString((body.sender as Record<string, unknown> | undefined)?.id) ??
+      asString((body.data as Record<string, unknown> | undefined)?.from) ??
+      asString(body.chatId);
     const text =
-      asString(body?.body) ??
-      asString(body?.content) ??
-      asString(body?.data?.body) ??
-      asString(body?.message?.body) ??
+      parsed?.text ??
+      asString(body.body) ??
+      asString(body.content) ??
+      asString((body.data as Record<string, unknown> | undefined)?.body) ??
+      asString((body.message as Record<string, unknown> | undefined)?.body) ??
       "";
 
     if (!from) return { ok: true, skipped: "no_from" };

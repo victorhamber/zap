@@ -74,8 +74,11 @@ export async function inboxRoutes(app: FastifyInstance) {
     }
     const isGroup = q.isGroup === "1" || q.isGroup === "true" || chatId.includes("@g.us");
     try {
-      const { messages, hint } = await inbox.fetchMessages(chatId, { chatId, isGroup });
-      return { ok: true, messages, hint };
+      const { messages, hint, captureSince } = await inbox.fetchMessages(chatId, {
+        chatId,
+        isGroup
+      });
+      return { ok: true, messages, hint, captureSince, localOnly: true };
     } catch (e: any) {
       return { ok: false, message: e?.message ?? String(e), messages: [] };
     }

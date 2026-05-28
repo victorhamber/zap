@@ -85,7 +85,8 @@ WPP_HUMANIZE=true
 ### Reduzir risco de bloqueio (não é garantia)
 
 - Use **um número aquecido**; evite disparos em massa no primeiro dia.
-- O Zap espaça chamadas ao WPP (`WPP_HUMANIZE`) e evita `load-messages-in-chat` em loop (muito pesado).
+- O Zap espaça chamadas ao WPP (`WPP_HUMANIZE`) em envios.
+- **Inbox:** não importa histórico antigo do WhatsApp; mensagens ficam no Postgres desde a conexão (webhook + envios pelo painel).
 - Prefira o **mesmo IP** do servidor e volume persistente no WPPConnect.
 - Não existe “modo invisível” 100%: automação sempre tem risco. O painel imita o Web, mas o WhatsApp pode detectar API não oficial.
 

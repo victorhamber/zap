@@ -23,8 +23,24 @@ model AppSettings {
   wppTokenFull    String?
   connectionStatus String?
   dismissedWppSessions Json @default("[]")
-  quickReplies    Json     @default("[]")
-  updatedAt       DateTime @updatedAt
+  quickReplies       Json      @default("[]")
+  inboxCaptureSince  DateTime?
+  updatedAt          DateTime  @updatedAt
+}
+
+model InboxMessage {
+  id          String   @id @default(cuid())
+  session     String
+  chatId      String
+  body        String   @default("")
+  fromMe      Boolean  @default(false)
+  type        String   @default("chat")
+  waMessageId String?
+  timestamp   DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@unique([session, waMessageId])
+  @@index([session, chatId, timestamp])
 }
 
 model WppInstance {

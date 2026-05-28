@@ -1,4 +1,5 @@
 import * as wpp from "./wppconnect.js";
+import { listStoredMessages, saveInboxMessage } from "./inboxStore.js";
 
 export type ChatKind = "direct" | "group" | "community";
 
@@ -392,89 +393,21 @@ export async function fetchChats(): Promise<FetchChatsResult> {
   return { chats, sourcesOk, errors };
 }
 
-function messageIdCandidates(chatId: string, isGroup: boolean): string[] {
-  const out: string[] = [];
-  const add = (id: string) => {
-    if (isValidWaId(id) && !out.includes(id)) out.push(id);
-  };
-
-  add(chatId.trim());
-  const digits = digitsOnly(chatId);
-  if (!digits) return out;
-
-  if (isGroup || chatId.includes("@g.us")) {
-    add(`${digits}@g.us`);
-  } else {
-    add(`${digits}@c.us`);
-    add(`${digits}@lid`);
-    if (chatId.includes("@")) add(chatId);
-  }
-  return out;
-}
-
-function friendlyFetchError(raw: string): string {
-  if (/chat_not_found/i.test(raw)) {
-    return "Histórico não disponível para este contato no servidor WPP. Você ainda pode enviar mensagens abaixo.";
-  }
-  if (/401|500|error on open/i.test(raw)) {
-    return "Não foi possível carregar o histórico agora. Tente ↻ ou envie uma mensagem para atualizar o chat.";
-  }
-  return "Histórico indisponível. Use ↻ para tentar novamente.";
-}
-
-function pathPhone(chatId: string): string {
-  const safe = chatId.trim();
-  if (!isValidWaId(safe)) {
-    throw new Error("ID do chat inválido");
-  }
-  return safe;
-}
+const INBOX_HINT_EMPTY =
+  "Nenhuma mensagem desde a conexão. O Zap não importa histórico antigo do WhatsApp — novas mensagens aparecem aqui automaticamente.";
 
 export async function fetchMessages(
   _phone: string,
   options: FetchMessagesOptions
-): Promise<{ messages: NormalizedMessage[]; hint?: string }> {
-  const count = options.count ?? 30;
+): Promise<{ messages: NormalizedMessage[]; hint?: string; captureSince?: string | null }> {
   const chatId = resolveChatId(options.chatId, options.isGroup);
-  const isGroup = chatId.includes("@g.us") || options.isGroup === true;
-  const candidates = messageIdCandidates(chatId, isGroup);
-  if (candidates.length === 0) {
-    return {
-      messages: [],
-      hint: "ID do chat inválido. Atualize a lista (↻) e abra o chat de novo."
-    };
+  const { messages, captureSince } = await listStoredMessages(chatId, options.count ?? 200);
+
+  if (messages.length === 0) {
+    return { messages: [], hint: INBOX_HINT_EMPTY, captureSince };
   }
 
-  const msgQuery = `count=${count}`;
-  const allInChatQuery = `isGroup=${isGroup ? "true" : "false"}&includeMe=true&includeNotifications=true`;
-  let lastError = "";
-
-  for (const pathId of candidates) {
-    const attempts: Array<() => Promise<unknown>> = isGroup
-      ? [
-          () => wpp.callSessionApi(`/all-messages-in-chat/${pathId}?${allInChatQuery}`, "GET"),
-          () => wpp.callSessionApi(`/get-messages/${pathId}?${msgQuery}`, "GET")
-        ]
-      : [
-          () => wpp.callSessionApi(`/get-messages/${pathId}?${msgQuery}`, "GET"),
-          () => wpp.callSessionApi(`/all-messages-in-chat/${pathId}?${allInChatQuery}`, "GET")
-        ];
-
-    for (const run of attempts) {
-      try {
-        const raw = await run();
-        const msgs = normalizeMessages(raw);
-        if (msgs.length > 0) return { messages: msgs };
-      } catch (e: any) {
-        lastError = String(e?.message ?? e);
-      }
-    }
-  }
-
-  return {
-    messages: [],
-    hint: friendlyFetchError(lastError)
-  };
+  return { messages, captureSince };
 }
 
 export async function sendChatMessage(
@@ -488,6 +421,12 @@ export async function sendChatMessage(
     message,
     isGroup: isGroup || chatPhone.includes("@g.us")
   });
+  await saveInboxMessage({
+    chatId: chatPhone,
+    body: message,
+    fromMe: true,
+    type: "chat"
+  });
 }
 
 export async function sendChatMedia(
@@ -500,11 +439,19 @@ export async function sendChatMedia(
   const isGroup = options?.isGroup || phone.includes("@g.us");
   const base = { phone, isGroup };
 
+  const caption = options?.caption ?? "";
+
   if (type === "image") {
     await wpp.callSessionApi("/send-image", "POST", {
       ...base,
       path: url,
-      caption: options?.caption ?? ""
+      caption
+    });
+    await saveInboxMessage({
+      chatId: phone,
+      body: caption || "📷 Imagem",
+      fromMe: true,
+      type: "image"
     });
     return;
   }
@@ -512,7 +459,13 @@ export async function sendChatMedia(
     await wpp.callSessionApi("/send-file", "POST", {
       ...base,
       path: url,
-      caption: options?.caption ?? ""
+      caption
+    });
+    await saveInboxMessage({
+      chatId: phone,
+      body: caption || "🎬 Vídeo",
+      fromMe: true,
+      type: "video"
     });
     return;
   }
@@ -521,6 +474,12 @@ export async function sendChatMedia(
       ...base,
       path: url
     });
+    await saveInboxMessage({
+      chatId: phone,
+      body: "🎤 Áudio",
+      fromMe: true,
+      type: "audio"
+    });
     return;
   }
 
@@ -528,6 +487,12 @@ export async function sendChatMedia(
     ...base,
     path: url,
     filename: options?.filename ?? "documento",
-    caption: options?.caption ?? ""
+    caption
+  });
+  await saveInboxMessage({
+    chatId: phone,
+    body: caption || "📎 Documento",
+    fromMe: true,
+    type: "document"
   });
 }

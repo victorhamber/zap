@@ -169,7 +169,7 @@ export function WhatsAppInbox() {
   useEffect(() => {
     if (!selected || !pageVisible) return;
     loadMessages(selected);
-    const t = setInterval(() => loadMessages(selected, true), 30000);
+    const t = setInterval(() => loadMessages(selected, true), 10000);
     return () => clearInterval(t);
   }, [selected, pageVisible, loadMessages]);
 
@@ -532,7 +532,7 @@ export function WhatsAppInbox() {
               {!loadingMsgs && messages.length === 0 && (
                 <p className="text-center text-sm text-[#8696a0] py-8 max-w-md mx-auto leading-relaxed">
                   {msgHint ||
-                    "Sem histórico neste chat. Envie uma mensagem abaixo — ela deve aparecer aqui."}
+                    "Sem mensagens desde a conexão. O Zap não importa histórico antigo — novas mensagens (recebidas e enviadas) aparecem aqui."}
                 </p>
               )}
               {messages.map((m) => (

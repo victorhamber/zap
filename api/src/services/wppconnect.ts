@@ -436,6 +436,15 @@ async function persistConnectionStatus(label: string, payload?: unknown) {
     where: { id: "default" },
     data: { connectionStatus: `${label}${extra}` }
   });
+
+  if (label.startsWith("CONNECTED:")) {
+    const { ensureInboxCaptureStarted } = await import("./inboxStore.js");
+    await ensureInboxCaptureStarted();
+  }
+  if (label === "LOGOUT" || label.startsWith("LOGOUT:")) {
+    const { resetInboxCapture } = await import("./inboxStore.js");
+    await resetInboxCapture(true);
+  }
 }
 
 async function postStartSession(

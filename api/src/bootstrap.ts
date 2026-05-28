@@ -6,6 +6,7 @@ import {
   startWppReconnectWatchdog,
   tryRestoreSessionAfterDeploy
 } from "./services/wppReconnect.js";
+import { ensureInboxCaptureStarted } from "./services/inboxStore.js";
 
 export async function bootstrapDatabase() {
   if (!prisma) return;
@@ -47,6 +48,11 @@ export async function bootstrapDatabase() {
       }
     });
     console.log("[bootstrap] Fluxo exemplo criado");
+  }
+
+  const settings = await prisma.appSettings.findUnique({ where: { id: "default" } });
+  if (settings?.connectionStatus?.startsWith("CONNECTED")) {
+    await ensureInboxCaptureStarted();
   }
 
   void tryRestoreSessionAfterDeploy();
