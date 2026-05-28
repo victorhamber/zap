@@ -148,7 +148,7 @@ function parseChatItem(item: unknown): NormalizedChat | null {
     phone,
     name: name || phone || "Contato",
     lastMessage: lastBody.slice(0, 120),
-    timestamp: ts || Date.now(),
+    timestamp: ts,
     isGroup,
     kind,
     unreadCount: Number(o.unreadCount ?? o.unread ?? 0) || 0
@@ -249,10 +249,58 @@ function extractArray(raw: unknown): unknown[] {
   return [];
 }
 
+/** Chave única por pessoa (1:1) ou por grupo — evita duplicata entre list-chats / all-contacts / @lid e @c.us */
+function chatDedupeKey(c: NormalizedChat): string {
+  if (c.isGroup || c.kind !== "direct") {
+    const gid = digitsOnly(c.id) || c.id.replace(/@.*/, "");
+    return `g:${gid}`;
+  }
+  const digits = digitsOnly(c.phone || c.id);
+  return digits ? `u:${digits}` : `u:${c.id}`;
+}
+
+function preferChatId(a: string, b: string): string {
+  const rank = (id: string) => {
+    if (id.endsWith("@c.us")) return 3;
+    if (id.endsWith("@g.us")) return 3;
+    if (id.endsWith("@lid")) return 2;
+    if (id.endsWith("@s.whatsapp.net")) return 2;
+    return 1;
+  };
+  const ra = rank(a);
+  const rb = rank(b);
+  if (ra !== rb) return ra > rb ? a : b;
+  return a.length >= b.length ? a : b;
+}
+
+function pickBetterName(a: NormalizedChat, b: NormalizedChat): string {
+  const score = (c: NormalizedChat) => {
+    if (!c.name || c.name === c.phone) return 0;
+    return c.name.length + (/\s/.test(c.name) ? 3 : 0);
+  };
+  return score(a) >= score(b) ? a.name : b.name;
+}
+
+function mergeTwoChats(a: NormalizedChat, b: NormalizedChat): NormalizedChat {
+  const ts = Math.max(a.timestamp, b.timestamp);
+  const ref = a.timestamp >= b.timestamp ? a : b;
+  const other = a.timestamp >= b.timestamp ? b : a;
+  return {
+    ...ref,
+    id: preferChatId(a.id, b.id),
+    phone: digitsOnly(a.phone) || digitsOnly(b.phone) || a.phone || b.phone,
+    name: pickBetterName(a, b),
+    lastMessage: ref.lastMessage || other.lastMessage,
+    timestamp: ts,
+    unreadCount: Math.max(a.unreadCount, b.unreadCount)
+  };
+}
+
 function mergeChats(map: Map<string, NormalizedChat>, list: NormalizedChat[]) {
   for (const c of list) {
-    const prev = map.get(c.id);
-    if (!prev || c.timestamp >= prev.timestamp) map.set(c.id, c);
+    const key = chatDedupeKey(c);
+    const prev = map.get(key);
+    map.set(key, prev ? mergeTwoChats(prev, c) : c);
   }
 }
 
@@ -269,7 +317,7 @@ export function normalizeGroups(raw: unknown): NormalizedChat[] {
         phone: chatIdToPhone(id),
         name: item,
         lastMessage: "",
-        timestamp: Date.now(),
+        timestamp: 0,
         isGroup: true,
         kind: "group",
         unreadCount: 0
@@ -307,18 +355,8 @@ export async function fetchChats(): Promise<FetchChatsResult> {
     parse: (raw: unknown) => NormalizedChat[];
   }> = [
     {
-      name: "all-chats",
-      run: () => wpp.callSessionApi("/all-chats", "GET"),
-      parse: normalizeChats
-    },
-    {
       name: "list-chats",
       run: () => wpp.callSessionApi("/list-chats", "POST", {}),
-      parse: normalizeChats
-    },
-    {
-      name: "all-contacts",
-      run: () => wpp.callSessionApi("/all-contacts", "GET"),
       parse: normalizeChats
     },
     {
@@ -347,8 +385,41 @@ export async function fetchChats(): Promise<FetchChatsResult> {
     }
   });
 
-  const chats = [...map.values()].sort((a, b) => b.timestamp - a.timestamp);
+  const chats = [...map.values()].sort((a, b) => {
+    if (a.timestamp !== b.timestamp) return b.timestamp - a.timestamp;
+    return a.name.localeCompare(b.name, "pt-BR");
+  });
   return { chats, sourcesOk, errors };
+}
+
+function messageIdCandidates(chatId: string, isGroup: boolean): string[] {
+  const out: string[] = [];
+  const add = (id: string) => {
+    if (isValidWaId(id) && !out.includes(id)) out.push(id);
+  };
+
+  add(chatId.trim());
+  const digits = digitsOnly(chatId);
+  if (!digits) return out;
+
+  if (isGroup || chatId.includes("@g.us")) {
+    add(`${digits}@g.us`);
+  } else {
+    add(`${digits}@c.us`);
+    add(`${digits}@lid`);
+    if (chatId.includes("@")) add(chatId);
+  }
+  return out;
+}
+
+function friendlyFetchError(raw: string): string {
+  if (/chat_not_found/i.test(raw)) {
+    return "Histórico não disponível para este contato no servidor WPP. Você ainda pode enviar mensagens abaixo.";
+  }
+  if (/401|500|error on open/i.test(raw)) {
+    return "Não foi possível carregar o histórico agora. Tente ↻ ou envie uma mensagem para atualizar o chat.";
+  }
+  return "Histórico indisponível. Use ↻ para tentar novamente.";
 }
 
 function pathPhone(chatId: string): string {
@@ -366,53 +437,43 @@ export async function fetchMessages(
   const count = options.count ?? 30;
   const chatId = resolveChatId(options.chatId, options.isGroup);
   const isGroup = chatId.includes("@g.us") || options.isGroup === true;
-  let pathId: string;
-  try {
-    pathId = pathPhone(chatId);
-  } catch {
+  const candidates = messageIdCandidates(chatId, isGroup);
+  if (candidates.length === 0) {
     return {
       messages: [],
-      hint: "ID do chat inválido. Clique em ↻ na lista de conversas e abra o chat de novo."
+      hint: "ID do chat inválido. Atualize a lista (↻) e abra o chat de novo."
     };
   }
 
   const msgQuery = `count=${count}`;
   const allInChatQuery = `isGroup=${isGroup ? "true" : "false"}&includeMe=true&includeNotifications=true`;
+  let lastError = "";
 
-  const attempts: Array<{ label: string; run: () => Promise<unknown> }> = [
-    {
-      label: "get-messages",
-      run: () => wpp.callSessionApi(`/get-messages/${pathId}?${msgQuery}`, "GET")
-    },
-    {
-      label: "all-messages-in-chat",
-      run: () =>
-        wpp.callSessionApi(`/all-messages-in-chat/${pathId}?${allInChatQuery}`, "GET")
-    },
-    {
-      label: "load-messages-in-chat",
-      run: () =>
-        wpp.callSessionApi(`/load-messages-in-chat/${pathId}?${allInChatQuery}`, "GET")
-    }
-  ];
+  for (const pathId of candidates) {
+    const attempts: Array<() => Promise<unknown>> = isGroup
+      ? [
+          () => wpp.callSessionApi(`/all-messages-in-chat/${pathId}?${allInChatQuery}`, "GET"),
+          () => wpp.callSessionApi(`/get-messages/${pathId}?${msgQuery}`, "GET")
+        ]
+      : [
+          () => wpp.callSessionApi(`/get-messages/${pathId}?${msgQuery}`, "GET"),
+          () => wpp.callSessionApi(`/all-messages-in-chat/${pathId}?${allInChatQuery}`, "GET")
+        ];
 
-  const errors: string[] = [];
-
-  for (const { label, run } of attempts) {
-    try {
-      const raw = await run();
-      const msgs = normalizeMessages(raw);
-      if (msgs.length > 0) return { messages: msgs };
-    } catch (e: any) {
-      errors.push(`${label}: ${e?.message ?? e}`);
+    for (const run of attempts) {
+      try {
+        const raw = await run();
+        const msgs = normalizeMessages(raw);
+        if (msgs.length > 0) return { messages: msgs };
+      } catch (e: any) {
+        lastError = String(e?.message ?? e);
+      }
     }
   }
 
   return {
     messages: [],
-    hint:
-      errors[0]?.slice(0, 220) ??
-      "Histórico indisponível neste chat. Novas mensagens aparecem ao enviar/receber."
+    hint: friendlyFetchError(lastError)
   };
 }
 
