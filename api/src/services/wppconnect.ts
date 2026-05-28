@@ -117,15 +117,23 @@ async function wppFetch(path: string, init: RequestInit, retry = true): Promise<
   const token = await getWppToken();
 
   const url = `${base}/api/${encodeURIComponent(session)}${path}`;
+  const headers: Record<string, string> = {
+    accept: "application/json",
+    authorization: `Bearer ${token}`
+  };
+  const hasBody =
+    init.body !== undefined && init.body !== null && String(init.body).length > 0;
+  if (hasBody) {
+    headers["content-type"] = "application/json";
+  }
+
   let res: Response;
   try {
     res = await fetch(url, {
       ...init,
       headers: {
-        accept: "application/json",
-        "content-type": "application/json",
-        authorization: `Bearer ${token}`,
-        ...(init.headers ?? {})
+        ...headers,
+        ...(init.headers as Record<string, string> | undefined)
       }
     });
   } catch (e: any) {
