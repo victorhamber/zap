@@ -11,6 +11,7 @@ import { parseGraph } from "../engine/graph.js";
 import { asString } from "../utils/jsonPathLite.js";
 import { normalizePhone } from "../utils/phone.js";
 import { getContactTagNames } from "../services/contacts.js";
+import { downloadInboundMedia, isInboundMediaType } from "../services/wppMedia.js";
 import { parseWppWebhookMessage, saveInboxMessage } from "../services/inboxStore.js";
 
 export async function webhookRoutes(app: FastifyInstance) {
@@ -58,12 +59,24 @@ export async function webhookRoutes(app: FastifyInstance) {
 
     const parsed = parseWppWebhookMessage(body);
     if (parsed) {
+      let mediaUrl = parsed.mediaUrl;
+      if (
+        !parsed.fromMe &&
+        !mediaUrl &&
+        isInboundMediaType(parsed.type)
+      ) {
+        mediaUrl = await downloadInboundMedia(body, parsed.waMessageId);
+      }
+
+      const msgType =
+        parsed.type === "ptt" ? "audio" : parsed.type;
+
       await saveInboxMessage({
         chatId: parsed.chatId,
         body: parsed.text,
         fromMe: parsed.fromMe,
-        type: parsed.type,
-        mediaUrl: parsed.mediaUrl,
+        type: msgType,
+        mediaUrl,
         waMessageId: parsed.waMessageId,
         timestamp: parsed.timestamp
       });

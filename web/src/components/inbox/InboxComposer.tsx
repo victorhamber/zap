@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/client";
 
 export type QuickReply = { id: string; title: string; text: string };
@@ -30,6 +30,64 @@ async function uploadDataUrl(data: string, mime?: string): Promise<string> {
   return r.url;
 }
 
+function IconPlus() {
+  return (
+    <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor">
+      <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+    </svg>
+  );
+}
+
+function IconSmile() {
+  return (
+    <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor">
+      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z" />
+    </svg>
+  );
+}
+
+function IconMic() {
+  return (
+    <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor">
+      <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
+    </svg>
+  );
+}
+
+function IconSend() {
+  return (
+    <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor">
+      <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+    </svg>
+  );
+}
+
+function IconTrash() {
+  return (
+    <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor">
+      <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
+    </svg>
+  );
+}
+
+const ATTACH_ITEMS: Array<{
+  id: string;
+  label: string;
+  color: string;
+  accept?: string;
+  kind: "image" | "video" | "audio" | "document";
+}> = [
+  { id: "doc", label: "Documento", color: "#7f66ff", kind: "document", accept: ".pdf,.doc,.docx,.txt" },
+  {
+    id: "media",
+    label: "Fotos e vídeos",
+    color: "#007bfc",
+    kind: "image",
+    accept: "image/*,video/*"
+  },
+  { id: "audio", label: "Áudio", color: "#ff7d3b", kind: "audio", accept: "audio/*" }
+];
+
 export function InboxComposer({
   draft,
   onDraftChange,
@@ -38,18 +96,57 @@ export function InboxComposer({
   quickReplies,
   disabled
 }: Props) {
-  const [showAttach, setShowAttach] = useState(false);
-  const [mediaUrl, setMediaUrl] = useState("");
-  const [mediaCaption, setMediaCaption] = useState("");
+  const [attachOpen, setAttachOpen] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [recordSec, setRecordSec] = useState(0);
   const [uploading, setUploading] = useState(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pendingAccept, setPendingAccept] = useState("image/*,video/*");
+  const attachRef = useRef<HTMLDivElement>(null);
+
+  const hasText = draft.trim().length > 0;
+
+  useEffect(() => {
+    if (!recording) return;
+    const t = setInterval(() => setRecordSec((s) => s + 1), 1000);
+    return () => clearInterval(t);
+  }, [recording]);
+
+  useEffect(() => {
+    if (!attachOpen) return;
+    const close = (e: MouseEvent) => {
+      if (attachRef.current && !attachRef.current.contains(e.target as Node)) {
+        setAttachOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [attachOpen]);
+
+  function formatRecordTime(sec: number) {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  }
+
+  function cancelRecording() {
+    recorderRef.current?.stop();
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    recorderRef.current = null;
+    streamRef.current = null;
+    chunksRef.current = [];
+    setRecording(false);
+    setRecordSec(0);
+  }
 
   async function startRecording() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
       const rec = new MediaRecorder(stream);
       chunksRef.current = [];
       rec.ondataavailable = (e) => {
@@ -59,37 +156,37 @@ export function InboxComposer({
         stream.getTracks().forEach((t) => t.stop());
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
         const reader = new FileReader();
-        reader.onload = () => {
-          onSendMedia("audio", reader.result as string);
-        };
+        reader.onload = () => onSendMedia("audio", reader.result as string);
         reader.readAsDataURL(blob);
+        setRecordSec(0);
       };
       recorderRef.current = rec;
       rec.start();
       setRecording(true);
+      setRecordSec(0);
     } catch {
       alert("Permita o microfone para gravar áudio.");
     }
   }
 
-  function stopRecording() {
+  function finishRecording() {
     recorderRef.current?.stop();
     setRecording(false);
   }
 
-  async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
+  async function onPickFile(e: React.ChangeEvent<HTMLInputElement>, kind: typeof ATTACH_ITEMS[0]["kind"]) {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file || disabled) return;
-
+    setAttachOpen(false);
     setUploading(true);
     try {
       const dataUrl = await readFileAsDataUrl(file);
       const mime = file.type || "application/octet-stream";
-      let type: "image" | "video" | "audio" | "document" = "document";
+      let type = kind;
+      if (mime.startsWith("video/")) type = "video";
       if (mime.startsWith("image/")) type = "image";
-      else if (mime.startsWith("video/")) type = "video";
-      else if (mime.startsWith("audio/")) type = "audio";
+      if (mime.startsWith("audio/")) type = "audio";
 
       if (type === "audio" && dataUrl.startsWith("data:")) {
         onSendMedia("audio", dataUrl);
@@ -97,7 +194,6 @@ export function InboxComposer({
         const url = await uploadDataUrl(dataUrl, mime);
         onSendMedia(type, url);
       }
-      setShowAttach(false);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Erro ao enviar arquivo");
     } finally {
@@ -105,8 +201,58 @@ export function InboxComposer({
     }
   }
 
+  function openFilePicker(item: (typeof ATTACH_ITEMS)[0]) {
+    setPendingAccept(item.accept ?? "*/*");
+    setTimeout(() => {
+      if (fileInputRef.current) {
+        fileInputRef.current.accept = item.accept ?? "*/*";
+        fileInputRef.current.dataset.kind = item.kind;
+        fileInputRef.current.click();
+      }
+    }, 0);
+    setAttachOpen(false);
+  }
+
+  const EMOJIS = ["😀", "😂", "❤️", "👍", "🙏", "🔥", "✅", "😉", "🎉", "💬"];
+
+  if (recording) {
+    return (
+      <div className="shrink-0 border-l border-[#2a3942] bg-[#202c33] px-3 py-3">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={cancelRecording}
+            className="text-[#8696a0] hover:text-[#e9edef] p-2"
+            title="Descartar"
+          >
+            <IconTrash />
+          </button>
+          <span className="w-2 h-2 rounded-full bg-[#ea0038] shrink-0 animate-pulse" />
+          <span className="text-[#e9edef] text-sm tabular-nums w-10">{formatRecordTime(recordSec)}</span>
+          <div className="flex-1 flex items-center justify-center gap-0.5 h-8 overflow-hidden">
+            {Array.from({ length: 40 }).map((_, i) => (
+              <span
+                key={i}
+                className="w-0.5 bg-[#00a884] rounded-full"
+                style={{ height: `${8 + Math.abs(Math.sin(i + recordSec)) * 18}px` }}
+              />
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={finishRecording}
+            className="h-12 w-12 rounded-full bg-[#00a884] text-[#111b21] flex items-center justify-center shrink-0"
+            title="Enviar áudio"
+          >
+            <IconSend />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="shrink-0 border-l border-[#2a3942] bg-[#202c33]">
+    <div className="shrink-0 border-l border-[#2a3942] bg-[#202c33] relative" ref={attachRef}>
       {quickReplies.length > 0 && (
         <div className="flex gap-2 px-3 pt-2 overflow-x-auto">
           {quickReplies.map((q) => (
@@ -116,7 +262,6 @@ export function InboxComposer({
               disabled={disabled}
               onClick={() => onDraftChange(q.text)}
               className="shrink-0 rounded-full border border-[#3b4a54] px-3 py-1 text-xs text-[#aebac1] hover:bg-[#2a3942]"
-              title={q.text}
             >
               {q.title}
             </button>
@@ -124,103 +269,118 @@ export function InboxComposer({
         </div>
       )}
 
-      {showAttach && (
-        <div className="mx-3 mt-2 p-3 rounded-lg bg-[#2a3942] space-y-2 text-sm">
-          <p className="text-xs text-[#8696a0]">
-            Envie arquivo do computador ou cole URL pública (imagem, vídeo, PDF ou áudio)
-          </p>
-          <button
-            type="button"
-            disabled={disabled || uploading}
-            onClick={() => fileInputRef.current?.click()}
-            className="w-full rounded-lg bg-[#00a884]/20 text-[#00a884] py-2 text-xs disabled:opacity-40"
-          >
-            {uploading ? "Enviando…" : "Escolher arquivo do computador"}
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*,video/*,audio/*,.pdf,.doc,.docx"
-            className="hidden"
-            onChange={(e) => void onPickFile(e)}
-          />
-          <input
-            value={mediaUrl}
-            onChange={(e) => setMediaUrl(e.target.value)}
-            placeholder="https://... (URL pública)"
-            className="w-full rounded bg-[#111b21] px-3 py-2 border-0 text-[#e9edef]"
-          />
-          <input
-            value={mediaCaption}
-            onChange={(e) => setMediaCaption(e.target.value)}
-            placeholder="Legenda (opcional)"
-            className="w-full rounded bg-[#111b21] px-3 py-2 border-0 text-[#e9edef]"
-          />
-          <div className="flex flex-wrap gap-2">
-            {(["image", "video", "document"] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                disabled={!mediaUrl.trim() || disabled || uploading}
-                onClick={() => {
-                  onSendMedia(t, mediaUrl.trim(), mediaCaption.trim() || undefined);
-                  setMediaUrl("");
-                  setMediaCaption("");
-                  setShowAttach(false);
-                }}
-                className="rounded-lg bg-[#00a884]/20 text-[#00a884] px-3 py-1.5 text-xs disabled:opacity-40"
-              >
-                {t === "image" ? "Imagem" : t === "video" ? "Vídeo" : "Documento"}
-              </button>
-            ))}
-          </div>
+      {attachOpen && (
+        <div className="absolute bottom-full left-3 mb-2 w-56 rounded-xl bg-[#233138] shadow-xl border border-[#2a3942] py-2 z-20">
+          {ATTACH_ITEMS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              disabled={disabled || uploading}
+              onClick={() => openFilePicker(item)}
+              className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[#2a3942] text-left text-[#e9edef] text-[15px]"
+            >
+              <span
+                className="w-6 h-6 rounded-full shrink-0"
+                style={{ backgroundColor: item.color }}
+              />
+              {item.label}
+            </button>
+          ))}
         </div>
       )}
 
-      <footer className="px-3 py-3 flex gap-2 items-end">
+      {emojiOpen && (
+        <div className="absolute bottom-full left-12 mb-2 p-3 rounded-xl bg-[#233138] border border-[#2a3942] shadow-xl z-20 flex flex-wrap gap-1 max-w-[280px]">
+          {EMOJIS.map((em) => (
+            <button
+              key={em}
+              type="button"
+              className="text-xl p-1 hover:bg-[#2a3942] rounded"
+              onClick={() => {
+                onDraftChange(draft + em);
+                setEmojiOpen(false);
+              }}
+            >
+              {em}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        onChange={(e) => {
+          const kind = (e.currentTarget.dataset.kind ?? "document") as (typeof ATTACH_ITEMS)[0]["kind"];
+          void onPickFile(e, kind);
+        }}
+      />
+
+      <footer className="flex items-end gap-2 px-3 py-3">
         <button
           type="button"
           disabled={disabled}
-          onClick={() => setShowAttach((v) => !v)}
-          className="h-11 w-11 shrink-0 rounded-full text-[#8696a0] hover:bg-[#2a3942] text-xl"
+          onClick={() => {
+            setAttachOpen((v) => !v);
+            setEmojiOpen(false);
+          }}
+          className="p-2 text-[#8696a0] hover:text-[#e9edef] shrink-0"
           title="Anexar"
         >
-          +
+          <IconPlus />
         </button>
-        <button
-          type="button"
-          disabled={disabled || uploading}
-          onClick={() => (recording ? stopRecording() : startRecording())}
-          className={`h-11 w-11 shrink-0 rounded-full text-xl ${
-            recording ? "bg-red-500/30 text-red-300 animate-pulse" : "text-[#8696a0] hover:bg-[#2a3942]"
-          }`}
-          title={recording ? "Parar gravação" : "Gravar áudio"}
-        >
-          🎤
-        </button>
-        <textarea
-          value={draft}
-          onChange={(e) => onDraftChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              onSendText();
-            }
-          }}
-          rows={1}
-          disabled={disabled}
-          placeholder="Digite uma mensagem"
-          className="flex-1 resize-none rounded-lg bg-[#2a3942] border-0 px-4 py-2.5 text-sm text-[#e9edef] placeholder:text-[#8696a0] max-h-32 disabled:opacity-50"
-        />
-        <button
-          type="button"
-          onClick={onSendText}
-          disabled={disabled || !draft.trim() || uploading}
-          className="h-11 w-11 rounded-full bg-[#00a884] flex items-center justify-center text-[#111b21] disabled:opacity-40 shrink-0"
-          aria-label="Enviar"
-        >
-          ➤
-        </button>
+
+        <div className="flex-1 flex items-center gap-2 rounded-lg bg-[#2a3942] px-3 py-1.5 min-h-[42px]">
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => {
+              setEmojiOpen((v) => !v);
+              setAttachOpen(false);
+            }}
+            className="text-[#8696a0] hover:text-[#e9edef] shrink-0 p-0.5"
+            title="Emoji"
+          >
+            <IconSmile />
+          </button>
+          <textarea
+            value={draft}
+            onChange={(e) => onDraftChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                if (hasText) onSendText();
+              }
+            }}
+            rows={1}
+            disabled={disabled}
+            placeholder="Digite uma mensagem"
+            className="flex-1 resize-none bg-transparent border-0 text-sm text-[#e9edef] placeholder:text-[#8696a0] max-h-28 py-2 focus:outline-none focus:ring-0 disabled:opacity-50"
+          />
+        </div>
+
+        {hasText ? (
+          <button
+            type="button"
+            onClick={onSendText}
+            disabled={disabled || uploading}
+            className="h-12 w-12 rounded-full bg-[#00a884] text-[#111b21] flex items-center justify-center shrink-0 disabled:opacity-40"
+            aria-label="Enviar"
+          >
+            <IconSend />
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={disabled || uploading}
+            onClick={() => startRecording()}
+            className="p-2 text-[#8696a0] hover:text-[#e9edef] shrink-0"
+            title="Gravar áudio"
+          >
+            <IconMic />
+          </button>
+        )}
       </footer>
     </div>
   );

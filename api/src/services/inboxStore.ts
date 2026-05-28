@@ -184,10 +184,11 @@ export async function listStoredMessages(
   const messages: NormalizedMessage[] = rows.map((r) => {
     let body = r.body;
     let mediaUrl = r.mediaUrl;
+    const normalizedType = r.type === "ptt" ? "audio" : r.type;
     if (!mediaUrl && isLikelyBase64Payload(body)) {
       mediaUrl =
-        body.startsWith("data:") ? body : `data:${mimeFromMessageType(r.type)};base64,${body.replace(/\s/g, "")}`;
-      body = labelForMediaType(r.type) || "Mídia";
+        body.startsWith("data:") ? body : `data:${mimeFromMessageType(normalizedType)};base64,${body.replace(/\s/g, "")}`;
+      body = labelForMediaType(normalizedType) || "Mídia";
     } else if (isLikelyBase64Payload(body)) {
       body = labelForMediaType(r.type) || body.slice(0, 40);
     }
@@ -196,7 +197,7 @@ export async function listStoredMessages(
       body,
       fromMe: r.fromMe,
       timestamp: r.timestamp.getTime(),
-      type: r.type,
+      type: normalizedType,
       mediaUrl
     };
   });
