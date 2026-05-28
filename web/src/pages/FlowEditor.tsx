@@ -17,6 +17,7 @@ import "@xyflow/react/dist/style.css";
 import { api } from "../api/client";
 import { flowNodeTypes } from "../components/flow/FlowNode";
 import { FlowNodeProperties } from "../components/flow/FlowNodeProperties";
+import { NodeContextMenu } from "../components/flow/NodeContextMenu";
 import { PALETTE, defaultNodeData, NODE_LABELS } from "../components/flow/nodeMeta";
 
 type FlowRecord = {
@@ -33,6 +34,8 @@ type FlowRecord = {
     edges: Array<{ id: string; source: string; target: string }>;
   };
 };
+
+type ContextMenuState = { x: number; y: number; nodeId: string };
 
 function summaryFor(type: string, data: Record<string, unknown>): string {
   if (type === "send_text") return String(data.text ?? "").slice(0, 40);
@@ -73,6 +76,7 @@ export function FlowEditor() {
   const [status, setStatus] = useState("");
   const [testPhone, setTestPhone] = useState("");
   const [paletteOpen, setPaletteOpen] = useState(true);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -80,6 +84,16 @@ export function FlowEditor() {
   const selectedNode = useMemo(
     () => nodes.find((n) => n.id === selectedId) ?? null,
     [nodes, selectedId]
+  );
+
+  const deleteNode = useCallback(
+    (nodeId: string) => {
+      setNodes((nds) => nds.filter((n) => n.id !== nodeId));
+      setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
+      setSelectedId((cur) => (cur === nodeId ? null : cur));
+      setStatus("Bloco removido.");
+    },
+    [setNodes, setEdges]
   );
 
   useEffect(() => {
@@ -92,6 +106,23 @@ export function FlowEditor() {
       setEdges(toReactFlowEdges(f.graphJson.edges));
     });
   }, [id, setNodes, setEdges]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedId) {
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+        e.preventDefault();
+        deleteNode(selectedId);
+      }
+      if (e.key === "Escape") {
+        setContextMenu(null);
+        setSelectedId(null);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedId, deleteNode]);
 
   const onConnect = useCallback(
     (c: Connection) => setEdges((eds) => addEdge(c, eds)),
@@ -171,6 +202,7 @@ export function FlowEditor() {
   }
 
   const cfg = (selectedNode?.data?.config ?? {}) as Record<string, unknown>;
+  const panelOpen = Boolean(selectedNode);
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-zinc-950 text-white">
@@ -223,7 +255,7 @@ export function FlowEditor() {
 
       <div className="relative flex-1 min-h-0">
         {paletteOpen && (
-          <aside className="absolute left-3 top-3 bottom-3 z-20 w-52 flex flex-col rounded-xl border border-zinc-800/90 bg-zinc-950/95 shadow-2xl backdrop-blur">
+          <aside className="absolute left-3 top-3 bottom-3 z-20 w-52 flex flex-col rounded-xl border border-zinc-800/90 bg-zinc-950/95 shadow-2xl backdrop-blur pointer-events-auto">
             <div className="flex items-center justify-between border-b border-zinc-800 px-3 py-2">
               <span className="text-xs font-semibold text-zinc-400">Blocos</span>
               <button
@@ -246,6 +278,9 @@ export function FlowEditor() {
                 </button>
               ))}
             </div>
+            <p className="px-2 pb-2 text-[10px] text-zinc-600">
+              Clique direito no bloco: editar ou excluir. Tecla Delete também remove.
+            </p>
           </aside>
         )}
 
@@ -253,45 +288,71 @@ export function FlowEditor() {
           <button
             type="button"
             onClick={() => setPaletteOpen(true)}
-            className="absolute left-3 top-3 z-20 rounded-xl border border-zinc-800 bg-zinc-950/95 px-3 py-2 text-sm text-zinc-400 hover:text-white shadow-lg"
+            className="absolute left-3 top-3 z-20 rounded-xl border border-zinc-800 bg-zinc-950/95 px-3 py-2 text-sm text-zinc-400 hover:text-white shadow-lg pointer-events-auto"
           >
             + Blocos
           </button>
         )}
 
-        <div className="absolute inset-0">
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          onNodeClick={(_, n) => setSelectedId(n.id)}
-          onPaneClick={() => setSelectedId(null)}
-          nodeTypes={flowNodeTypes}
-          fitView
-          className="!bg-zinc-950"
-          proOptions={{ hideAttribution: true }}
-        >
-          <Background color="#3f3f46" gap={20} />
-          <Controls className="!bg-zinc-900 !border-zinc-700 !shadow-lg" />
-          <MiniMap
-            className="!bg-zinc-900 !border-zinc-700"
-            nodeColor={() => "#10b981"}
-            maskColor="rgba(9,9,11,0.75)"
-          />
-          <Panel position="top-right" className="!m-3">
-            {selectedNode && (
-              <span className="rounded-lg bg-zinc-900/90 border border-zinc-700 px-2 py-1 text-xs text-zinc-400">
-                {NODE_LABELS[String(selectedNode.data.nodeType)] ?? selectedNode.data.nodeType}
-              </span>
-            )}
-          </Panel>
-        </ReactFlow>
+        <div className="absolute inset-0 z-0">
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            onNodeClick={(_, n) => {
+              setContextMenu(null);
+              setSelectedId(n.id);
+            }}
+            onNodeContextMenu={(e, n) => {
+              e.preventDefault();
+              setContextMenu({ x: e.clientX, y: e.clientY, nodeId: n.id });
+              setSelectedId(n.id);
+            }}
+            onPaneClick={() => {
+              setContextMenu(null);
+              setSelectedId(null);
+            }}
+            nodeTypes={flowNodeTypes}
+            fitView
+            deleteKeyCode={null}
+            className="flow-editor-canvas"
+            proOptions={{ hideAttribution: true }}
+          >
+            <Background color="#3f3f46" gap={20} />
+            <Controls className="!bg-zinc-900 !border-zinc-700 !shadow-lg" />
+            <MiniMap
+              pannable
+              zoomable
+              position="bottom-left"
+              className={`flow-minimap !bg-zinc-900 !border-zinc-600 ${panelOpen ? "flow-minimap--panel-open" : ""}`}
+              nodeColor={() => "#34d399"}
+              maskColor="rgba(9,9,11,0.8)"
+              style={{ width: 200, height: 140 }}
+            />
+            <Panel position="top-right" className="!m-3 pointer-events-none">
+              {selectedNode && (
+                <span className="rounded-lg bg-zinc-900/90 border border-zinc-700 px-2 py-1 text-xs text-zinc-400">
+                  {NODE_LABELS[String(selectedNode.data.nodeType)] ?? selectedNode.data.nodeType}
+                </span>
+              )}
+            </Panel>
+          </ReactFlow>
         </div>
 
+        {contextMenu && (
+          <NodeContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            onEdit={() => setSelectedId(contextMenu.nodeId)}
+            onDelete={() => deleteNode(contextMenu.nodeId)}
+            onClose={() => setContextMenu(null)}
+          />
+        )}
+
         {selectedNode && (
-          <aside className="absolute right-0 top-0 bottom-0 z-30 w-full max-w-md border-l border-zinc-800 bg-zinc-950/98 shadow-[-8px_0_32px_rgba(0,0,0,0.45)] backdrop-blur">
+          <aside className="absolute right-0 top-0 bottom-0 z-30 w-full max-w-md border-l border-zinc-800 bg-zinc-950/98 shadow-[-8px_0_32px_rgba(0,0,0,0.45)] backdrop-blur pointer-events-auto">
             <FlowNodeProperties
               selectedNode={selectedNode}
               flowId={flow?.id}

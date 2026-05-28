@@ -30,10 +30,28 @@ async function getSettings() {
   return s;
 }
 
-export async function refreshWppToken(): Promise<string> {
+export async function setActiveSession(sessionName: string): Promise<void> {
+  const name = sessionName.trim();
+  if (!/^[\w-]{2,64}$/i.test(name)) {
+    throw new Error("Nome da sessão inválido (use letras, números, _ ou -)");
+  }
+  if (prisma) {
+    await prisma.appSettings.upsert({
+      where: { id: "default" },
+      update: { wppSession: name, wppToken: null, wppTokenFull: null },
+      create: {
+        id: "default",
+        wppBaseUrl: env.WPP_BASE_URL,
+        wppSession: name
+      }
+    });
+  }
+}
+
+export async function refreshWppToken(sessionOverride?: string): Promise<string> {
   const settings = await getSettings();
   const base = settings.wppBaseUrl.replace(/\/$/, "");
-  const session = settings.wppSession;
+  const session = sessionOverride ?? settings.wppSession;
   const secret = env.WPP_SECRET_KEY;
 
   const url = `${base}/api/${encodeURIComponent(session)}/${encodeURIComponent(secret)}/generate-token`;
@@ -248,4 +266,54 @@ export async function logoutSession(): Promise<unknown> {
   }
   await persistConnectionStatus("LOGOUT", body);
   return body;
+}
+
+export async function listServerSessions(): Promise<unknown> {
+  const settings = await getSettings();
+  const base = settings.wppBaseUrl.replace(/\/$/, "");
+  const secret = env.WPP_SECRET_KEY;
+  const url = `${base}/api/${encodeURIComponent(secret)}/show-all-sessions`;
+  const res = await fetch(url, { headers: { accept: "application/json" } });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(`show-all-sessions falhou: ${res.status} ${JSON.stringify(body)}`);
+  }
+  return body;
+}
+
+const BLOCKED_PROXY_PATHS = ["/generate-token", "/show-all-sessions"];
+
+export function validateProxyPath(path: string): string {
+  const p = path.startsWith("/") ? path : `/${path}`;
+  if (!/^\/[a-zA-Z0-9/_-]+$/.test(p)) {
+    throw new Error("Caminho da API inválido");
+  }
+  if (BLOCKED_PROXY_PATHS.some((b) => p.includes(b))) {
+    throw new Error("Caminho não permitido");
+  }
+  return p;
+}
+
+export async function callSessionApi(
+  path: string,
+  method: "GET" | "POST" | "PUT" | "DELETE",
+  body?: unknown
+): Promise<unknown> {
+  const safePath = validateProxyPath(path);
+  const init: RequestInit = { method };
+  if (body !== undefined && method !== "GET") {
+    init.body = JSON.stringify(body);
+  }
+  const res = await wppFetch(safePath, init);
+  const text = await res.text().catch(() => "");
+  let parsed: unknown = text;
+  try {
+    parsed = text ? JSON.parse(text) : {};
+  } catch {
+    /* texto */
+  }
+  if (!res.ok) {
+    throw new Error(`${method} ${safePath} falhou: ${res.status} ${String(text).slice(0, 300)}`);
+  }
+  return parsed;
 }

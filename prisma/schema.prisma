@@ -25,6 +25,13 @@ model AppSettings {
   updatedAt       DateTime @updatedAt
 }
 
+model WppInstance {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  label     String?
+  createdAt DateTime @default(now())
+}
+
 model Flow {
   id          String   @id @default(cuid())
   name        String
