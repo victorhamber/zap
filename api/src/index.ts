@@ -51,10 +51,14 @@ await app.register(wppRoutes);
 await app.register(inboxRoutes);
 
 await ensureUploadDir();
-await app.register(staticPlugin, { root: UPLOAD_DIR, prefix: "/uploads/" });
 
 const webDist = path.resolve(__dirname, "../../web/dist");
 await app.register(staticPlugin, { root: webDist, prefix: "/" });
+await app.register(staticPlugin, {
+  root: UPLOAD_DIR,
+  prefix: "/uploads/",
+  decorateReply: false
+});
 app.setNotFoundHandler(async (req, reply) => {
   if (req.url.startsWith("/api")) {
     return reply.status(404).send({ error: "Not found" });
