@@ -28,6 +28,8 @@ Repositório: https://github.com/victorhamber/zap
 
 ```env
 APP_PUBLIC_URL=https://zap.trajettu.com
+# Rede Docker: hostname do serviço Zap no EasyPanel (WPP chama webhook e baixa uploads por aqui)
+ZAP_INTERNAL_URL=http://zap:3000
 NODE_ENV=production
 PORT=3000
 
@@ -106,7 +108,11 @@ webhook: {
 
 Depois reinicie o WPP. Conecte pelo **Zap → WhatsApp → Conexão / QR**.
 
-O webhook `https://zap.trajettu.com/api/webhooks/wppconnect` é configurado pelo Zap no `start-session` quando você clica em Conectar.
+O webhook é configurado pelo Zap no `start-session` quando você conecta. Com `ZAP_INTERNAL_URL`, o WPP usa `http://zap:3000/api/webhooks/wppconnect` (rede interna) — evita falha quando o container WPP não alcança a URL pública.
+
+Teste rápido: `GET https://zap.trajettu.com/api/webhooks/wppconnect` deve retornar `{ ok: true }`. Após uma mensagem recebida, `lastWebhookAt` aparece nessa resposta.
+
+No painel: **POST /api/wpp/sync-webhook** (autenticado) ou botão equivalente re-registra o webhook na sessão ativa.
 
 ## Após o primeiro deploy do app `zap`
 

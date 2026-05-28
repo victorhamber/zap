@@ -2,7 +2,7 @@ import * as wpp from "./wppconnect.js";
 import { listStoredMessages, saveInboxMessage } from "./inboxStore.js";
 import { buildWppSendTarget, sendWppApi, sendWppText } from "./wppSend.js";
 import { convertWebmDataUrlToOgg } from "./mediaConvert.js";
-import { saveUploadFromData } from "./uploads.js";
+import { rewriteUploadUrlForWpp, saveUploadFromData } from "./uploads.js";
 
 export type ChatKind = "direct" | "group" | "community";
 
@@ -430,9 +430,11 @@ export async function sendChatMessage(
 }
 
 async function resolveMediaPath(url: string): Promise<string> {
-  if (url.startsWith("http://") || url.startsWith("https://")) return url;
+  if (url.startsWith("http://") || url.startsWith("https://")) {
+    return rewriteUploadUrlForWpp(url);
+  }
   const saved = await saveUploadFromData(url);
-  return saved.url;
+  return rewriteUploadUrlForWpp(saved.url);
 }
 
 function base64FromDataUrl(url: string): string {
@@ -489,7 +491,16 @@ export async function sendChatMedia(
     storedMediaUrl = path;
 
     if (type === "image") {
-      await sendWppApi("/send-image", { ...payload, path, caption });
+      try {
+        await sendWppApi("/send-file", {
+          ...payload,
+          path,
+          caption,
+          filename: options?.filename ?? "image.jpg"
+        });
+      } catch {
+        await sendWppApi("/send-image", { ...payload, path, caption });
+      }
       return;
     }
     if (type === "video") {

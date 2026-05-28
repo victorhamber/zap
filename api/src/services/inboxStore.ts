@@ -159,6 +159,18 @@ export async function saveInboxMessage(params: {
   });
 }
 
+export async function updateInboxMessageMedia(
+  waMessageId: string,
+  mediaUrl: string
+): Promise<void> {
+  if (!prisma || !waMessageId) return;
+  const session = await getSessionName();
+  await prisma.inboxMessage.updateMany({
+    where: { session, waMessageId: waMessageId.slice(0, 240) },
+    data: { mediaUrl }
+  });
+}
+
 export async function listStoredMessages(
   chatId: string,
   limit = 200
@@ -217,8 +229,10 @@ export function parseWppWebhookMessage(body: Record<string, unknown>): {
   waMessageId: string | null;
   timestamp: Date;
 } | null {
-  const event = String(body.event ?? body.type ?? "").toLowerCase();
-  if (event && !/message|onmessage|self/.test(event)) return null;
+  const ev = String(body.event ?? "").toLowerCase();
+  if (ev && /^(on)?ack$|presence|statechange|revoked|reaction|poll|status/.test(ev)) {
+    return null;
+  }
 
   const fromMe = body.fromMe === true || body.fromMe === "true";
   const type = String(body.type ?? "chat");

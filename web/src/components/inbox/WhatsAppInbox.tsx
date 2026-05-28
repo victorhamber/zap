@@ -358,7 +358,7 @@ export function WhatsAppInbox() {
   const activeTags = selected?.contact?.tags ?? [];
 
   return (
-    <div className="flex flex-1 min-h-0 w-full bg-[#0b141a] text-[#e9edef] overflow-hidden">
+    <div className="wa-inbox flex flex-1 min-h-0 w-full bg-[var(--wa-bg-app)] text-[var(--wa-text-primary)] overflow-hidden">
       <aside className="flex w-[393px] max-w-[38vw] min-w-[260px] shrink-0 flex-col border-r border-[#2a3942] bg-[#111b21] min-h-0">
         <header className="h-[59px] px-4 flex items-center gap-3 bg-[#202c33] shrink-0">
           <div className="h-10 w-10 rounded-full bg-[#6b7c85] flex items-center justify-center text-sm font-medium">
@@ -487,11 +487,22 @@ export function WhatsAppInbox() {
 
       <section className="flex flex-1 flex-col min-w-0 min-h-0 bg-[#0b141a]">
         {!selected ? (
-          <div className="flex flex-1 min-h-0 flex-col items-center justify-center text-center px-8 bg-[#222e35] border-b-[6px] border-[#00a884]">
+          <div className="flex flex-1 min-h-0 flex-col items-center justify-center text-center px-8 bg-[#222e35] border-b-[6px] border-[var(--wa-accent)]">
             <div className="max-w-md">
-              <h2 className="text-2xl font-light text-[#e9edef] mb-3">Zap Web</h2>
-              <p className="text-sm text-[#8696a0] leading-relaxed">
-                Abas: conversas 1:1, grupos e comunidades. Etiquetas, fluxos e mensagens rápidas.
+              <div
+                className="mx-auto mb-6 h-24 w-24 rounded-full border-2 border-[var(--wa-border)] flex items-center justify-center text-[var(--wa-text-secondary)]"
+                aria-hidden
+              >
+                <svg viewBox="0 0 24 24" className="w-12 h-12" fill="currentColor">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15v-4H8v-2h3V9h2v4h3v2h-3v4h-2z" />
+                </svg>
+              </div>
+              <h2 className="text-[32px] font-light text-[var(--wa-text-primary)] mb-3 leading-tight">
+                Zap Web
+              </h2>
+              <p className="text-sm text-[var(--wa-text-secondary)] leading-relaxed">
+                Envie e receba mensagens, mídia e áudio. Selecione uma conversa à esquerda — layout
+                inspirado no WhatsApp Web.
               </p>
             </div>
           </div>
@@ -586,12 +597,7 @@ export function WhatsAppInbox() {
               </div>
             )}
 
-            <div
-              className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-8 md:px-12 lg:px-20 py-4 space-y-1 border-l border-[#2a3942]/50"
-              style={{
-                backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.02'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`
-              }}
-            >
+            <div className="wa-chat-bg flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-8 md:px-12 lg:px-20 py-4 space-y-1 border-l border-[var(--wa-border)]/50">
               {loadingMsgs && (
                 <p className="text-center text-sm text-[#8696a0]">Carregando mensagens…</p>
               )}
@@ -607,10 +613,10 @@ export function WhatsAppInbox() {
                   className={`flex ${m.fromMe ? "justify-end" : "justify-start"}`}
                 >
                   <div
-                    className={`max-w-[min(65%,520px)] rounded-lg px-3 py-1.5 shadow-sm break-words ${
+                    className={`wa-bubble max-w-[min(65%,520px)] rounded-lg px-3 py-1.5 break-words ${
                       m.fromMe
-                        ? "bg-[#005c4b] text-[#e9edef] rounded-tr-none"
-                        : "bg-[#202c33] text-[#e9edef] rounded-tl-none"
+                        ? "wa-bubble-out bg-[var(--wa-bg-bubble-out)] text-[var(--wa-text-primary)] rounded-tr-none"
+                        : "wa-bubble-in bg-[var(--wa-bg-bubble-in)] text-[var(--wa-text-primary)] rounded-tl-none"
                     }`}
                   >
                     <InboxMessageContent message={m} />

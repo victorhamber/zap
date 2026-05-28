@@ -226,6 +226,33 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
     }
   }
 
+  async function syncWebhook() {
+    setLoading(true);
+    setNoticeKind("checking");
+    setNoticeText("Re-registrando webhook de mensagens…");
+    try {
+      const r = await api<{ ok: boolean; url?: string; detail?: string; error?: string }>(
+        "/api/wpp/sync-webhook",
+        { method: "POST", body: JSON.stringify({}) }
+      );
+      if (r.ok) {
+        setNoticeKind("connected");
+        setNoticeText(
+          `Webhook atualizado: ${r.url ?? ""}. Envie uma mensagem de teste do celular.`
+        );
+        await verifyConnection(false);
+      } else {
+        setNoticeKind("warn");
+        setNoticeText(r.detail ?? r.error ?? "Falha ao atualizar webhook.");
+      }
+    } catch (e: any) {
+      setNoticeKind("warn");
+      setNoticeText(e?.message ?? "Erro ao atualizar webhook.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function logoutSession() {
     if (
       !confirm(
@@ -365,6 +392,17 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
         >
           {loading && noticeKind === "checking" ? "Verificando…" : "Verificar status"}
         </button>
+        {isConnected && (
+          <button
+            type="button"
+            disabled={loading}
+            onClick={syncWebhook}
+            className="rounded-xl border border-sky-800/50 bg-sky-950/30 px-4 py-2 text-sm text-sky-200 hover:bg-sky-950/50 disabled:opacity-50"
+            title="Use após deploy ou se mensagens recebidas não aparecem no inbox"
+          >
+            Atualizar webhook
+          </button>
+        )}
         <button
           type="button"
           disabled={loading}
@@ -384,13 +422,14 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
       </div>
 
       {!compact && (
-        <p className="mt-4 text-xs text-zinc-500">
-          Webhook:{" "}
-          <code className="text-zinc-400 break-all">
-            {typeof window !== "undefined"
-              ? `${window.location.origin}/api/webhooks/wppconnect`
-              : "/api/webhooks/wppconnect"}
-          </code>
+        <p className="mt-4 text-xs text-zinc-500 leading-relaxed">
+          Mensagens recebidas dependem do webhook no WPP. No EasyPanel, defina{" "}
+          <code className="text-zinc-400">ZAP_INTERNAL_URL=http://zap:3000</code> no serviço{" "}
+          <strong className="text-zinc-400">zap</strong> e clique em{" "}
+          <strong className="text-zinc-400">Atualizar webhook</strong> após o deploy.
+          Teste:{" "}
+          <code className="text-zinc-400 break-all">/api/webhooks/wppconnect</code> deve retornar{" "}
+          <code className="text-zinc-400">{`{ "ok": true }`}</code>.
         </p>
       )}
     </div>

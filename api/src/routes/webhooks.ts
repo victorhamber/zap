@@ -12,7 +12,17 @@ import { asString } from "../utils/jsonPathLite.js";
 import { normalizePhone } from "../utils/phone.js";
 import { getContactTagNames } from "../services/contacts.js";
 import { downloadInboundMedia, isInboundMediaType } from "../services/wppMedia.js";
-import { parseWppWebhookMessage, saveInboxMessage } from "../services/inboxStore.js";
+import {
+  parseWppWebhookMessage,
+  saveInboxMessage,
+  updateInboxMessageMedia
+} from "../services/inboxStore.js";
+import {
+  getWppWebhookEvent,
+  isWppMessageWebhook,
+  normalizeWppWebhookBody,
+  touchWppWebhookReceived
+} from "../services/wppWebhook.js";
 
 export async function webhookRoutes(app: FastifyInstance) {
   app.post("/api/webhooks/hotmart/:flowId", async (req, reply) => {
@@ -43,43 +53,57 @@ export async function webhookRoutes(app: FastifyInstance) {
     return result;
   });
 
+  app.get("/api/webhooks/wppconnect", async () => {
+    const { getLastWppWebhookAt, getLastWppWebhookEvent } = await import(
+      "../services/wppWebhook.js"
+    );
+    return {
+      ok: true,
+      lastWebhookAt: getLastWppWebhookAt(),
+      lastWebhookEvent: getLastWppWebhookEvent()
+    };
+  });
+
   app.post("/api/webhooks/wppconnect", async (req) => {
     if (!prisma) return { ok: false };
 
-    const body = (req.body ?? {}) as Record<string, unknown>;
-    const event = String(body.event ?? body.type ?? "").toLowerCase();
-    const isMessage =
-      event === "onmessage" ||
-      event === "message" ||
-      event === "onselfmessage" ||
-      Boolean(body.message) ||
-      Boolean((body.data as Record<string, unknown> | undefined)?.message);
+    const raw = (req.body ?? {}) as Record<string, unknown>;
+    const body = normalizeWppWebhookBody(raw);
+    touchWppWebhookReceived(getWppWebhookEvent(body));
 
-    if (!isMessage) return { ok: true, skipped: "not_message" };
+    if (!isWppMessageWebhook(raw)) {
+      return { ok: true, skipped: "not_message" };
+    }
 
     const parsed = parseWppWebhookMessage(body);
     if (parsed) {
-      let mediaUrl = parsed.mediaUrl;
-      if (
-        !parsed.fromMe &&
-        !mediaUrl &&
-        isInboundMediaType(parsed.type)
-      ) {
-        mediaUrl = await downloadInboundMedia(body, parsed.waMessageId);
-      }
-
-      const msgType =
-        parsed.type === "ptt" ? "audio" : parsed.type;
+      const msgType = parsed.type === "ptt" ? "audio" : parsed.type;
 
       await saveInboxMessage({
         chatId: parsed.chatId,
         body: parsed.text,
         fromMe: parsed.fromMe,
         type: msgType,
-        mediaUrl,
+        mediaUrl: parsed.mediaUrl,
         waMessageId: parsed.waMessageId,
         timestamp: parsed.timestamp
       });
+
+      if (
+        !parsed.fromMe &&
+        !parsed.mediaUrl &&
+        parsed.waMessageId &&
+        isInboundMediaType(parsed.type)
+      ) {
+        const waId = parsed.waMessageId;
+        void downloadInboundMedia(body, waId)
+          .then((url) => {
+            if (url) return updateInboxMessageMedia(waId, url);
+          })
+          .catch((e) => {
+            req.log.warn({ err: e, waId }, "download inbound media async");
+          });
+      }
     }
 
     const from =

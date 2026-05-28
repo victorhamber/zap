@@ -317,7 +317,7 @@ export function InboxComposer({
         }}
       />
 
-      <footer className="flex items-end gap-2 px-3 py-3">
+      <footer className="flex items-end gap-1 px-2 py-2 pb-3">
         <button
           type="button"
           disabled={disabled}
@@ -331,7 +331,7 @@ export function InboxComposer({
           <IconPlus />
         </button>
 
-        <div className="flex-1 flex items-center gap-2 rounded-lg bg-[#2a3942] px-3 py-1.5 min-h-[42px]">
+        <div className="flex-1 flex items-center gap-2 rounded-lg bg-[#2a3942] px-4 py-2 min-h-[42px] max-h-32">
           <button
             type="button"
             disabled={disabled}

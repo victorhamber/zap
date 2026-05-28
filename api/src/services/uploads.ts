@@ -30,6 +30,28 @@ export function publicUploadUrl(filename: string): string {
   return `${base}/uploads/${filename}`;
 }
 
+/** URL que o container WPPConnect usa para buscar arquivos (rede interna). */
+export function uploadUrlForWpp(filename: string): string {
+  const internal = env.ZAP_INTERNAL_URL?.replace(/\/$/, "");
+  if (internal) return `${internal}/uploads/${filename}`;
+  return publicUploadUrl(filename);
+}
+
+/** Reescreve link público de upload para URL acessível pelo WPP na rede interna. */
+export function rewriteUploadUrlForWpp(url: string): string {
+  const internal = env.ZAP_INTERNAL_URL?.replace(/\/$/, "");
+  if (!internal) return url;
+  try {
+    const u = new URL(url);
+    if (u.pathname.startsWith("/uploads/")) {
+      return `${internal}${u.pathname}`;
+    }
+  } catch {
+    /* mantém */
+  }
+  return url;
+}
+
 /** Salva data URL ou base64 e retorna URL pública para o WPP baixar o arquivo. */
 export async function saveUploadFromData(
   data: string,

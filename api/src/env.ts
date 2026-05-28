@@ -7,6 +7,8 @@ const isProd = process.env.NODE_ENV === "production";
 
 const EnvSchema = z.object({
   APP_PUBLIC_URL: isProd ? z.string().url() : z.string().default("http://localhost:5173"),
+  /** URL interna do app Zap na rede Docker (WPP baixa mídia e chama webhook). Ex: http://zap:3000 */
+  ZAP_INTERNAL_URL: z.string().url().optional(),
   DATABASE_URL: isProd ? z.string().min(1) : z.string().optional(),
   REDIS_URL: isProd ? z.string().min(1) : z.string().default("redis://127.0.0.1:6379"),
 

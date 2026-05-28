@@ -1,5 +1,6 @@
 import * as wpp from "./wppconnect.js";
 import { persistInboundMedia } from "./mediaConvert.js";
+import { normalizeWppWebhookBody } from "./wppWebhook.js";
 
 const MEDIA_TYPES = new Set([
   "image",
@@ -33,19 +34,20 @@ export async function downloadInboundMedia(
   webhookBody: Record<string, unknown>,
   waMessageId: string | null
 ): Promise<string | null> {
-  const type = String(webhookBody.type ?? "").toLowerCase();
+  const normalized = normalizeWppWebhookBody(webhookBody);
+  const type = String(normalized.type ?? "").toLowerCase();
   if (!isInboundMediaType(type)) return null;
 
   const hasMediaFlag =
-    webhookBody.isMedia === true ||
-    webhookBody.isMMS === true ||
-    Boolean(webhookBody.mimetype ?? webhookBody.mimeType);
+    normalized.isMedia === true ||
+    normalized.isMMS === true ||
+    Boolean(normalized.mimetype ?? normalized.mimeType);
 
   if (!hasMediaFlag && !waMessageId) return null;
 
   try {
     const messageId =
-      hasMediaFlag && typeof webhookBody.type === "string" ? webhookBody : waMessageId;
+      hasMediaFlag && (normalized.from || normalized.chatId) ? normalized : waMessageId;
 
     if (!messageId) return null;
 

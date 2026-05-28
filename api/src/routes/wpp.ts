@@ -134,6 +134,18 @@ export async function wppRoutes(app: FastifyInstance) {
     return { ok: true, message: `Instância "${name}" removida do painel. A sessão pode continuar no servidor WPP.` };
   });
 
+  app.post("/api/wpp/sync-webhook", async (_req, reply) => {
+    try {
+      const result = await wpp.registerInboundWebhook();
+      if (!result.ok) {
+        return reply.status(502).send(result);
+      }
+      return result;
+    } catch (e: any) {
+      return reply.status(502).send({ ok: false, error: e?.message ?? String(e) });
+    }
+  });
+
   app.post("/api/wpp/call", async (req, reply) => {
     const body = req.body as { path?: string; method?: string; payload?: unknown };
     const path = body.path ?? "";
