@@ -4,6 +4,7 @@ import { clearToken } from "../api/client";
 const links = [
   { to: "/", label: "Dashboard", icon: "◉" },
   { to: "/flows", label: "Fluxos", icon: "⎇" },
+  { to: "/whatsapp", label: "WhatsApp", icon: "◎" },
   { to: "/settings", label: "Configurações", icon: "⚙" }
 ];
 
@@ -27,7 +28,9 @@ export function Layout() {
         <nav className="flex-1 p-3 space-y-0.5">
           {links.map((l) => {
             const active =
-              loc.pathname === l.to || (l.to !== "/" && loc.pathname.startsWith(l.to));
+              loc.pathname === l.to ||
+              (l.to !== "/" && l.to !== "/whatsapp" && loc.pathname.startsWith(l.to)) ||
+              (l.to === "/whatsapp" && loc.pathname.startsWith("/whatsapp"));
             return (
               <Link
                 key={l.to}

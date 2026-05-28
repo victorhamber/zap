@@ -153,3 +153,99 @@ export async function checkConnection(): Promise<unknown> {
   }
   return res.json().catch(() => ({}));
 }
+
+function inboundWebhookUrl(): string {
+  const base = env.APP_PUBLIC_URL.replace(/\/$/, "");
+  return `${base}/api/webhooks/wppconnect`;
+}
+
+export function extractQrImage(data: unknown): string | null {
+  if (!data || typeof data !== "object") return null;
+  const o = data as Record<string, unknown>;
+  const candidates = [o.qrcode, o.qrCode, o.base64, o.QRCode];
+  for (const c of candidates) {
+    if (typeof c !== "string" || !c.trim()) continue;
+    if (c.startsWith("data:image")) return c;
+    return `data:image/png;base64,${c.replace(/^data:image\/[a-z]+;base64,/, "")}`;
+  }
+  return null;
+}
+
+export function extractSessionState(data: unknown): string {
+  if (!data || typeof data !== "object") return "unknown";
+  const o = data as Record<string, unknown>;
+  const raw =
+    o.status ??
+    o.state ??
+    (typeof o.message === "string" ? o.message : null) ??
+    (o.response && typeof o.response === "object"
+      ? (o.response as Record<string, unknown>).status
+      : null);
+  return String(raw ?? "unknown").toUpperCase();
+}
+
+async function persistConnectionStatus(label: string, payload?: unknown) {
+  if (!prisma) return;
+  const extra = payload ? ` | ${JSON.stringify(payload).slice(0, 500)}` : "";
+  await prisma.appSettings.update({
+    where: { id: "default" },
+    data: { connectionStatus: `${label}${extra}` }
+  });
+}
+
+export async function startSession(): Promise<unknown> {
+  const webhook = inboundWebhookUrl();
+  const res = await wppFetch("/start-session", {
+    method: "POST",
+    body: JSON.stringify({
+      webhook,
+      waitQrCode: false
+    })
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(`start-session falhou: ${res.status} ${JSON.stringify(body)}`);
+  }
+  await persistConnectionStatus("start_session", body);
+  return body;
+}
+
+export async function getQrCode(): Promise<{ qrImage: string | null; raw: unknown }> {
+  const res = await wppFetch("/qrcode-session", { method: "GET" });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(`qrcode-session falhou: ${res.status} ${JSON.stringify(body)}`);
+  }
+  return { qrImage: extractQrImage(body), raw: body };
+}
+
+export async function getSessionStatus(): Promise<unknown> {
+  const res = await wppFetch("/status-session", { method: "GET" });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(`status-session falhou: ${res.status} ${JSON.stringify(body)}`);
+  }
+  const state = extractSessionState(body);
+  await persistConnectionStatus(state, body);
+  return body;
+}
+
+export async function closeSession(): Promise<unknown> {
+  const res = await wppFetch("/close-session", { method: "POST", body: JSON.stringify({}) });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(`close-session falhou: ${res.status} ${JSON.stringify(body)}`);
+  }
+  await persistConnectionStatus("CLOSED", body);
+  return body;
+}
+
+export async function logoutSession(): Promise<unknown> {
+  const res = await wppFetch("/logout-session", { method: "POST", body: JSON.stringify({}) });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(`logout-session falhou: ${res.status} ${JSON.stringify(body)}`);
+  }
+  await persistConnectionStatus("LOGOUT", body);
+  return body;
+}

@@ -37,10 +37,14 @@ export function Dashboard() {
             {flows.filter((f) => f.enabled).length} ativos
           </div>
         </div>
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">
-          <div className="text-xs text-zinc-500">WhatsApp (WPPConnect)</div>
+        <Link
+          to="/whatsapp"
+          className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4 block hover:border-emerald-500/30 transition"
+        >
+          <div className="text-xs text-zinc-500">WhatsApp</div>
           <div className="text-lg font-medium mt-1 text-emerald-300">{wppStatus}</div>
-        </div>
+          <div className="text-xs text-emerald-500/80 mt-1">Gerenciar conexão →</div>
+        </Link>
         <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">
           <div className="text-xs text-zinc-500">Execuções recentes</div>
           <div className="text-2xl font-semibold mt-1">{runs.length}</div>
