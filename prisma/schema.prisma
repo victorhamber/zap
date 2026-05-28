@@ -1,0 +1,86 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model AppSettings {
+  id              String   @id @default("default")
+  wppBaseUrl      String   @default("https://wpp.trajettu.com")
+  wppSession      String   @default("autofintech")
+  wppToken        String?
+  wppTokenFull    String?
+  connectionStatus String?
+  updatedAt       DateTime @updatedAt
+}
+
+model Flow {
+  id          String   @id @default(cuid())
+  name        String
+  enabled     Boolean  @default(false)
+  graphJson   Json
+  schemaVersion Int    @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  runs        FlowRun[]
+}
+
+model FlowRun {
+  id            String   @id @default(cuid())
+  flowId        String
+  flow          Flow     @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  triggerType   String
+  contactPhone  String
+  variables     Json     @default("{}")
+  status        String   @default("running")
+  currentNodeId String?
+  externalId    String?
+  errorMessage  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  steps         FlowRunStep[]
+  scheduledJobs ScheduledJob[]
+
+  @@unique([flowId, externalId])
+  @@index([flowId])
+  @@index([status])
+}
+
+model FlowRunStep {
+  id        String   @id @default(cuid())
+  flowRunId String
+  flowRun   FlowRun  @relation(fields: [flowRunId], references: [id], onDelete: Cascade)
+  nodeId    String
+  nodeType  String
+  status    String
+  message   String?
+  payload   Json?
+  createdAt DateTime @default(now())
+
+  @@index([flowRunId])
+}
+
+model ScheduledJob {
+  id         String   @id @default(cuid())
+  flowRunId  String
+  flowRun    FlowRun  @relation(fields: [flowRunId], references: [id], onDelete: Cascade)
+  nodeId     String
+  bullJobId  String?
+  runAt      DateTime
+  status     String   @default("pending")
+  createdAt  DateTime @default(now())
+
+  @@index([flowRunId])
+  @@index([runAt, status])
+}

@@ -1,0 +1,11 @@
+node_modules
+.env
+.env.*
+!.env.example
+
+api/dist
+web/dist
+.vite
+
+prisma/dev.db
+

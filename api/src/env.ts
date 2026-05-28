@@ -1,0 +1,32 @@
+import { z } from "zod";
+import dotenv from "dotenv";
+
+dotenv.config();
+
+const isProd = process.env.NODE_ENV === "production";
+
+const EnvSchema = z.object({
+  APP_PUBLIC_URL: isProd ? z.string().url() : z.string().default("http://localhost:5173"),
+  DATABASE_URL: isProd ? z.string().min(1) : z.string().optional(),
+  REDIS_URL: isProd ? z.string().min(1) : z.string().default("redis://127.0.0.1:6379"),
+
+  JWT_SECRET: isProd ? z.string().min(32) : z.string().default("dev-jwt-secret-change-in-production-32chars"),
+  JWT_EXPIRES_IN: z.string().default("7d"),
+
+  WPP_BASE_URL: z.string().default("https://wpp.trajettu.com"),
+  WPP_SESSION: z.string().default("autofintech"),
+  WPP_SECRET_KEY: isProd ? z.string().min(8) : z.string().default("dev-secret-key"),
+
+  HOTMART_WEBHOOK_SECRET: z.string().optional(),
+  ADMIN_EMAIL: z.string().email().default("admin@trajettu.com"),
+  ADMIN_PASSWORD: z.string().min(6).default("admin123"),
+
+  CORS_ORIGIN: z.string().default("*")
+});
+
+export const env = EnvSchema.parse(process.env);
+export const flags = {
+  isProd,
+  hasDatabase: Boolean(env.DATABASE_URL),
+  hasRedis: Boolean(env.REDIS_URL)
+};
