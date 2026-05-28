@@ -45,8 +45,12 @@ export async function settingsRoutes(app: FastifyInstance) {
   });
 
   app.post("/api/settings/wpp/refresh-token", async () => {
-    const token = await wpp.refreshWppToken();
-    return { ok: true, hasToken: Boolean(token) };
+    try {
+      const token = await wpp.refreshWppToken();
+      return { ok: true, hasToken: Boolean(token) };
+    } catch (e: any) {
+      return { ok: false, message: e?.message ?? String(e) };
+    }
   });
 
   app.get("/api/settings/wpp/status", async () => {
@@ -60,7 +64,7 @@ export async function settingsRoutes(app: FastifyInstance) {
       }
       return { ok: true, status };
     } catch (e: any) {
-      return { ok: false, error: e?.message ?? String(e) };
+      return { ok: false, message: e?.message ?? String(e) };
     }
   });
 
@@ -84,11 +88,12 @@ export async function settingsRoutes(app: FastifyInstance) {
         raw: { start: raw, qrcode: qrRaw }
       };
     } catch (e: any) {
-      return reply.status(502).send({ ok: false, error: e?.message ?? String(e) });
+      const msg = e?.message ?? String(e);
+      return reply.status(200).send({ ok: false, message: msg });
     }
   });
 
-  app.get("/api/settings/wpp/qrcode", async (_req, reply) => {
+  app.get("/api/settings/wpp/qrcode", async () => {
     try {
       const { qrImage, raw } = await wpp.getQrCode();
       const session = await wpp.getSessionStatus().catch(() => null);
@@ -99,11 +104,11 @@ export async function settingsRoutes(app: FastifyInstance) {
         raw: { qrcode: raw, status: session }
       };
     } catch (e: any) {
-      return reply.status(502).send({ ok: false, error: e?.message ?? String(e) });
+      return { ok: false, message: e?.message ?? String(e) };
     }
   });
 
-  app.get("/api/settings/wpp/session", async (_req, reply) => {
+  app.get("/api/settings/wpp/session", async () => {
     try {
       const status = await wpp.getSessionStatus();
       const connection = await wpp.checkConnection().catch(() => null);
@@ -114,64 +119,73 @@ export async function settingsRoutes(app: FastifyInstance) {
         connection
       };
     } catch (e: any) {
-      return reply.status(502).send({ ok: false, error: e?.message ?? String(e) });
+      return { ok: false, message: e?.message ?? String(e) };
     }
   });
 
-  app.post("/api/settings/wpp/close-session", async (_req, reply) => {
+  app.post("/api/settings/wpp/close-session", async () => {
     try {
-      const raw = await wpp.closeSession();
+      const result = await wpp.closeSession();
+      if (result.noSession) {
+        return {
+          ok: true,
+          noSession: true,
+          state: "CLOSED",
+          message: wpp.MSG_NO_SESSION_CLOSE
+        };
+      }
       return {
         ok: true,
-        state: wpp.extractSessionState(raw),
-        message: "Sessão fechada no WPP. O WhatsApp foi pausado; para usar de novo, clique em Conectar."
+        state: wpp.extractSessionState(result.raw),
+        message:
+          "Sessão fechada no WPP. O WhatsApp foi pausado; para usar de novo, clique em Conectar."
       };
     } catch (e: any) {
       const msg = e?.message ?? String(e);
-      if (/502|bad gateway|ECONNREFUSED|fetch failed/i.test(msg)) {
-        return reply.status(502).send({
-          ok: false,
-          error:
-            "Não foi possível falar com o servidor WPP. Confira WPP_INTERNAL_URL no EasyPanel ou se o WPP está online."
-        });
+      if (wpp.isWppNetworkError(msg)) {
+        return { ok: false, wppOffline: true, message: msg };
       }
-      return reply.status(502).send({ ok: false, error: msg.slice(0, 300) });
+      return { ok: false, message: msg.slice(0, 400) };
     }
   });
 
-  app.post("/api/settings/wpp/logout-session", async (_req, reply) => {
+  app.post("/api/settings/wpp/logout-session", async () => {
     try {
-      const raw = await wpp.logoutSession();
+      const result = await wpp.logoutSession();
+      if (result.noSession) {
+        return {
+          ok: true,
+          noSession: true,
+          state: "LOGOUT",
+          message: wpp.MSG_NO_SESSION_LOGOUT
+        };
+      }
       return {
         ok: true,
-        state: wpp.extractSessionState(raw),
+        state: wpp.extractSessionState(result.raw),
         message:
           "WhatsApp desconectado. Será necessário escanear o QR Code novamente para reconectar."
       };
     } catch (e: any) {
       const msg = e?.message ?? String(e);
-      if (/502|bad gateway|ECONNREFUSED|fetch failed/i.test(msg)) {
-        return reply.status(502).send({
-          ok: false,
-          error:
-            "Não foi possível falar com o servidor WPP. Confira WPP_INTERNAL_URL no EasyPanel ou se o WPP está online."
-        });
+      if (wpp.isWppNetworkError(msg)) {
+        return { ok: false, wppOffline: true, message: msg };
       }
-      return reply.status(502).send({ ok: false, error: msg.slice(0, 300) });
+      return { ok: false, message: msg.slice(0, 400) };
     }
   });
 
-  app.get("/api/settings/wpp/diagnostics", async (_req, reply) => {
+  app.get("/api/settings/wpp/diagnostics", async () => {
     try {
       const report = await wpp.runWppDiagnostics();
       const allOk = report.steps.every((s) => s.ok);
       return { ok: allOk, ...report };
     } catch (e: any) {
-      return reply.status(502).send({ ok: false, error: e?.message ?? String(e) });
+      return { ok: false, message: e?.message ?? String(e) };
     }
   });
 
-  app.get("/api/settings/wpp/verify", async (_req, reply) => {
+  app.get("/api/settings/wpp/verify", async () => {
     try {
       const result = await wpp.verifyActiveSession();
       if (prisma) {
@@ -186,7 +200,13 @@ export async function settingsRoutes(app: FastifyInstance) {
       }
       return { ok: true, ...result };
     } catch (e: any) {
-      return reply.status(502).send({ ok: false, error: e?.message ?? String(e) });
+      return {
+        ok: true,
+        connected: false,
+        noSession: true,
+        state: "ERRO",
+        message: e?.message ?? String(e)
+      };
     }
   });
 }

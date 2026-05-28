@@ -54,6 +54,23 @@ CORS_ORIGIN=https://zap.trajettu.com
 
 Substitua `NOME_DO_SERVICO_WPP` pelo hostname interno que o EasyPanel mostra (ex: `zap_wppconnect` ou `wpp`).
 
+## Persistir sessão WhatsApp no deploy (volume no WPP)
+
+O **token da API** fica no Postgres do Zap (`wppToken`) e **não some** quando você faz deploy só do app `zap`.
+
+O **login do WhatsApp** (arquivos do navegador/Puppeteer) ficam **no container do WPPConnect**. Se esse serviço reiniciar sem volume, o aparelho desconecta.
+
+No serviço **wppconnect** no EasyPanel, monte um volume persistente, por exemplo:
+
+| Caminho no container | Descrição |
+|---------------------|-----------|
+| `/usr/src/wpp-server/tokens` | Pasta de sessões (nome pode variar conforme a imagem) |
+| `/usr/src/wpp-server/userDataDir` | Perfil do Chrome, se existir na sua imagem |
+
+Confira no log ou na documentação da sua imagem WPP qual pasta usar. Depois do volume, **redeploy só do `zap`** não deve mais derrubar o WhatsApp — desde que o container **wppconnect** não seja recriado.
+
+O Zap tenta **reabrir a sessão automaticamente** após cada deploy se ela estava conectada antes (`tryRestoreSessionAfterDeploy`).
+
 ## WPPConnect — erros no log (AggregateError / startAllSessions)
 
 Se o log do WPP mostra `AggregateError` ao subir, é falha ao chamar **webhook** ou ao auto-iniciar sessões antigas.

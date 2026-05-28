@@ -2,6 +2,7 @@ import bcrypt from "bcrypt";
 import { prisma } from "./prisma.js";
 import { env } from "./env.js";
 import { defaultHotmartGraph } from "./engine/graph.js";
+import { tryRestoreSessionAfterDeploy } from "./services/wppconnect.js";
 
 export async function bootstrapDatabase() {
   if (!prisma) return;
@@ -44,4 +45,6 @@ export async function bootstrapDatabase() {
     });
     console.log("[bootstrap] Fluxo exemplo criado");
   }
+
+  void tryRestoreSessionAfterDeploy();
 }

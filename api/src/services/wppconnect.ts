@@ -7,6 +7,46 @@ function wppBaseUrl(settings: { wppBaseUrl: string }): string {
   return settings.wppBaseUrl.replace(/\/$/, "");
 }
 
+export const MSG_NO_DEVICE =
+  'Nenhum aparelho WhatsApp conectado. Clique em "Conectar / Mostrar QR" para vincular um novo dispositivo.';
+
+export const MSG_NO_SESSION_CLOSE =
+  "Não há sessão ativa para fechar. O WhatsApp já está desconectado — use \"Conectar / Mostrar QR\" para vincular de novo.";
+
+export const MSG_NO_SESSION_LOGOUT =
+  "Não há sessão ativa para desconectar. O aparelho já não está vinculado — use \"Conectar / Mostrar QR\" se quiser conectar de novo.";
+
+export function isWppNetworkError(message: string): boolean {
+  return /502|bad gateway|econnrefused|fetch failed|falha de rede|não alcançou o wppconnect/i.test(
+    message
+  );
+}
+
+export function isDisconnectedState(state: string): boolean {
+  const s = state.toUpperCase();
+  return (
+    s === "CLOSED" ||
+    s === "LOGOUT" ||
+    s === "NOTLOGGED" ||
+    s === "QRCODE" ||
+    s === "DISCONNECTED" ||
+    s === "NOSESSION" ||
+    s === "UNPAIRED" ||
+    s === "INDISPONÍVEL" ||
+    s.includes("QR") ||
+    (s.includes("NOT") && s.includes("LOG"))
+  );
+}
+
+export function httpErrorMeansNoSession(status: number, body: unknown): boolean {
+  if (status === 404) return true;
+  const text = JSON.stringify(body ?? "").toLowerCase();
+  return (
+    status === 400 &&
+    /session|closed|not found|not started|logout|desconect|no session|sem sessão/i.test(text)
+  );
+}
+
 export function formatWppError(status: number, body: unknown): string {
   if (typeof body === "string" && body.trim()) return body.slice(0, 400);
   if (body && typeof body === "object") {
@@ -256,6 +296,28 @@ function parseConnectionCheck(data: unknown): boolean {
 export async function verifyActiveSession() {
   const settings = await getSettings();
   const sessionName = settings.wppSession;
+  const wppUrlUsed = wppBaseUrl(settings);
+
+  try {
+    await refreshWppToken();
+  } catch (e: any) {
+    const msg = e?.message ?? String(e);
+    return {
+      connected: false,
+      noSession: true,
+      state: "WPP_OFFLINE",
+      session: sessionName,
+      wppUrlUsed,
+      wppReachable: false,
+      message: isWppNetworkError(msg)
+        ? `Não foi possível contactar o WPPConnect (${wppUrlUsed}). Confira se o serviço WPP está online e o WPP_INTERNAL_URL no EasyPanel.`
+        : msg,
+      phoneConnected: false,
+      sessionAlive: false,
+      sessionStatus: null,
+      connection: null
+    };
+  }
 
   let state = "DESCONHECIDO";
   let sessionStatus: unknown = null;
@@ -276,21 +338,26 @@ export async function verifyActiveSession() {
   }
 
   const sessionAlive = isWppConnectedState(state);
-  const connected = phoneConnected || sessionAlive;
+  const disconnected = isDisconnectedState(state);
+  const connected = !disconnected && (phoneConnected || sessionAlive);
+  const noSession = !connected;
 
   let message: string;
   if (connected) {
-    message = `Instância "${sessionName}" conectada. Pronta para enviar mensagens e receber automações.`;
-  } else if (state === "CLOSED" || state.includes("QR") || state === "QRCODE" || state === "NOTLOGGED") {
-    message = `Instância "${sessionName}" desconectada (${state}). Clique em "Conectar / Mostrar QR" e escaneie no celular.`;
+    message = `Aparelho conectado na instância "${sessionName}". Pronto para enviar mensagens e automações.`;
+  } else if (disconnected || state === "INDISPONÍVEL" || state === "DESCONHECIDO") {
+    message = MSG_NO_DEVICE;
   } else {
-    message = `Instância "${sessionName}" não está operacional (status: ${state}). Tente reconectar.`;
+    message = `Instância "${sessionName}" com status "${state}". ${MSG_NO_DEVICE}`;
   }
 
   return {
     connected,
+    noSession,
     state,
     session: sessionName,
+    wppUrlUsed,
+    wppReachable: true,
     message,
     phoneConnected,
     sessionAlive,
@@ -356,8 +423,11 @@ async function persistConnectionStatus(label: string, payload?: unknown) {
   });
 }
 
-async function postStartSession(webhook: string | null): Promise<{ res: Response; body: unknown }> {
-  const payload: Record<string, unknown> = { waitQrCode: true };
+async function postStartSession(
+  webhook: string | null,
+  waitQrCode = true
+): Promise<{ res: Response; body: unknown }> {
+  const payload: Record<string, unknown> = { waitQrCode };
   if (webhook) payload.webhook = webhook;
   const res = await wppFetch("/start-session", {
     method: "POST",
@@ -367,12 +437,13 @@ async function postStartSession(webhook: string | null): Promise<{ res: Response
   return { res, body };
 }
 
-export async function startSession(): Promise<unknown> {
+export async function startSession(options?: { waitQrCode?: boolean }): Promise<unknown> {
   const webhook = inboundWebhookUrl();
-  let { res, body } = await postStartSession(webhook);
+  const waitQr = options?.waitQrCode !== false;
+  let { res, body } = await postStartSession(webhook, waitQr);
 
   if (!res.ok && (res.status === 400 || res.status === 422)) {
-    const second = await postStartSession(null);
+    const second = await postStartSession(null, waitQr);
     res = second.res;
     body = second.body;
   }
@@ -380,8 +451,39 @@ export async function startSession(): Promise<unknown> {
   if (!res.ok) {
     throw new Error(`start-session: ${formatWppError(res.status, body)}`);
   }
-  await persistConnectionStatus("start_session", body);
+  const state = extractSessionState(body);
+  if (isWppConnectedState(state)) {
+    await persistConnectionStatus(`CONNECTED:${state}`, body);
+  } else {
+    await persistConnectionStatus("start_session", body);
+  }
   return body;
+}
+
+/** Reabre a sessão no WPP após deploy do Zap, se estava conectada antes (token fica no Postgres). */
+export async function tryRestoreSessionAfterDeploy(): Promise<void> {
+  if (!prisma) return;
+  const settings = await prisma.appSettings.findUnique({ where: { id: "default" } });
+  if (!settings?.wppToken) return;
+
+  const wasConnected =
+    settings.connectionStatus?.startsWith("CONNECTED:") ||
+    settings.connectionStatus === "token_ok";
+  if (!wasConnected) return;
+
+  try {
+    await refreshWppToken();
+    const status = await getSessionStatus().catch(() => null);
+    const state = status ? extractSessionState(status) : "";
+    if (status && isWppConnectedState(state)) {
+      console.log(`[wpp] Sessão "${settings.wppSession}" já ativa (${state})`);
+      return;
+    }
+    await startSession({ waitQrCode: false });
+    console.log(`[wpp] Tentativa de restaurar sessão "${settings.wppSession}" após deploy`);
+  } catch (e: any) {
+    console.warn(`[wpp] Restauração automática ignorada: ${e?.message ?? e}`);
+  }
 }
 
 export async function getQrCode(): Promise<{ qrImage: string | null; raw: unknown }> {
@@ -404,24 +506,53 @@ export async function getSessionStatus(): Promise<unknown> {
   return body;
 }
 
-export async function closeSession(): Promise<unknown> {
-  const res = await wppFetch("/close-session", { method: "POST", body: JSON.stringify({}) });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(`close-session falhou: ${res.status} ${JSON.stringify(body)}`);
+async function readSessionStateSafe(): Promise<string | null> {
+  try {
+    const status = await getSessionStatus();
+    return extractSessionState(status);
+  } catch {
+    return null;
   }
-  await persistConnectionStatus("CLOSED", body);
-  return body;
 }
 
-export async function logoutSession(): Promise<unknown> {
-  const res = await wppFetch("/logout-session", { method: "POST", body: JSON.stringify({}) });
-  const body = await res.json().catch(() => ({}));
+export async function closeSession(): Promise<{ raw?: unknown; noSession: boolean }> {
+  const state = await readSessionStateSafe();
+  if (state && isDisconnectedState(state)) {
+    await persistConnectionStatus(`DISCONNECTED:${state}`);
+    return { noSession: true };
+  }
+
+  const res = await wppFetch("/close-session", { method: "POST", body: JSON.stringify({}) });
+  const body = await readWppJson(res);
   if (!res.ok) {
-    throw new Error(`logout-session falhou: ${res.status} ${JSON.stringify(body)}`);
+    if (httpErrorMeansNoSession(res.status, body)) {
+      await persistConnectionStatus("CLOSED");
+      return { noSession: true };
+    }
+    throw new Error(`close-session: ${formatWppError(res.status, body)}`);
+  }
+  await persistConnectionStatus("CLOSED", body);
+  return { noSession: false, raw: body };
+}
+
+export async function logoutSession(): Promise<{ raw?: unknown; noSession: boolean }> {
+  const state = await readSessionStateSafe();
+  if (state && isDisconnectedState(state)) {
+    await persistConnectionStatus(`DISCONNECTED:${state}`);
+    return { noSession: true };
+  }
+
+  const res = await wppFetch("/logout-session", { method: "POST", body: JSON.stringify({}) });
+  const body = await readWppJson(res);
+  if (!res.ok) {
+    if (httpErrorMeansNoSession(res.status, body)) {
+      await persistConnectionStatus("LOGOUT");
+      return { noSession: true };
+    }
+    throw new Error(`logout-session: ${formatWppError(res.status, body)}`);
   }
   await persistConnectionStatus("LOGOUT", body);
-  return body;
+  return { noSession: false, raw: body };
 }
 
 export async function listServerSessions(): Promise<unknown> {

@@ -8,31 +8,20 @@ type WppSettings = {
   connectionStatus: string | null;
 };
 
-function isConnectedState(state: string): boolean {
-  const s = state.toUpperCase();
-  const ok = new Set([
-    "CONNECTED",
-    "ISCONNECTED",
-    "SUCCESS",
-    "INCHAT",
-    "MAIN",
-    "NORMAL",
-    "OPENING",
-    "PAIRING",
-    "SYNCING"
-  ]);
-  if (ok.has(s)) return true;
-  return s.includes("CONNECTED") && !s.includes("DIS");
-}
+type NoticeKind = "idle" | "checking" | "connected" | "no_device" | "info" | "warn";
 
 export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
   const [settings, setSettings] = useState<WppSettings | null>(null);
   const [state, setState] = useState("");
   const [qrImage, setQrImage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [msg, setMsg] = useState("");
+  const [noticeKind, setNoticeKind] = useState<NoticeKind>("idle");
+  const [noticeText, setNoticeText] = useState(
+    'Clique em "Verificar status" para ver se há um aparelho conectado.'
+  );
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const isConnected = noticeKind === "connected";
 
   const loadSettings = useCallback(async () => {
     const s = await api<WppSettings>("/api/settings/wpp");
@@ -45,45 +34,81 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
         ok: boolean;
         qrImage?: string | null;
         state?: string;
-        error?: string;
       }>("/api/settings/wpp/qrcode");
       if (!r.ok) return;
       if (r.state) setState(r.state);
       if (r.qrImage) setQrImage(r.qrImage);
-      if (r.state && isConnectedState(r.state)) {
-        setQrImage(null);
-      }
     } catch {
-      /* sessão pode ainda não ter QR */
+      /* ignora */
     }
   }, []);
 
-  const verifyConnection = useCallback(async (showLoading = true) => {
-    if (showLoading) setLoading(true);
-    setError("");
-    try {
-      const r = await api<{
-        ok: boolean;
-        connected?: boolean;
-        state?: string;
-        message?: string;
-        error?: string;
-      }>("/api/settings/wpp/verify");
-      if (!r.ok) throw new Error(r.error ?? "Falha ao verificar");
-
+  const applyVerifyResult = useCallback(
+    (r: {
+      connected?: boolean;
+      noSession?: boolean;
+      state?: string;
+      message?: string;
+      wppReachable?: boolean;
+    }) => {
       if (r.state) setState(r.state);
+      const text = r.message ?? "";
+
       if (r.connected) {
+        setNoticeKind("connected");
+        setNoticeText(
+          text ||
+            `Aparelho conectado na instância "${settings?.wppSession ?? ""}".`
+        );
         setQrImage(null);
-        setMsg(r.message ?? "WhatsApp conectado e operacional.");
-      } else {
-        setMsg(r.message ?? `Status atual: ${r.state ?? "desconhecido"}`);
+        return;
       }
-    } catch (e: any) {
-      setError(e?.message ?? "Não foi possível verificar a conexão");
-    } finally {
-      if (showLoading) setLoading(false);
-    }
-  }, []);
+
+      setNoticeKind(r.wppReachable === false ? "warn" : "no_device");
+      setNoticeText(
+        text ||
+          'Nenhum aparelho WhatsApp conectado. Clique em "Conectar / Mostrar QR" para vincular um novo dispositivo.'
+      );
+    },
+    [settings?.wppSession]
+  );
+
+  const verifyConnection = useCallback(
+    async (showLoading = true) => {
+      if (showLoading) setLoading(true);
+      setNoticeKind("checking");
+      setNoticeText("Verificando se há aparelho conectado…");
+
+      try {
+        const r = await api<{
+          ok: boolean;
+          connected?: boolean;
+          noSession?: boolean;
+          state?: string;
+          message?: string;
+          wppReachable?: boolean;
+          error?: string;
+        }>("/api/settings/wpp/verify");
+
+        if (!r.ok) {
+          setNoticeKind("no_device");
+          setNoticeText(
+            r.error ??
+              'Nenhum aparelho conectado. Use "Conectar / Mostrar QR" para vincular um novo dispositivo.'
+          );
+          return;
+        }
+
+        applyVerifyResult(r);
+      } catch (e: any) {
+        setNoticeKind("warn");
+        setNoticeText(e?.message ?? "Não foi possível verificar o status.");
+      } finally {
+        if (showLoading) setLoading(false);
+      }
+    },
+    [applyVerifyResult]
+  );
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -94,9 +119,7 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
 
   const startPolling = useCallback(() => {
     stopPolling();
-    pollRef.current = setInterval(() => {
-      refreshQr();
-    }, 4000);
+    pollRef.current = setInterval(() => refreshQr(), 4000);
   }, [stopPolling, refreshQr]);
 
   useEffect(() => {
@@ -106,14 +129,14 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
   }, [loadSettings, verifyConnection, stopPolling]);
 
   useEffect(() => {
-    if (qrImage && !isConnectedState(state)) startPolling();
+    if (qrImage && !isConnected) startPolling();
     else stopPolling();
-  }, [qrImage, state, startPolling, stopPolling]);
+  }, [qrImage, isConnected, startPolling, stopPolling]);
 
   async function connect() {
     setLoading(true);
-    setError("");
-    setMsg("Iniciando sessão…");
+    setNoticeKind("checking");
+    setNoticeText("Iniciando sessão…");
     try {
       await api("/api/settings/wpp/refresh-token", {
         method: "POST",
@@ -123,24 +146,29 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
         ok: boolean;
         qrImage?: string | null;
         state?: string;
-        error?: string;
+        message?: string;
       }>("/api/settings/wpp/start-session", {
         method: "POST",
         body: JSON.stringify({})
       });
-      if (!r.ok) throw new Error(r.error ?? "Falha ao iniciar sessão");
+      if (!r.ok) throw new Error(r.message ?? "Falha ao iniciar sessão");
       if (r.state) setState(r.state);
       if (r.qrImage) {
         setQrImage(r.qrImage);
-        setMsg("Escaneie o QR Code no celular (WhatsApp → Aparelhos conectados).");
+        setNoticeKind("info");
+        setNoticeText(
+          "Escaneie o QR no celular (WhatsApp → Aparelhos conectados → Conectar aparelho)."
+        );
         startPolling();
       } else {
         await refreshQr();
-        setMsg("Sessão iniciada. Aguardando QR…");
+        setNoticeKind("info");
+        setNoticeText("Aguardando QR Code…");
         startPolling();
       }
     } catch (e: any) {
-      setError(e?.message ?? "Erro ao conectar");
+      setNoticeKind("warn");
+      setNoticeText(e?.message ?? "Erro ao conectar.");
     } finally {
       setLoading(false);
     }
@@ -148,33 +176,52 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
 
   async function refreshQrNow() {
     setLoading(true);
-    setError("");
     try {
       await refreshQr();
-      setMsg("QR atualizado.");
+      setNoticeKind("info");
+      setNoticeText("QR atualizado — escaneie para vincular o aparelho.");
     } catch (e: any) {
-      setError(e?.message ?? "Erro ao buscar QR");
+      setNoticeKind("warn");
+      setNoticeText(e?.message ?? "Erro ao buscar QR.");
     } finally {
       setLoading(false);
     }
   }
 
   async function closeSession() {
-    if (!confirm("Fechar sessão? Pausa o WhatsApp no servidor (pode reconectar depois sem novo QR, se a sessão ainda existir)."))
+    if (
+      !confirm(
+        "Fechar sessão? Pausa o WhatsApp no servidor (a sessão fica salva no WPP)."
+      )
+    )
       return;
     setLoading(true);
-    setError("");
     try {
-      const r = await api<{ ok: boolean; message?: string }>("/api/settings/wpp/close-session", {
+      const r = await api<{
+        ok: boolean;
+        noSession?: boolean;
+        message?: string;
+      }>("/api/settings/wpp/close-session", {
         method: "POST",
         body: JSON.stringify({})
       });
       setQrImage(null);
       setState("CLOSED");
-      setMsg(r.message ?? "Sessão fechada.");
       stopPolling();
+      if (r.noSession || !r.ok) {
+        setNoticeKind("no_device");
+        setNoticeText(
+          r.message ??
+            'Não há sessão ativa. Use "Conectar / Mostrar QR" para vincular um aparelho.'
+        );
+      } else {
+        setNoticeKind("info");
+        setNoticeText(r.message ?? "Sessão fechada.");
+      }
+      await verifyConnection(false);
     } catch (e: any) {
-      setError(e?.message ?? "Erro ao fechar");
+      setNoticeKind("warn");
+      setNoticeText(e?.message ?? "Erro ao fechar sessão.");
     } finally {
       setLoading(false);
     }
@@ -183,29 +230,56 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
   async function logoutSession() {
     if (
       !confirm(
-        "Desconectar completamente? O WhatsApp será deslogado e você precisará escanear o QR Code de novo."
+        "Desconectar completamente? Será necessário escanear o QR Code novamente."
       )
     )
       return;
     setLoading(true);
-    setError("");
     try {
-      const r = await api<{ ok: boolean; message?: string }>("/api/settings/wpp/logout-session", {
+      const r = await api<{
+        ok: boolean;
+        noSession?: boolean;
+        message?: string;
+      }>("/api/settings/wpp/logout-session", {
         method: "POST",
         body: JSON.stringify({})
       });
       setQrImage(null);
       setState("LOGOUT");
-      setMsg(r.message ?? "Desconectado. Escaneie o QR para conectar de novo.");
       stopPolling();
+      if (r.noSession || !r.ok) {
+        setNoticeKind("no_device");
+        setNoticeText(
+          r.message ??
+            'Nenhum aparelho vinculado. Use "Conectar / Mostrar QR" para conectar de novo.'
+        );
+      } else {
+        setNoticeKind("no_device");
+        setNoticeText(
+          r.message ??
+            "Desconectado. Escaneie o QR em Conectar / Mostrar QR para vincular de novo."
+        );
+      }
     } catch (e: any) {
-      setError(e?.message ?? "Erro ao desconectar");
+      setNoticeKind("warn");
+      setNoticeText(e?.message ?? "Erro ao desconectar.");
     } finally {
       setLoading(false);
     }
   }
 
-  const connected = isConnectedState(state);
+  const noticeClass =
+    noticeKind === "connected"
+      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+      : noticeKind === "no_device"
+        ? "border-amber-500/40 bg-amber-500/10 text-amber-50"
+        : noticeKind === "warn"
+          ? "border-red-500/35 bg-red-500/10 text-red-100"
+          : noticeKind === "checking"
+            ? "border-zinc-600 bg-zinc-900/80 text-zinc-300"
+            : noticeKind === "info"
+              ? "border-sky-500/30 bg-sky-500/10 text-sky-100"
+              : "border-zinc-700 bg-zinc-900/50 text-zinc-400";
 
   return (
     <div className={compact ? "" : "rounded-2xl border border-zinc-800 bg-zinc-950/60 p-5"}>
@@ -223,50 +297,48 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
         <code className="text-zinc-300">{settings?.wppSession ?? "…"}</code>
         <span
           className={`ml-2 rounded-full px-2.5 py-0.5 text-xs font-medium ${
-            connected
+            isConnected
               ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/25"
-              : "bg-zinc-800 text-zinc-400"
+              : noticeKind === "no_device"
+                ? "bg-amber-500/15 text-amber-200 border border-amber-500/30"
+                : "bg-zinc-800 text-zinc-400 border border-zinc-700"
           }`}
         >
-          {connected ? "Conectado" : state || "Desconhecido"}
+          {isConnected
+            ? "Conectado"
+            : noticeKind === "checking"
+              ? "Verificando…"
+              : state || "Sem aparelho"}
         </span>
+        {settings?.hasToken && (
+          <span className="text-xs text-zinc-600" title="Token da API salvo no banco (persiste no deploy do Zap)">
+            token salvo
+          </span>
+        )}
       </div>
 
-      {error && (
-        <div className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200 max-h-32 overflow-auto">
-          {error}
-        </div>
-      )}
+      <div className={`mt-4 rounded-xl border px-4 py-3 text-sm ${noticeClass}`}>
+        <p className="font-medium leading-snug">{noticeText}</p>
+      </div>
 
       <p className="mt-3 text-xs text-zinc-500 leading-relaxed">
-        <strong className="text-zinc-400">Fechar sessão</strong> — pausa o navegador no WPP (sessão
-        fica salva).{" "}
-        <strong className="text-zinc-400">Desconectar</strong> — logout total; exige novo QR para
-        voltar.
+        <strong className="text-zinc-400">Fechar sessão</strong> — pausa no WPP.{" "}
+        <strong className="text-zinc-400">Desconectar</strong> — logout (novo QR depois).
       </p>
-      {msg && (
-        <p
-          className={`mt-3 text-sm ${
-            connected ? "text-emerald-400/90" : "text-zinc-400"
-          }`}
-        >
-          {msg}
-        </p>
-      )}
 
-      {qrImage && !connected && (
+      {qrImage && !isConnected && (
         <div className="mt-5 flex flex-col items-center">
           <div className="rounded-2xl bg-white p-3 shadow-lg">
             <img src={qrImage} alt="QR Code WhatsApp" className="h-56 w-56 object-contain" />
           </div>
           <p className="mt-3 text-xs text-zinc-500 text-center max-w-sm">
-            Escaneie em até ~60s (o WPP fecha sozinho se demorar). Atualizamos o QR automaticamente.
+            Escaneie em até ~60s. O QR atualiza sozinho enquanto esta tela estiver aberta.
           </p>
         </div>
       )}
 
       <div className="mt-5 flex flex-wrap gap-2">
-        {!connected && (
+        {!isConnected && (
           <button
             type="button"
             disabled={loading}
@@ -276,7 +348,7 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
             {loading ? "Aguarde…" : qrImage ? "Gerar novo QR" : "Conectar / Mostrar QR"}
           </button>
         )}
-        {qrImage && !connected && (
+        {qrImage && !isConnected && (
           <button
             type="button"
             disabled={loading}
@@ -290,10 +362,9 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
           type="button"
           disabled={loading}
           onClick={() => verifyConnection(true)}
-          className="rounded-xl border border-zinc-700 px-4 py-2 text-sm hover:bg-zinc-900 disabled:opacity-50"
-          title="Confere se o WhatsApp desta instância ainda está conectado"
+          className="rounded-xl border border-emerald-700/50 bg-emerald-950/30 px-4 py-2 text-sm text-emerald-200 hover:bg-emerald-950/50 disabled:opacity-50"
         >
-          Verificar status
+          {loading && noticeKind === "checking" ? "Verificando…" : "Verificar status"}
         </button>
         <button
           type="button"
@@ -315,14 +386,12 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
 
       {!compact && (
         <p className="mt-4 text-xs text-zinc-500">
-          Webhook de mensagens recebidas:{" "}
+          Webhook:{" "}
           <code className="text-zinc-400 break-all">
             {typeof window !== "undefined"
               ? `${window.location.origin}/api/webhooks/wppconnect`
               : "/api/webhooks/wppconnect"}
           </code>
-          <br />
-          Configurado automaticamente ao iniciar a sessão.
         </p>
       )}
     </div>
