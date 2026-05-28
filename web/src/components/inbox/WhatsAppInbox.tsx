@@ -438,7 +438,8 @@ export function WhatsAppInbox() {
               <div className="flex-1 min-w-0">
                 <div className="font-medium truncate">{selected.name}</div>
                 <div className="text-xs text-[#8696a0] truncate">
-                  {TAB_LABELS[selected.kind]} · {selected.id}
+                  {TAB_LABELS[selected.kind]}
+                  {selected.phone ? ` · ${selected.phone}` : ""}
                 </div>
               </div>
               <button

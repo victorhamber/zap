@@ -31,6 +31,38 @@ function digitsOnly(phone: string): string {
   return phone.replace(/\D/g, "");
 }
 
+/** Extrai ID serializado do WhatsApp (ex.: 120363…@g.us) quando o WPP devolve objeto Wid. */
+export function extractWaId(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "string") {
+    const s = value.trim();
+    if (!s || s === "undefined" || s === "[object Object]") return "";
+    return s;
+  }
+  if (typeof value !== "object") return "";
+
+  const o = value as Record<string, unknown>;
+  if (typeof o._serialized === "string") return extractWaId(o._serialized);
+  if (typeof o.id === "string" || (o.id && typeof o.id === "object")) {
+    const nested = extractWaId(o.id);
+    if (nested) return nested;
+  }
+  const user = o.user ?? o.userid;
+  const server = o.server;
+  if (user != null && server != null) {
+    return `${String(user).replace(/\D/g, "") || String(user)}@${String(server)}`;
+  }
+  return "";
+}
+
+function isValidWaId(id: string): boolean {
+  return (
+    Boolean(id) &&
+    !id.includes("[object Object]") &&
+    /^[a-zA-Z0-9._+-]+@[a-z0-9.]+$/i.test(id)
+  );
+}
+
 function chatIdToPhone(id: string): string {
   const base = id.replace(/@.*/, "");
   return digitsOnly(base) || base;
@@ -63,22 +95,33 @@ function parseChatItem(item: unknown): NormalizedChat | null {
   if (!item || typeof item !== "object") return null;
   const o = item as Record<string, unknown>;
 
-  const id = String(o.id ?? o.chatId ?? o._id ?? o.phone ?? "");
-  if (!id || id === "undefined") return null;
+  const rawId =
+    extractWaId(o.id) ||
+    extractWaId(o.chatId) ||
+    extractWaId(o._id) ||
+    extractWaId(o.phone) ||
+    String(o.phone ?? "").trim();
+  if (!rawId || rawId === "undefined") return null;
 
-  const phone = chatIdToPhone(id);
+  const kindHint = detectKind(rawId.includes("@") ? rawId : `${rawId}@c.us`, o);
+  const resolvedId = rawId.includes("@")
+    ? rawId
+    : resolveChatId(rawId, kindHint === "group" || kindHint === "community" || o.isGroup === true);
+  if (!isValidWaId(resolvedId)) return null;
+
+  const phone = chatIdToPhone(resolvedId);
   const contactObj =
     o.contact && typeof o.contact === "object"
       ? (o.contact as Record<string, unknown>)
       : null;
-  const kind = detectKind(id, o);
+  const kind = detectKind(resolvedId, o);
   const name = String(
     o.name ??
       o.formattedTitle ??
       contactObj?.name ??
       o.pushname ??
       o.shortName ??
-      (kind === "direct" ? phone : id.split("@")[0])
+      (kind === "direct" ? phone : resolvedId.split("@")[0])
   );
   const lastMsg =
     o.lastMessage && typeof o.lastMessage === "object"
@@ -101,7 +144,7 @@ function parseChatItem(item: unknown): NormalizedChat | null {
   const isGroup = kind === "group" || kind === "community";
 
   return {
-    id: id.includes("@") ? id : resolveChatId(id, isGroup),
+    id: resolvedId,
     phone,
     name: name || phone || "Contato",
     lastMessage: lastBody.slice(0, 120),
@@ -218,7 +261,9 @@ export function normalizeGroups(raw: unknown): NormalizedChat[] {
   const out: NormalizedChat[] = [];
   for (const item of list) {
     if (typeof item === "string") {
-      const id = item.includes("@") ? item : `${item.replace(/\D/g, "")}@g.us`;
+      const raw = item.trim();
+      const id = raw.includes("@") ? raw : `${raw.replace(/\D/g, "")}@g.us`;
+      if (!isValidWaId(id)) continue;
       out.push({
         id,
         phone: chatIdToPhone(id),
@@ -307,7 +352,11 @@ export async function fetchChats(): Promise<FetchChatsResult> {
 }
 
 function pathPhone(chatId: string): string {
-  return encodeURIComponent(chatId);
+  const safe = chatId.trim();
+  if (!isValidWaId(safe)) {
+    throw new Error("ID do chat inválido");
+  }
+  return safe;
 }
 
 export async function fetchMessages(
@@ -317,30 +366,33 @@ export async function fetchMessages(
   const count = options.count ?? 30;
   const chatId = resolveChatId(options.chatId, options.isGroup);
   const isGroup = chatId.includes("@g.us") || options.isGroup === true;
-  const pathId = pathPhone(chatId);
-  const digits = digitsOnly(chatId);
+  let pathId: string;
+  try {
+    pathId = pathPhone(chatId);
+  } catch {
+    return {
+      messages: [],
+      hint: "ID do chat inválido. Clique em ↻ na lista de conversas e abra o chat de novo."
+    };
+  }
+
+  const msgQuery = `count=${count}`;
+  const allInChatQuery = `isGroup=${isGroup ? "true" : "false"}&includeMe=true&includeNotifications=true`;
 
   const attempts: Array<{ label: string; run: () => Promise<unknown> }> = [
     {
-      label: "all-messages-in-chat",
-      run: () => wpp.callSessionApi(`/all-messages-in-chat/${pathId}`, "GET")
-    },
-    {
       label: "get-messages",
-      run: () => wpp.callSessionApi(`/get-messages/${pathId}`, "GET")
+      run: () => wpp.callSessionApi(`/get-messages/${pathId}?${msgQuery}`, "GET")
     },
     {
-      label: "get-messages-digits",
-      run: () => wpp.callSessionApi(`/get-messages/${digits}`, "GET")
-    },
-    {
-      label: "get-messages-post",
+      label: "all-messages-in-chat",
       run: () =>
-        wpp.callSessionApi("/get-messages", "POST", {
-          phone: chatId,
-          count,
-          isGroup
-        })
+        wpp.callSessionApi(`/all-messages-in-chat/${pathId}?${allInChatQuery}`, "GET")
+    },
+    {
+      label: "load-messages-in-chat",
+      run: () =>
+        wpp.callSessionApi(`/load-messages-in-chat/${pathId}?${allInChatQuery}`, "GET")
     }
   ];
 
