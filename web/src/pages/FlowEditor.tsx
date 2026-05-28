@@ -325,7 +325,7 @@ export function FlowEditor() {
             <MiniMap
               pannable
               zoomable
-              position="bottom-left"
+              position="bottom-right"
               className={`flow-minimap !bg-zinc-900 !border-zinc-600 ${panelOpen ? "flow-minimap--panel-open" : ""}`}
               nodeColor={() => "#34d399"}
               maskColor="rgba(9,9,11,0.8)"
