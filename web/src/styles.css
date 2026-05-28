@@ -32,24 +32,51 @@ body {
   background: #09090b !important;
 }
 
-.flow-minimap {
-  pointer-events: all !important;
+/* Esconde controles padrão do React Flow (ficavam à esquerda, sem contraste) */
+.flow-editor-canvas .react-flow__controls {
+  display: none !important;
+}
+
+.flow-bottom-toolbar {
+  pointer-events: none;
   z-index: 15 !important;
-  margin: 12px !important;
-  border-radius: 12px !important;
-  overflow: hidden !important;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
 }
 
-.flow-minimap--panel-open {
-  margin-right: 400px !important;
-  margin-bottom: 12px !important;
+.flow-bottom-toolbar--panel-open {
+  margin-right: 380px !important;
 }
 
-.react-flow__minimap-svg {
-  cursor: crosshair;
+.flow-bottom-toolbar > div {
+  pointer-events: all;
 }
 
-.react-flow__minimap-mask {
-  fill: rgba(9, 9, 11, 0.75);
+.flow-zoom-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1;
+  color: #e4e4e7;
+  background: #18181b;
+  transition: background 0.15s, color 0.15s;
+}
+
+.flow-zoom-btn:hover {
+  background: #27272a;
+  color: #fff;
+}
+
+.flow-minimap-inner {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55) !important;
+}
+
+.flow-minimap-inner .react-flow__minimap-mask {
+  fill: rgba(9, 9, 11, 0.78);
+}
+
+.flow-minimap-inner .react-flow__minimap-node {
+  fill: #34d399;
 }

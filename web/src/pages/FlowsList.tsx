@@ -37,6 +37,12 @@ export function FlowsList() {
     refresh();
   }
 
+  async function removeFlow(id: string, flowName: string) {
+    if (!confirm(`Excluir o fluxo "${flowName}"? Esta ação não pode ser desfeita.`)) return;
+    await api(`/api/flows/${id}`, { method: "DELETE" });
+    refresh();
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between">
@@ -89,6 +95,13 @@ export function FlowsList() {
               >
                 Logs
               </Link>
+              <button
+                type="button"
+                onClick={() => removeFlow(f.id, f.name)}
+                className="rounded-lg border border-red-900/50 px-3 py-1.5 text-sm text-red-300 hover:bg-red-950/40"
+              >
+                Excluir
+              </button>
             </div>
           </div>
         ))}

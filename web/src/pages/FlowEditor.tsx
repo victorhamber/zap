@@ -1,24 +1,26 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   ReactFlow,
   Background,
-  Controls,
-  MiniMap,
   Panel,
   addEdge,
   useEdgesState,
   useNodesState,
   type Connection,
   type Edge,
-  type Node
+  type Node,
+  type ReactFlowInstance
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { api } from "../api/client";
 import { flowNodeTypes } from "../components/flow/FlowNode";
 import { FlowNodeProperties } from "../components/flow/FlowNodeProperties";
 import { NodeContextMenu } from "../components/flow/NodeContextMenu";
+import { FlowZoomToolbar } from "../components/flow/FlowZoomToolbar";
 import { PALETTE, defaultNodeData, NODE_LABELS } from "../components/flow/nodeMeta";
+
+const FIT_VIEW_OPTS = { padding: 0.45, maxZoom: 0.72, duration: 280 };
 
 type FlowRecord = {
   id: string;
@@ -77,6 +79,7 @@ export function FlowEditor() {
   const [testPhone, setTestPhone] = useState("");
   const [paletteOpen, setPaletteOpen] = useState(true);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const rfRef = useRef<ReactFlowInstance | null>(null);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -96,6 +99,10 @@ export function FlowEditor() {
     [setNodes, setEdges]
   );
 
+  const onFlowInit = useCallback((instance: ReactFlowInstance) => {
+    rfRef.current = instance;
+  }, []);
+
   useEffect(() => {
     if (!id) return;
     api<FlowRecord>(`/api/flows/${id}`).then((f) => {
@@ -104,6 +111,9 @@ export function FlowEditor() {
       setEnabled(f.enabled);
       setNodes(toReactFlowNodes(f.graphJson.nodes));
       setEdges(toReactFlowEdges(f.graphJson.edges));
+      window.setTimeout(() => {
+        rfRef.current?.fitView(FIT_VIEW_OPTS);
+      }, 120);
     });
   }, [id, setNodes, setEdges]);
 
@@ -315,22 +325,16 @@ export function FlowEditor() {
               setSelectedId(null);
             }}
             nodeTypes={flowNodeTypes}
-            fitView
+            onInit={onFlowInit}
+            minZoom={0.15}
+            maxZoom={1.75}
+            defaultViewport={{ x: 0, y: 0, zoom: 0.65 }}
             deleteKeyCode={null}
             className="flow-editor-canvas"
             proOptions={{ hideAttribution: true }}
           >
             <Background color="#3f3f46" gap={20} />
-            <Controls className="!bg-zinc-900 !border-zinc-700 !shadow-lg" />
-            <MiniMap
-              pannable
-              zoomable
-              position="bottom-right"
-              className={`flow-minimap !bg-zinc-900 !border-zinc-600 ${panelOpen ? "flow-minimap--panel-open" : ""}`}
-              nodeColor={() => "#34d399"}
-              maskColor="rgba(9,9,11,0.8)"
-              style={{ width: 200, height: 140 }}
-            />
+            <FlowZoomToolbar panelOpen={panelOpen} />
             <Panel position="top-right" className="!m-3 pointer-events-none">
               {selectedNode && (
                 <span className="rounded-lg bg-zinc-900/90 border border-zinc-700 px-2 py-1 text-xs text-zinc-400">
