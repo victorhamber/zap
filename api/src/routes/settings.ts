@@ -67,12 +67,22 @@ export async function settingsRoutes(app: FastifyInstance) {
   app.post("/api/settings/wpp/start-session", async (_req, reply) => {
     try {
       const raw = await wpp.startSession();
-      const qrFromStart = wpp.extractQrImage(raw);
-      if (qrFromStart) {
-        return { ok: true, state: wpp.extractSessionState(raw), qrImage: qrFromStart, raw };
+      let qrFromStart = wpp.extractQrImage(raw);
+      let qrRaw: unknown = raw;
+
+      if (!qrFromStart) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const qr = await wpp.getQrCode();
+        qrFromStart = qr.qrImage;
+        qrRaw = qr.raw;
       }
-      const { qrImage, raw: qrRaw } = await wpp.getQrCode();
-      return { ok: true, state: wpp.extractSessionState(raw), qrImage, raw: { start: raw, qrcode: qrRaw } };
+
+      return {
+        ok: true,
+        state: wpp.extractSessionState(raw),
+        qrImage: qrFromStart,
+        raw: { start: raw, qrcode: qrRaw }
+      };
     } catch (e: any) {
       return reply.status(502).send({ ok: false, error: e?.message ?? String(e) });
     }

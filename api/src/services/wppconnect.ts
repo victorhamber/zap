@@ -230,15 +230,33 @@ function inboundWebhookUrl(): string {
   return `${base}/api/webhooks/wppconnect`;
 }
 
+function qrImageFromTextCode(text: string): string {
+  return `https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=${encodeURIComponent(text)}`;
+}
+
 export function extractQrImage(data: unknown): string | null {
   if (!data || typeof data !== "object") return null;
   const o = data as Record<string, unknown>;
-  const candidates = [o.qrcode, o.qrCode, o.base64, o.QRCode];
-  for (const c of candidates) {
+
+  if (o.response && typeof o.response === "object") {
+    const nested = extractQrImage(o.response);
+    if (nested) return nested;
+  }
+
+  const imageFields = [o.qrcode, o.qrCode, o.base64, o.QRCode];
+  for (const c of imageFields) {
     if (typeof c !== "string" || !c.trim()) continue;
     if (c.startsWith("data:image")) return c;
+    if (c.startsWith("http")) return qrImageFromTextCode(c);
     return `data:image/png;base64,${c.replace(/^data:image\/[a-z]+;base64,/, "")}`;
   }
+
+  const codeFields = [o.code, o.urlcode, o.pairingCode];
+  for (const c of codeFields) {
+    if (typeof c !== "string" || !c.trim()) continue;
+    return qrImageFromTextCode(c);
+  }
+
   return null;
 }
 
@@ -294,9 +312,9 @@ export async function startSession(): Promise<unknown> {
 
 export async function getQrCode(): Promise<{ qrImage: string | null; raw: unknown }> {
   const res = await wppFetch("/qrcode-session", { method: "GET" });
-  const body = await res.json().catch(() => ({}));
+  const body = await readWppJson(res);
   if (!res.ok) {
-    throw new Error(`qrcode-session falhou: ${res.status} ${JSON.stringify(body)}`);
+    throw new Error(`qrcode-session: ${formatWppError(res.status, body)}`);
   }
   return { qrImage: extractQrImage(body), raw: body };
 }

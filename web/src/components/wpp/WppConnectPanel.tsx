@@ -106,13 +106,19 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
     setError("");
     setMsg("Iniciando sessão…");
     try {
-      await api("/api/settings/wpp/refresh-token", { method: "POST" });
+      await api("/api/settings/wpp/refresh-token", {
+        method: "POST",
+        body: JSON.stringify({})
+      });
       const r = await api<{
         ok: boolean;
         qrImage?: string | null;
         state?: string;
         error?: string;
-      }>("/api/settings/wpp/start-session", { method: "POST" });
+      }>("/api/settings/wpp/start-session", {
+        method: "POST",
+        body: JSON.stringify({})
+      });
       if (!r.ok) throw new Error(r.error ?? "Falha ao iniciar sessão");
       if (r.state) setState(r.state);
       if (r.qrImage) {
@@ -238,7 +244,7 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
             <img src={qrImage} alt="QR Code WhatsApp" className="h-56 w-56 object-contain" />
           </div>
           <p className="mt-3 text-xs text-zinc-500 text-center max-w-sm">
-            O QR expira em ~60s. Atualizamos automaticamente a cada poucos segundos.
+            Escaneie em até ~60s (o WPP fecha sozinho se demorar). Atualizamos o QR automaticamente.
           </p>
         </div>
       )}
