@@ -10,6 +10,26 @@ import {
 import { startFlowRun } from "../engine/executor.js";
 import { parseGraph } from "../engine/graph.js";
 
+type QuickReply = { id: string; title: string; text: string };
+
+function parseQuickReplies(raw: unknown): QuickReply[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const o = item as Record<string, unknown>;
+      const title = String(o.title ?? "").trim();
+      const text = String(o.text ?? "").trim();
+      if (!title || !text) return null;
+      return {
+        id: String(o.id ?? title),
+        title,
+        text
+      };
+    })
+    .filter((x): x is QuickReply => Boolean(x));
+}
+
 export async function inboxRoutes(app: FastifyInstance) {
   app.addHook("preHandler", requireAuth);
 
@@ -17,13 +37,18 @@ export async function inboxRoutes(app: FastifyInstance) {
     try {
       const chats = await inbox.fetchChats();
       const contacts = await listContactsWithTags();
-      const byPhone = new Map(contacts.map((c) => [c.phone, contactToJson(c)]));
+      const byKey = new Map<string, ReturnType<typeof contactToJson>>();
+      for (const c of contacts) {
+        const j = contactToJson(c);
+        byKey.set(c.phone, j);
+        if (c.phone.includes("@")) byKey.set(c.phone.split("@")[0], j);
+      }
 
       return {
         ok: true,
         chats: chats.map((ch) => ({
           ...ch,
-          contact: byPhone.get(ch.phone) ?? null
+          contact: byKey.get(ch.id) ?? byKey.get(ch.phone) ?? null
         }))
       };
     } catch (e: any) {
@@ -31,43 +56,74 @@ export async function inboxRoutes(app: FastifyInstance) {
     }
   });
 
-  app.get("/api/inbox/chats/:phone/messages", async (req) => {
-    const phone = decodeURIComponent((req.params as { phone: string }).phone);
+  app.get("/api/inbox/messages", async (req) => {
     const q = req.query as { chatId?: string; isGroup?: string };
-    const chatId = q.chatId ? decodeURIComponent(q.chatId) : phone;
+    const chatId = (q.chatId ?? "").trim();
+    if (!chatId) {
+      return { ok: false, message: "chatId obrigatório", messages: [] };
+    }
     const isGroup = q.isGroup === "1" || q.isGroup === "true" || chatId.includes("@g.us");
     try {
-      const { messages, hint } = await inbox.fetchMessages(phone, {
-        chatId,
-        isGroup
-      });
+      const { messages, hint } = await inbox.fetchMessages(chatId, { chatId, isGroup });
       return { ok: true, messages, hint };
     } catch (e: any) {
       return { ok: false, message: e?.message ?? String(e), messages: [] };
     }
   });
 
-  app.post("/api/inbox/chats/:phone/send", async (req) => {
-    const phone = decodeURIComponent((req.params as { phone: string }).phone);
-    const body = req.body as { message?: string; isGroup?: boolean };
+  app.post("/api/inbox/send", async (req) => {
+    const body = req.body as {
+      chatId?: string;
+      message?: string;
+      isGroup?: boolean;
+    };
+    const chatId = (body.chatId ?? "").trim();
     const message = (body.message ?? "").trim();
-    if (!message) return { ok: false, message: "Mensagem vazia" };
+    if (!chatId || !message) return { ok: false, message: "chatId e mensagem obrigatórios" };
 
     try {
-      await inbox.sendChatMessage(phone, message, body.isGroup === true);
+      await inbox.sendChatMessage(chatId, message, body.isGroup === true);
       return { ok: true };
     } catch (e: any) {
       return { ok: false, message: e?.message ?? String(e) };
     }
   });
 
-  app.post("/api/inbox/chats/:phone/start-flow", async (req, reply) => {
-    if (!prisma) return reply.status(503).send({ error: "Banco indisponível" });
-    const phone = decodeURIComponent((req.params as { phone: string }).phone);
-    const body = req.body as { flowId?: string; name?: string };
-    if (!body.flowId) return reply.status(400).send({ error: "flowId obrigatório" });
+  app.post("/api/inbox/send-media", async (req) => {
+    const body = req.body as {
+      chatId?: string;
+      type?: "image" | "video" | "audio" | "document";
+      url?: string;
+      caption?: string;
+      filename?: string;
+      isGroup?: boolean;
+    };
+    const chatId = (body.chatId ?? "").trim();
+    const url = (body.url ?? "").trim();
+    if (!chatId || !url || !body.type) {
+      return { ok: false, message: "chatId, type e url são obrigatórios" };
+    }
 
-    const contact = await upsertContact(phone, { name: body.name });
+    try {
+      await inbox.sendChatMedia(chatId, body.type, url, {
+        caption: body.caption,
+        filename: body.filename,
+        isGroup: body.isGroup
+      });
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, message: e?.message ?? String(e) };
+    }
+  });
+
+  app.post("/api/inbox/start-flow", async (req, reply) => {
+    if (!prisma) return reply.status(503).send({ error: "Banco indisponível" });
+    const body = req.body as { chatId?: string; flowId?: string; name?: string; isGroup?: boolean };
+    if (!body.flowId || !body.chatId) {
+      return reply.status(400).send({ error: "flowId e chatId obrigatórios" });
+    }
+
+    const contact = await upsertContact(body.chatId, { name: body.name });
     const result = await startFlowRun({
       flowId: body.flowId,
       triggerType: "trigger_manual",
@@ -81,6 +137,27 @@ export async function inboxRoutes(app: FastifyInstance) {
     });
 
     return { ok: true, result };
+  });
+
+  app.get("/api/inbox/quick-replies", async () => {
+    if (!prisma) return { replies: [] };
+    const s = await prisma.appSettings.findUnique({ where: { id: "default" } });
+    return { replies: parseQuickReplies(s?.quickReplies) };
+  });
+
+  app.put("/api/inbox/quick-replies", async (req, reply) => {
+    if (!prisma) return reply.status(503).send({ error: "Banco indisponível" });
+    const body = req.body as { replies?: QuickReply[] };
+    const replies = (body.replies ?? []).map((r) => ({
+      id: r.id || r.title,
+      title: r.title.trim(),
+      text: r.text.trim()
+    }));
+    await prisma.appSettings.update({
+      where: { id: "default" },
+      data: { quickReplies: replies }
+    });
+    return { ok: true, replies };
   });
 
   app.get("/api/tags", async () => {

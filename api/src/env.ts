@@ -23,8 +23,8 @@ const EnvSchema = z.object({
     .string()
     .optional()
     .transform((v) => v !== "false"),
-  WPP_RECONNECT_INTERVAL_SEC: z.coerce.number().int().positive().default(45),
-  WPP_RECONNECT_COOLDOWN_SEC: z.coerce.number().int().positive().default(90),
+  WPP_RECONNECT_INTERVAL_SEC: z.coerce.number().int().positive().default(120),
+  WPP_RECONNECT_COOLDOWN_SEC: z.coerce.number().int().positive().default(180),
 
   HOTMART_WEBHOOK_SECRET: z.string().optional(),
   ADMIN_EMAIL: z.string().email().default("admin@trajettu.com"),

@@ -119,14 +119,13 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
 
   const startPolling = useCallback(() => {
     stopPolling();
-    pollRef.current = setInterval(() => refreshQr(), 4000);
+    pollRef.current = setInterval(() => refreshQr(), 8000);
   }, [stopPolling, refreshQr]);
 
   useEffect(() => {
     loadSettings();
-    verifyConnection(false);
     return () => stopPolling();
-  }, [loadSettings, verifyConnection, stopPolling]);
+  }, [loadSettings, stopPolling]);
 
   useEffect(() => {
     if (qrImage && !isConnected) startPolling();

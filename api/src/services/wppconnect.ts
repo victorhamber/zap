@@ -1,5 +1,6 @@
 import { env } from "../env.js";
 import { prisma } from "../prisma.js";
+import { wppHumanDelay } from "./wppHumanize.js";
 
 function wppBaseUrl(settings: { wppBaseUrl: string }): string {
   const internal = env.WPP_INTERNAL_URL?.trim().replace(/\/$/, "");
@@ -151,6 +152,7 @@ export async function getWppToken(): Promise<string> {
 }
 
 async function wppFetch(path: string, init: RequestInit, retry = true): Promise<Response> {
+  await wppHumanDelay();
   const settings = await getSettings();
   const base = wppBaseUrl(settings);
   const session = settings.wppSession;
