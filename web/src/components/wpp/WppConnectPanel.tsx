@@ -160,16 +160,18 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
   }
 
   async function closeSession() {
+    if (!confirm("Fechar sessão? Pausa o WhatsApp no servidor (pode reconectar depois sem novo QR, se a sessão ainda existir)."))
+      return;
     setLoading(true);
     setError("");
     try {
-      await api("/api/settings/wpp/close-session", {
+      const r = await api<{ ok: boolean; message?: string }>("/api/settings/wpp/close-session", {
         method: "POST",
         body: JSON.stringify({})
       });
       setQrImage(null);
       setState("CLOSED");
-      setMsg("Sessão fechada.");
+      setMsg(r.message ?? "Sessão fechada.");
       stopPolling();
     } catch (e: any) {
       setError(e?.message ?? "Erro ao fechar");
@@ -179,16 +181,22 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
   }
 
   async function logoutSession() {
+    if (
+      !confirm(
+        "Desconectar completamente? O WhatsApp será deslogado e você precisará escanear o QR Code de novo."
+      )
+    )
+      return;
     setLoading(true);
     setError("");
     try {
-      await api("/api/settings/wpp/logout-session", {
+      const r = await api<{ ok: boolean; message?: string }>("/api/settings/wpp/logout-session", {
         method: "POST",
         body: JSON.stringify({})
       });
       setQrImage(null);
       setState("LOGOUT");
-      setMsg("Desconectado. Conecte de novo para gerar novo QR.");
+      setMsg(r.message ?? "Desconectado. Escaneie o QR para conectar de novo.");
       stopPolling();
     } catch (e: any) {
       setError(e?.message ?? "Erro ao desconectar");
@@ -225,10 +233,17 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
       </div>
 
       {error && (
-        <div className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+        <div className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200 max-h-32 overflow-auto">
           {error}
         </div>
       )}
+
+      <p className="mt-3 text-xs text-zinc-500 leading-relaxed">
+        <strong className="text-zinc-400">Fechar sessão</strong> — pausa o navegador no WPP (sessão
+        fica salva).{" "}
+        <strong className="text-zinc-400">Desconectar</strong> — logout total; exige novo QR para
+        voltar.
+      </p>
       {msg && (
         <p
           className={`mt-3 text-sm ${

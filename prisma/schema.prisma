@@ -22,6 +22,7 @@ model AppSettings {
   wppToken        String?
   wppTokenFull    String?
   connectionStatus String?
+  dismissedWppSessions Json @default("[]")
   updatedAt       DateTime @updatedAt
 }
 

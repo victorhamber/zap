@@ -24,11 +24,13 @@ export async function bootstrapDatabase() {
   });
   console.log(`[bootstrap] Admin sincronizado: ${env.ADMIN_EMAIL}`);
 
-  await prisma.wppInstance.upsert({
-    where: { name: env.WPP_SESSION },
-    update: {},
-    create: { name: env.WPP_SESSION, label: env.WPP_SESSION }
-  });
+  const instanceCount = await prisma.wppInstance.count();
+  if (instanceCount === 0) {
+    await prisma.wppInstance.create({
+      data: { name: env.WPP_SESSION, label: env.WPP_SESSION }
+    });
+    console.log(`[bootstrap] Instância padrão criada: ${env.WPP_SESSION}`);
+  }
 
   const flows = await prisma.flow.count();
   if (flows === 0) {

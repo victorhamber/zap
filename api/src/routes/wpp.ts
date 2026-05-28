@@ -3,6 +3,7 @@ import { prisma } from "../prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import { env } from "../env.js";
 import * as wpp from "../services/wppconnect.js";
+import { dismissSession, getDismissedSessions, undismissSession } from "../utils/wppDismissed.js";
 
 function parseSessionNames(serverPayload: unknown): string[] {
   if (!serverPayload) return [];
@@ -38,6 +39,9 @@ export async function wppRoutes(app: FastifyInstance) {
       /* servidor pode estar offline */
     }
 
+    const dismissed = await getDismissedSessions();
+    serverSessions = serverSessions.filter((s) => !dismissed.includes(s.toLowerCase()));
+
     return {
       active,
       instances: instances.map((i) => ({
@@ -61,6 +65,8 @@ export async function wppRoutes(app: FastifyInstance) {
     if (!/^[\w-]{2,64}$/i.test(name)) {
       return reply.status(400).send({ error: "Nome inválido (letras, números, _ ou -)" });
     }
+
+    await undismissSession(name);
 
     const instance = await prisma.wppInstance.upsert({
       where: { name },
@@ -117,7 +123,15 @@ export async function wppRoutes(app: FastifyInstance) {
     }
 
     await prisma.wppInstance.deleteMany({ where: { name } });
-    return { ok: true };
+    await dismissSession(name);
+
+    const remaining = await prisma.wppInstance.findFirst({ orderBy: { createdAt: "asc" } });
+    if (remaining && settings?.wppSession === name) {
+      await wpp.setActiveSession(remaining.name);
+      await wpp.refreshWppToken(remaining.name).catch(() => {});
+    }
+
+    return { ok: true, message: `Instância "${name}" removida do painel. A sessão pode continuar no servidor WPP.` };
   });
 
   app.post("/api/wpp/call", async (req, reply) => {

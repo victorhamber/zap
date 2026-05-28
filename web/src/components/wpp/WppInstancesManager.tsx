@@ -64,8 +64,14 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
     setLoading(true);
     setError("");
     try {
-      await api(`/api/wpp/instances/${encodeURIComponent(name)}/activate`, { method: "POST" });
-      await api("/api/settings/wpp/refresh-token", { method: "POST" });
+      await api(`/api/wpp/instances/${encodeURIComponent(name)}/activate`, {
+        method: "POST",
+        body: JSON.stringify({})
+      });
+      await api("/api/settings/wpp/refresh-token", {
+        method: "POST",
+        body: JSON.stringify({})
+      });
       setMsg(`Instância "${name}" ativa.`);
       await load();
       onActivated?.();
@@ -77,12 +83,20 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
   }
 
   async function remove(name: string) {
-    if (!confirm(`Remover instância "${name}" do Zap? (não apaga arquivos no servidor WPP)`)) return;
+    if (
+      !confirm(
+        `Remover "${name}" do painel Zap?\n\nA sessão pode continuar no servidor WPP, mas não voltará a aparecer aqui automaticamente.`
+      )
+    )
+      return;
     setLoading(true);
     try {
-      await api(`/api/wpp/instances/${encodeURIComponent(name)}`, { method: "DELETE" });
+      const r = await api<{ ok: boolean; message?: string }>(
+        `/api/wpp/instances/${encodeURIComponent(name)}`,
+        { method: "DELETE" }
+      );
       await load();
-      setMsg(`Instância "${name}" removida.`);
+      setMsg(r.message ?? `Instância "${name}" removida.`);
     } catch (e: any) {
       setError(e?.message ?? "Erro ao remover");
     } finally {
@@ -174,7 +188,12 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
 
       {orphanServer.length > 0 && (
         <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-zinc-400">
-          <p className="text-amber-200/90 font-medium mb-1">Sessões no servidor WPP (importar)</p>
+          <p className="text-amber-200/90 font-medium mb-1">
+            Sessões no servidor WPP (importar manualmente)
+          </p>
+          <p className="mb-2 text-zinc-500">
+            Só aparecem aqui se você quiser adicionar de volta ao painel.
+          </p>
           <div className="flex flex-wrap gap-2">
             {orphanServer.map((s) => (
               <button

@@ -12,6 +12,18 @@ export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+function sanitizeErrorMessage(text: string, status: number): string {
+  const lower = text.toLowerCase();
+  if (lower.includes("<html") || lower.includes("<!doctype")) {
+    if (status === 502 || lower.includes("bad gateway")) {
+      return "Servidor WPP indisponível (502). Verifique se o WPPConnect está online e o WPP_INTERNAL_URL no EasyPanel.";
+    }
+    return `Erro HTTP ${status} no servidor. Tente novamente em instantes.`;
+  }
+  if (text.length > 280) return `${text.slice(0, 280)}…`;
+  return text;
+}
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getToken();
   const hasBody =
@@ -43,10 +55,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       /* texto puro */
     }
-    if (message === "Bad Request" && text.length > 20) {
-      message = text.slice(0, 500);
-    }
-    throw new Error(message);
+    throw new Error(sanitizeErrorMessage(message, res.status));
   }
 
   if (res.status === 204) return undefined as T;

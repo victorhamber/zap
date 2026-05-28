@@ -121,18 +121,43 @@ export async function settingsRoutes(app: FastifyInstance) {
   app.post("/api/settings/wpp/close-session", async (_req, reply) => {
     try {
       const raw = await wpp.closeSession();
-      return { ok: true, state: wpp.extractSessionState(raw), raw };
+      return {
+        ok: true,
+        state: wpp.extractSessionState(raw),
+        message: "Sessão fechada no WPP. O WhatsApp foi pausado; para usar de novo, clique em Conectar."
+      };
     } catch (e: any) {
-      return reply.status(502).send({ ok: false, error: e?.message ?? String(e) });
+      const msg = e?.message ?? String(e);
+      if (/502|bad gateway|ECONNREFUSED|fetch failed/i.test(msg)) {
+        return reply.status(502).send({
+          ok: false,
+          error:
+            "Não foi possível falar com o servidor WPP. Confira WPP_INTERNAL_URL no EasyPanel ou se o WPP está online."
+        });
+      }
+      return reply.status(502).send({ ok: false, error: msg.slice(0, 300) });
     }
   });
 
   app.post("/api/settings/wpp/logout-session", async (_req, reply) => {
     try {
       const raw = await wpp.logoutSession();
-      return { ok: true, state: wpp.extractSessionState(raw), raw };
+      return {
+        ok: true,
+        state: wpp.extractSessionState(raw),
+        message:
+          "WhatsApp desconectado. Será necessário escanear o QR Code novamente para reconectar."
+      };
     } catch (e: any) {
-      return reply.status(502).send({ ok: false, error: e?.message ?? String(e) });
+      const msg = e?.message ?? String(e);
+      if (/502|bad gateway|ECONNREFUSED|fetch failed/i.test(msg)) {
+        return reply.status(502).send({
+          ok: false,
+          error:
+            "Não foi possível falar com o servidor WPP. Confira WPP_INTERNAL_URL no EasyPanel ou se o WPP está online."
+        });
+      }
+      return reply.status(502).send({ ok: false, error: msg.slice(0, 300) });
     }
   });
 
