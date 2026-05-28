@@ -4,6 +4,7 @@ Painel para criar fluxos de automação (drag-and-drop) e disparar mensagens via
 
 ## Funcionalidades
 
+- **Central WhatsApp no painel** — criar instâncias, QR Code, trocar número, ferramentas API (sem usar a UI do WPPConnect)
 - Editor visual de fluxos (React Flow)
 - Gatilhos: Hotmart, mensagem recebida, teste manual
 - Ações: texto, imagem, vídeo, áudio
@@ -59,7 +60,7 @@ npm run db:seed
   Header opcional: `x-hotmart-hottok` ou `x-webhook-secret` = `HOTMART_WEBHOOK_SECRET`
 
 - **WPPConnect (mensagens recebidas):** `POST https://zap.trajettu.com/api/webhooks/wppconnect`  
-  Configure no `start-session` do WPPConnect.
+  Configurado automaticamente ao conectar pelo painel (**WhatsApp → Conexão / QR**).
 
 ## Fluxo exemplo (Hotmart)
 

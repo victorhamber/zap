@@ -96,7 +96,7 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
     <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-5">
       <h2 className="text-lg font-semibold text-white">Instâncias WhatsApp</h2>
       <p className="text-sm text-zinc-400 mt-1">
-        Crie novas sessões sem abrir o WPPConnect. Cada instância = um número/QR.
+        Cada instância = um WhatsApp diferente. Crie aqui, depois conecte o QR na aba Conexão.
       </p>
 
       {error && (

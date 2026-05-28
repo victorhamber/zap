@@ -17,10 +17,25 @@ export function WhatsApp() {
 
   return (
     <div className="max-w-3xl">
-      <h1 className="text-2xl font-semibold">WhatsApp</h1>
-      <p className="text-sm text-zinc-400 mt-1">
-        Instâncias, QR Code e funções do WPPConnect — tudo dentro do Zap.
+      <h1 className="text-2xl font-semibold">Central WhatsApp</h1>
+      <p className="text-sm text-zinc-400 mt-1 max-w-2xl leading-relaxed">
+        Este é o único lugar para gerenciar WhatsApp: cada instância é um número (ou conexão).
+        Crie quantas precisar, escaneie o QR aqui e troque entre elas — sem abrir o WPPConnect.
       </p>
+
+      <div className="mt-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-sm text-zinc-300">
+        <strong className="text-emerald-300">Outro número?</strong> Aba{" "}
+        <button type="button" onClick={() => setTab("instances")} className="text-emerald-400 underline">
+          Instâncias
+        </button>
+        {" → "}
+        <em>+ Nova instância</em>
+        {" → aba "}
+        <button type="button" onClick={() => setTab("connect")} className="text-emerald-400 underline">
+          Conexão / QR
+        </button>
+        {" e escaneie."}
+      </div>
 
       <div className="mt-6 flex flex-wrap gap-1 rounded-xl border border-zinc-800 bg-zinc-950/80 p-1">
         {tabs.map((t) => (

@@ -183,7 +183,7 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
         <div className="mb-4">
           <h2 className="text-lg font-semibold text-white">Conexão WhatsApp</h2>
           <p className="text-sm text-zinc-400 mt-0.5">
-            QR Code e sessão integrados — sem abrir o painel do WPPConnect.
+            Conecte o número da instância ativa escaneando o QR abaixo.
           </p>
         </div>
       )}
