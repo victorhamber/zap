@@ -33,7 +33,7 @@ export function defaultNodeData(type: string): Record<string, unknown> {
         }
       };
     case "trigger_inbound":
-      return { keyword: "" };
+      return { keyword: "", tags: [] as string[] };
     case "delay":
       return { value: 2, unit: "days" };
     case "schedule_at":

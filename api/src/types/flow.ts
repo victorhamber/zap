@@ -65,6 +65,8 @@ export type TriggerHotmartData = {
 
 export type TriggerInboundData = {
   keyword?: string;
+  /** Nomes das tags do contato (qualquer uma dispara o fluxo) */
+  tags?: string[];
 };
 
 export type FlowJobPayload = {

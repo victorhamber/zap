@@ -10,6 +10,7 @@ const links = [
 
 export function Layout() {
   const loc = useLocation();
+  const isInbox = loc.pathname.startsWith("/whatsapp");
 
   return (
     <div className="min-h-screen flex bg-zinc-950">
@@ -60,8 +61,12 @@ export function Layout() {
           </button>
         </div>
       </aside>
-      <main className="flex-1 min-w-0 overflow-auto">
-        <div className="p-6 md:p-8 max-w-6xl mx-auto">
+      <main className={`flex-1 min-w-0 ${isInbox ? "overflow-hidden" : "overflow-auto"}`}>
+        <div
+          className={
+            isInbox ? "h-full max-w-none" : "p-6 md:p-8 max-w-6xl mx-auto"
+          }
+        >
           <Outlet />
         </div>
       </main>

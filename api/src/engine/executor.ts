@@ -286,11 +286,20 @@ export async function startFlowRun(params: {
 
 export function matchInboundFlows(
   graph: FlowGraph,
-  messageText: string
+  messageText: string,
+  contactTagNames: string[] = []
 ): boolean {
   const trigger = graph.nodes.find((n) => n.type === "trigger_inbound");
   if (!trigger) return false;
   const data = trigger.data as unknown as TriggerInboundData;
+
+  const requiredTags = (data.tags ?? []).map((t) => t.trim().toLowerCase()).filter(Boolean);
+  if (requiredTags.length > 0) {
+    const normalized = contactTagNames.map((t) => t.toLowerCase());
+    const hasTag = requiredTags.some((t) => normalized.includes(t));
+    if (!hasTag) return false;
+  }
+
   if (!data.keyword?.trim()) return true;
   return messageText.toLowerCase().includes(data.keyword.toLowerCase());
 }

@@ -12,6 +12,7 @@ import { webhookRoutes } from "./routes/webhooks.js";
 import { runRoutes } from "./routes/runs.js";
 import { settingsRoutes } from "./routes/settings.js";
 import { wppRoutes } from "./routes/wpp.js";
+import { inboxRoutes } from "./routes/inbox.js";
 import { bootstrapDatabase } from "./bootstrap.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -46,6 +47,7 @@ await app.register(flowRoutes);
 await app.register(runRoutes);
 await app.register(settingsRoutes);
 await app.register(wppRoutes);
+await app.register(inboxRoutes);
 
 const webDist = path.resolve(__dirname, "../../web/dist");
 await app.register(staticPlugin, { root: webDist, prefix: "/" });

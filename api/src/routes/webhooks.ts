@@ -10,6 +10,7 @@ import {
 import { parseGraph } from "../engine/graph.js";
 import { asString } from "../utils/jsonPathLite.js";
 import { normalizePhone } from "../utils/phone.js";
+import { getContactTagNames } from "../services/contacts.js";
 
 export async function webhookRoutes(app: FastifyInstance) {
   app.post("/api/webhooks/hotmart/:flowId", async (req, reply) => {
@@ -68,13 +69,14 @@ export async function webhookRoutes(app: FastifyInstance) {
     if (!from) return { ok: true, skipped: "no_from" };
 
     const phone = normalizePhone(from.replace(/@.*/, ""));
+    const tagNames = await getContactTagNames(phone);
 
     const flows = await prisma.flow.findMany({ where: { enabled: true } });
     const started: string[] = [];
 
     for (const flow of flows) {
       const graph = parseGraph(flow.graphJson);
-      if (!matchInboundFlows(graph, text)) continue;
+      if (!matchInboundFlows(graph, text, tagNames)) continue;
 
       const result = await startFlowRun({
         flowId: flow.id,

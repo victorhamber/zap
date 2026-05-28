@@ -43,7 +43,7 @@ export function Dashboard() {
         >
           <div className="text-xs text-zinc-500">WhatsApp</div>
           <div className="text-lg font-medium mt-1 text-emerald-300">{wppStatus}</div>
-          <div className="text-xs text-emerald-500/80 mt-1">Gerenciar conexão →</div>
+          <div className="text-xs text-emerald-500/80 mt-1">Abrir conversas →</div>
         </Link>
         <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">
           <div className="text-xs text-zinc-500">Execuções recentes</div>

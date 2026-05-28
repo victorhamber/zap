@@ -111,6 +111,28 @@ export function FlowNodeProperties({
               className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-white"
               placeholder="Vazio = qualquer mensagem"
             />
+            <label className="text-xs text-zinc-500 mt-2 block">Tags do contato (opcional)</label>
+            <input
+              value={
+                Array.isArray(config.tags)
+                  ? (config.tags as string[]).join(", ")
+                  : String(config.tags ?? "")
+              }
+              onChange={(e) =>
+                onUpdate({
+                  tags: e.target.value
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter(Boolean)
+                })
+              }
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-white"
+              placeholder="ex: cliente-vip, lead-quente"
+            />
+            <p className="text-xs text-zinc-600 mt-1">
+              O fluxo só dispara se o contato tiver uma dessas tags (além da palavra-chave, se
+              houver).
+            </p>
           </>
         )}
 
