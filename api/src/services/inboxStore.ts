@@ -1,6 +1,7 @@
 import { prisma } from "../prisma.js";
 import { extractWaId, type NormalizedMessage } from "./inbox.js";
 import { persistInboundMedia } from "./mediaConvert.js";
+import { isPersistedUploadUrl, toPublicMediaUrl } from "./uploads.js";
 import {
   captionFromText,
   isLikelyBase64Payload,
@@ -71,11 +72,11 @@ export async function resetInboxCapture(clearMessages = true): Promise<void> {
 }
 
 function extractMediaUrl(body: Record<string, unknown>): string | null {
-  const keys = ["mediaUrl", "fileUrl", "clientUrl", "deprecatedMms3Url"] as const;
-  for (const key of keys) {
+  for (const key of ["fileUrl", "mediaUrl"] as const) {
     const v = body[key];
-    if (typeof v === "string" && v.startsWith("http")) return v;
+    if (typeof v === "string" && isPersistedUploadUrl(v)) return v;
   }
+  // URLs do WhatsApp (clientUrl etc.) são criptografadas — não funcionam no navegador.
   const raw = body.body;
   const type = String(body.type ?? "chat");
   const mime = String(body.mimetype ?? body.mimeType ?? mimeFromMessageType(type));
@@ -111,7 +112,7 @@ async function resolveStoredMedia(
   }
 
   const body = captionFromText(type, rawText);
-  return { body, mediaUrl: url };
+  return { body, mediaUrl: toPublicMediaUrl(url) ?? url };
 }
 
 export async function saveInboxMessage(params: {
@@ -195,7 +196,7 @@ export async function listStoredMessages(
 
   const messages: NormalizedMessage[] = rows.map((r) => {
     let body = r.body;
-    let mediaUrl = r.mediaUrl;
+    let mediaUrl = toPublicMediaUrl(r.mediaUrl) ?? r.mediaUrl;
     const normalizedType = r.type === "ptt" ? "audio" : r.type;
     if (!mediaUrl && isLikelyBase64Payload(body)) {
       mediaUrl =

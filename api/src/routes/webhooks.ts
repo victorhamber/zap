@@ -12,6 +12,7 @@ import { asString } from "../utils/jsonPathLite.js";
 import { normalizePhone } from "../utils/phone.js";
 import { getContactTagNames } from "../services/contacts.js";
 import { downloadInboundMedia, isInboundMediaType } from "../services/wppMedia.js";
+import { isPersistedUploadUrl } from "../services/uploads.js";
 import {
   parseWppWebhookMessage,
   saveInboxMessage,
@@ -89,16 +90,16 @@ export async function webhookRoutes(app: FastifyInstance) {
         timestamp: parsed.timestamp
       });
 
-      if (
-        !parsed.fromMe &&
-        !parsed.mediaUrl &&
+      const needsMediaDownload =
         parsed.waMessageId &&
-        isInboundMediaType(parsed.type)
-      ) {
+        isInboundMediaType(parsed.type) &&
+        !isPersistedUploadUrl(parsed.mediaUrl);
+
+      if (needsMediaDownload) {
         const waId = parsed.waMessageId;
         void downloadInboundMedia(body, waId)
           .then((url) => {
-            if (url) return updateInboxMessageMedia(waId, url);
+            if (url) return updateInboxMessageMedia(waId!, url);
           })
           .catch((e) => {
             req.log.warn({ err: e, waId }, "download inbound media async");

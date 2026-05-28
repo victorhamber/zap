@@ -2,7 +2,13 @@ import * as wpp from "./wppconnect.js";
 import { listStoredMessages, saveInboxMessage } from "./inboxStore.js";
 import { buildWppSendTarget, sendWppApi, sendWppText } from "./wppSend.js";
 import { convertWebmDataUrlToOgg } from "./mediaConvert.js";
-import { rewriteUploadUrlForWpp, saveUploadFromData } from "./uploads.js";
+import {
+  readUploadFileBase64,
+  rewriteUploadUrlForWpp,
+  saveUploadFromData,
+  toPublicMediaUrl,
+  uploadFilenameFromUrl
+} from "./uploads.js";
 
 export type ChatKind = "direct" | "group" | "community";
 
@@ -429,12 +435,81 @@ export async function sendChatMessage(
   });
 }
 
-async function resolveMediaPath(url: string): Promise<string> {
-  if (url.startsWith("http://") || url.startsWith("https://")) {
-    return rewriteUploadUrlForWpp(url);
+type PreparedMedia = {
+  publicUrl: string;
+  wppPath: string;
+  filename: string;
+  base64?: string;
+};
+
+async function prepareMediaForSend(
+  url: string,
+  mimeHint?: string,
+  filenameHint?: string
+): Promise<PreparedMedia> {
+  if (url.startsWith("data:")) {
+    const saved = await saveUploadFromData(url, mimeHint);
+    const file = await readUploadFileBase64(saved.url);
+    return {
+      publicUrl: saved.url,
+      wppPath: rewriteUploadUrlForWpp(saved.url),
+      filename: saved.filename,
+      base64: file?.base64
+    };
   }
-  const saved = await saveUploadFromData(url);
-  return rewriteUploadUrlForWpp(saved.url);
+
+  const existingName = uploadFilenameFromUrl(url);
+  if (existingName) {
+    const publicUrl = toPublicMediaUrl(url) ?? url;
+    const file = await readUploadFileBase64(publicUrl);
+    return {
+      publicUrl,
+      wppPath: rewriteUploadUrlForWpp(publicUrl),
+      filename: filenameHint || existingName,
+      base64: file?.base64
+    };
+  }
+
+  if (url.startsWith("http://") || url.startsWith("https://")) {
+    const name = filenameHint || url.split("/").pop()?.split("?")[0] || "arquivo.bin";
+    return {
+      publicUrl: url,
+      wppPath: rewriteUploadUrlForWpp(url),
+      filename: name
+    };
+  }
+
+  const saved = await saveUploadFromData(url, mimeHint);
+  const file = await readUploadFileBase64(saved.url);
+  return {
+    publicUrl: saved.url,
+    wppPath: rewriteUploadUrlForWpp(saved.url),
+    filename: saved.filename,
+    base64: file?.base64
+  };
+}
+
+async function sendFileToWpp(
+  payload: Record<string, unknown>,
+  media: PreparedMedia,
+  caption: string
+): Promise<void> {
+  const body: Record<string, unknown> = {
+    ...payload,
+    filename: media.filename,
+    caption
+  };
+
+  if (media.base64) {
+    try {
+      await sendWppApi("/send-file", { ...body, base64: media.base64 });
+      return;
+    } catch {
+      /* tenta path */
+    }
+  }
+
+  await sendWppApi("/send-file", { ...body, path: media.wppPath });
 }
 
 function base64FromDataUrl(url: string): string {
@@ -470,9 +545,9 @@ export async function sendChatMedia(
           base64Ptt = converted.base64;
           storedMediaUrl = converted.url;
         } catch {
-          const path = await resolveMediaPath(url);
-          await sendWppApi("/send-voice", { ...payload, path });
-          storedMediaUrl = path;
+          const media = await prepareMediaForSend(url, mime);
+          await sendWppApi("/send-voice", { ...payload, path: media.wppPath });
+          storedMediaUrl = media.publicUrl;
           return;
         }
       } else {
@@ -487,41 +562,33 @@ export async function sendChatMedia(
       return;
     }
 
-    const path = await resolveMediaPath(url);
-    storedMediaUrl = path;
+    const media = await prepareMediaForSend(url, undefined, options?.filename);
+    storedMediaUrl = media.publicUrl;
 
     if (type === "image") {
+      const name = options?.filename ?? media.filename ?? "image.jpg";
       try {
-        await sendWppApi("/send-file", {
-          ...payload,
-          path,
-          caption,
-          filename: options?.filename ?? "image.jpg"
-        });
+        await sendFileToWpp(payload, { ...media, filename: name }, caption);
       } catch {
-        await sendWppApi("/send-image", { ...payload, path, caption });
+        await sendWppApi("/send-image", { ...payload, path: media.wppPath, caption });
       }
       return;
     }
     if (type === "video") {
-      await sendWppApi("/send-file", {
-        ...payload,
-        path,
-        caption,
-        filename: options?.filename ?? "video.mp4"
-      });
+      const name = options?.filename ?? media.filename ?? "video.mp4";
+      await sendFileToWpp(payload, { ...media, filename: name }, caption);
       return;
     }
     if (type === "audio") {
-      await sendWppApi("/send-voice", { ...payload, path });
+      if (media.base64) {
+        await sendWppApi("/send-voice-base64", { ...payload, base64Ptt: media.base64 });
+      } else {
+        await sendWppApi("/send-voice", { ...payload, path: media.wppPath });
+      }
       return;
     }
-    await sendWppApi("/send-file", {
-      ...payload,
-      path,
-      filename: options?.filename ?? "documento",
-      caption
-    });
+    const name = options?.filename ?? media.filename ?? "documento.pdf";
+    await sendFileToWpp(payload, { ...media, filename: name }, caption);
   };
 
   try {

@@ -47,7 +47,11 @@ export async function downloadInboundMedia(
 
   try {
     const messageId =
-      hasMediaFlag && (normalized.from || normalized.chatId) ? normalized : waMessageId;
+      hasMediaFlag && (normalized.from || normalized.chatId)
+        ? normalized
+        : waMessageId
+          ? { id: waMessageId }
+          : null;
 
     if (!messageId) return null;
 

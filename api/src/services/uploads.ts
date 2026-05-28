@@ -52,6 +52,42 @@ export function rewriteUploadUrlForWpp(url: string): string {
   return url;
 }
 
+export function uploadFilenameFromUrl(url: string): string | null {
+  const m = url.match(/\/uploads\/([^?#/]+)/i);
+  return m?.[1] ?? null;
+}
+
+export function isPersistedUploadUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  return url.includes("/uploads/");
+}
+
+/** Converte URL interna Docker (http://zap:3000/uploads/…) para URL pública do painel. */
+export function toPublicMediaUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const name = uploadFilenameFromUrl(url);
+  if (name) return publicUploadUrl(name);
+  const internal = env.ZAP_INTERNAL_URL?.replace(/\/$/, "");
+  if (internal && url.startsWith(internal)) {
+    const name2 = uploadFilenameFromUrl(url);
+    if (name2) return publicUploadUrl(name2);
+  }
+  return url;
+}
+
+export async function readUploadFileBase64(
+  publicOrInternalUrl: string
+): Promise<{ base64: string; filename: string } | null> {
+  const name = uploadFilenameFromUrl(publicOrInternalUrl);
+  if (!name) return null;
+  try {
+    const buf = await fs.readFile(path.join(UPLOAD_DIR, name));
+    return { base64: buf.toString("base64"), filename: name };
+  } catch {
+    return null;
+  }
+}
+
 /** Salva data URL ou base64 e retorna URL pública para o WPP baixar o arquivo. */
 export async function saveUploadFromData(
   data: string,

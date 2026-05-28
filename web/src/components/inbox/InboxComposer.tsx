@@ -7,7 +7,12 @@ type Props = {
   draft: string;
   onDraftChange: (v: string) => void;
   onSendText: () => void;
-  onSendMedia: (type: "image" | "video" | "audio" | "document", url: string, caption?: string) => void;
+  onSendMedia: (
+    type: "image" | "video" | "audio" | "document",
+    url: string,
+    caption?: string,
+    filename?: string
+  ) => void;
   quickReplies: QuickReply[];
   disabled?: boolean;
 };
@@ -192,7 +197,7 @@ export function InboxComposer({
         onSendMedia("audio", dataUrl);
       } else {
         const url = await uploadDataUrl(dataUrl, mime);
-        onSendMedia(type, url);
+        onSendMedia(type, url, undefined, file.name);
       }
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Erro ao enviar arquivo");
@@ -229,14 +234,11 @@ export function InboxComposer({
           </button>
           <span className="w-2 h-2 rounded-full bg-[#ea0038] shrink-0 animate-pulse" />
           <span className="text-[#e9edef] text-sm tabular-nums w-10">{formatRecordTime(recordSec)}</span>
-          <div className="flex-1 flex items-center justify-center gap-0.5 h-8 overflow-hidden">
-            {Array.from({ length: 40 }).map((_, i) => (
-              <span
-                key={i}
-                className="w-0.5 bg-[#00a884] rounded-full"
-                style={{ height: `${8 + Math.abs(Math.sin(i + recordSec)) * 18}px` }}
-              />
-            ))}
+          <div className="flex-1 h-2 rounded-full bg-[#2a3942] overflow-hidden">
+            <div
+              className="h-full bg-[#00a884] transition-all duration-300"
+              style={{ width: `${Math.min(100, (recordSec / 60) * 100 + 8)}%` }}
+            />
           </div>
           <button
             type="button"

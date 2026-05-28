@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/client";
 import { InboxComposer, type QuickReply } from "./InboxComposer";
@@ -83,7 +83,7 @@ function mediaUrlFromMessage(m: Message): string | null {
   return `data:${mime};base64,${m.body.replace(/\s/g, "")}`;
 }
 
-function InboxMessageContent({ message: m }: { message: Message }) {
+const InboxMessageContent = memo(function InboxMessageContent({ message: m }: { message: Message }) {
   const url = mediaUrlFromMessage(m);
   const showCaption = m.body && !isBase64Blob(m.body) && !m.body.startsWith("📷") && !m.body.startsWith("🎤") && !m.body.startsWith("🎬");
   const isMedia =
@@ -97,7 +97,7 @@ function InboxMessageContent({ message: m }: { message: Message }) {
   if (isMedia && (m.type === "image" || m.type === "sticker")) {
     return (
       <div className="space-y-1">
-        <img src={url} alt="" className="max-w-full rounded-md max-h-72 object-contain" />
+        <img src={url} alt="" loading="lazy" className="max-w-full rounded-md max-h-72 object-contain" />
         {showCaption && <p className="text-sm whitespace-pre-wrap">{m.body}</p>}
       </div>
     );
@@ -105,7 +105,7 @@ function InboxMessageContent({ message: m }: { message: Message }) {
   if (isMedia && m.type === "video") {
     return (
       <div className="space-y-1">
-        <video src={url} controls className="max-w-full rounded-md max-h-72" />
+        <video src={url} controls preload="metadata" className="max-w-full rounded-md max-h-72" />
         {showCaption && <p className="text-sm whitespace-pre-wrap">{m.body}</p>}
       </div>
     );
@@ -119,7 +119,7 @@ function InboxMessageContent({ message: m }: { message: Message }) {
     );
   }
   return <p className="text-sm whitespace-pre-wrap">{m.body || "—"}</p>;
-}
+});
 
 function formatTime(ts: number): string {
   if (!ts) return "";
@@ -151,6 +151,7 @@ export function WhatsAppInbox() {
   const [msgHint, setMsgHint] = useState("");
   const [sendError, setSendError] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const lastMsgCountRef = useRef(0);
 
   const loadTags = useCallback(async () => {
     const r = await api<{ tags: Tag[] }>("/api/tags");
@@ -204,7 +205,18 @@ export function WhatsAppInbox() {
       }>(
         `/api/inbox/messages?chatId=${encodeURIComponent(chat.id)}&isGroup=${chat.isGroup ? "1" : "0"}`
       );
-      setMessages(r.messages ?? []);
+      const next = r.messages ?? [];
+      setMessages((prev) => {
+        if (
+          prev.length === next.length &&
+          prev.length > 0 &&
+          prev[prev.length - 1]?.id === next[next.length - 1]?.id &&
+          prev[prev.length - 1]?.mediaUrl === next[next.length - 1]?.mediaUrl
+        ) {
+          return prev;
+        }
+        return next;
+      });
       setMsgHint(r.hint ?? (r.ok ? "" : r.message ?? ""));
     } catch (e: any) {
       setMessages([]);
@@ -230,33 +242,41 @@ export function WhatsAppInbox() {
   useEffect(() => {
     if (!selected || !pageVisible) return;
     loadMessages(selected);
-    const t = setInterval(() => loadMessages(selected, true), 10000);
+    const t = setInterval(() => loadMessages(selected, true), 20000);
     return () => clearInterval(t);
   }, [selected, pageVisible, loadMessages]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    if (messages.length > lastMsgCountRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+    }
+    lastMsgCountRef.current = messages.length;
+  }, [messages.length]);
 
-  const filtered = chats.filter((c) => {
-    if (chatTab !== "all" && c.kind !== chatTab) return false;
+  const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    if (!q) return true;
-    const tagStr = c.contact?.tags.map((t) => t.name).join(" ") ?? "";
-    return (
-      c.name.toLowerCase().includes(q) ||
-      c.phone.includes(q) ||
-      c.id.toLowerCase().includes(q) ||
-      tagStr.toLowerCase().includes(q)
-    );
-  });
+    return chats.filter((c) => {
+      if (chatTab !== "all" && c.kind !== chatTab) return false;
+      if (!q) return true;
+      const tagStr = c.contact?.tags.map((t) => t.name).join(" ") ?? "";
+      return (
+        c.name.toLowerCase().includes(q) ||
+        c.phone.includes(q) ||
+        c.id.toLowerCase().includes(q) ||
+        tagStr.toLowerCase().includes(q)
+      );
+    });
+  }, [chats, chatTab, search]);
 
-  const tabCounts = {
-    all: chats.length,
-    direct: chats.filter((c) => c.kind === "direct").length,
-    group: chats.filter((c) => c.kind === "group").length,
-    community: chats.filter((c) => c.kind === "community").length
-  };
+  const tabCounts = useMemo(
+    () => ({
+      all: chats.length,
+      direct: chats.filter((c) => c.kind === "direct").length,
+      group: chats.filter((c) => c.kind === "group").length,
+      community: chats.filter((c) => c.kind === "community").length
+    }),
+    [chats]
+  );
 
   async function saveContactTags(chat: Chat, tagIds: string[]) {
     const key = chat.isGroup ? chat.id : chat.phone;
@@ -312,7 +332,8 @@ export function WhatsAppInbox() {
   async function sendMedia(
     type: "image" | "video" | "audio" | "document",
     url: string,
-    caption?: string
+    caption?: string,
+    filename?: string
   ) {
     if (!selected) return;
     const r = await api<{ ok: boolean; message?: string }>("/api/inbox/send-media", {
@@ -322,6 +343,7 @@ export function WhatsAppInbox() {
         type,
         url,
         caption,
+        filename,
         isGroup: selected.isGroup
       })
     });
@@ -642,7 +664,9 @@ export function WhatsAppInbox() {
               draft={draft}
               onDraftChange={setDraft}
               onSendText={() => void sendMessage()}
-              onSendMedia={(type, url, caption) => void sendMedia(type, url, caption)}
+              onSendMedia={(type, url, caption, filename) =>
+                void sendMedia(type, url, caption, filename)
+              }
               quickReplies={quickReplies}
             />
           </div>
