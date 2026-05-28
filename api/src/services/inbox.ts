@@ -44,8 +44,12 @@ function parseChatItem(item: unknown): NormalizedChat | null {
   if (!id) return null;
 
   const phone = chatIdToPhone(id);
+  const contactObj =
+    o.contact && typeof o.contact === "object"
+      ? (o.contact as Record<string, unknown>)
+      : null;
   const name = String(
-    o.name ?? o.formattedTitle ?? o.contact?.name ?? o.pushname ?? phone
+    o.name ?? o.formattedTitle ?? contactObj?.name ?? o.pushname ?? phone
   );
   const lastMsg =
     o.lastMessage && typeof o.lastMessage === "object"
