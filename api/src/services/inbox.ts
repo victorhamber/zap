@@ -18,6 +18,12 @@ export type NormalizedMessage = {
   type: string;
 };
 
+export type FetchMessagesOptions = {
+  chatId: string;
+  isGroup?: boolean;
+  count?: number;
+};
+
 function digitsOnly(phone: string): string {
   return phone.replace(/\D/g, "");
 }
@@ -25,6 +31,13 @@ function digitsOnly(phone: string): string {
 function chatIdToPhone(id: string): string {
   const base = id.replace(/@.*/, "");
   return digitsOnly(base);
+}
+
+function resolveChatId(chatId: string, isGroup?: boolean): string {
+  if (chatId.includes("@")) return chatId;
+  const clean = digitsOnly(chatId);
+  if (isGroup) return `${clean}@g.us`;
+  return `${clean}@c.us`;
 }
 
 function parseTimestamp(v: unknown): number {
@@ -104,10 +117,22 @@ export function normalizeChats(raw: unknown): NormalizedChat[] {
   return [...map.values()].sort((a, b) => b.timestamp - a.timestamp);
 }
 
+function messageBody(o: Record<string, unknown>): string {
+  const type = String(o.type ?? "chat");
+  const text = String(o.body ?? o.content ?? o.caption ?? o.text ?? "");
+  if (text.trim()) return text;
+  if (type === "image" || type === "sticker") return "📷 Imagem";
+  if (type === "video") return "🎬 Vídeo";
+  if (type === "audio" || type === "ptt") return "🎤 Áudio";
+  if (type === "document") return "📎 Documento";
+  if (type === "location") return "📍 Localização";
+  return "";
+}
+
 function parseMessageItem(item: unknown): NormalizedMessage | null {
   if (!item || typeof item !== "object") return null;
   const o = item as Record<string, unknown>;
-  const body = String(o.body ?? o.content ?? o.caption ?? o.text ?? "");
+  const body = messageBody(o);
   const id = String(o.id ?? o._id ?? `${o.timestamp ?? o.t ?? Date.now()}_${body.slice(0, 8)}`);
   const fromMe =
     o.fromMe === true ||
@@ -122,16 +147,34 @@ function parseMessageItem(item: unknown): NormalizedMessage | null {
   };
 }
 
-export function normalizeMessages(raw: unknown): NormalizedMessage[] {
-  let list: unknown[] = [];
-  if (Array.isArray(raw)) list = raw;
-  else if (raw && typeof raw === "object") {
-    const o = raw as Record<string, unknown>;
-    if (Array.isArray(o.response)) list = o.response;
-    else if (Array.isArray(o.messages)) list = o.messages;
-    else if (Array.isArray(o.data)) list = o.data;
+function extractMessageList(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) return raw;
+  if (!raw || typeof raw !== "object") return [];
+
+  const o = raw as Record<string, unknown>;
+  const keys = ["response", "messages", "data", "items", "msgs"] as const;
+
+  for (const key of keys) {
+    const val = o[key];
+    if (Array.isArray(val)) return val;
+    if (val && typeof val === "object") {
+      const nested = extractMessageList(val);
+      if (nested.length > 0) return nested;
+    }
   }
 
+  if (o.response && typeof o.response === "object" && !Array.isArray(o.response)) {
+    const resp = o.response as Record<string, unknown>;
+    for (const v of Object.values(resp)) {
+      if (Array.isArray(v)) return v;
+    }
+  }
+
+  return [];
+}
+
+export function normalizeMessages(raw: unknown): NormalizedMessage[] {
+  const list = extractMessageList(raw);
   return list
     .map(parseMessageItem)
     .filter((m): m is NormalizedMessage => Boolean(m))
@@ -143,37 +186,83 @@ export async function fetchChats(): Promise<NormalizedChat[]> {
   return normalizeChats(raw);
 }
 
-export async function fetchMessages(phone: string, count = 40): Promise<NormalizedMessage[]> {
-  const clean = digitsOnly(phone);
-  const chatId = phone.includes("@") ? phone : `${clean}@c.us`;
+function phoneForPath(chatId: string): string {
+  return encodeURIComponent(chatId);
+}
 
-  const attempts: Array<() => Promise<unknown>> = [
-    () =>
-      wpp.callSessionApi("/get-messages", "POST", {
-        phone: chatId,
-        count,
-        isGroup: chatId.includes("@g.us")
-      }),
-    () => wpp.callSessionApi(`/get-messages/${encodeURIComponent(clean)}`, "GET"),
-    () =>
-      wpp.callSessionApi("/get-all-messages-in-chat", "POST", {
-        phone: chatId,
-        count,
-        isGroup: chatId.includes("@g.us")
-      })
+export async function fetchMessages(
+  _phone: string,
+  options: FetchMessagesOptions
+): Promise<{ messages: NormalizedMessage[]; hint?: string }> {
+  const count = options.count ?? 50;
+  const chatId = resolveChatId(options.chatId, options.isGroup);
+  const pathPhone = phoneForPath(chatId);
+  const isGroup = chatId.includes("@g.us");
+
+  const attempts: Array<{ label: string; run: () => Promise<unknown> }> = [
+    {
+      label: "load-messages-in-chat",
+      run: () => wpp.callSessionApi(`/load-messages-in-chat/${pathPhone}`, "GET")
+    },
+    {
+      label: "all-messages-in-chat",
+      run: () => wpp.callSessionApi(`/all-messages-in-chat/${pathPhone}`, "GET")
+    },
+    {
+      label: "get-messages",
+      run: () => wpp.callSessionApi(`/get-messages/${pathPhone}`, "GET")
+    },
+    {
+      label: "get-messages-post",
+      run: () =>
+        wpp.callSessionApi("/get-messages", "POST", {
+          phone: chatId,
+          count,
+          isGroup
+        })
+    }
   ];
 
-  for (const fn of attempts) {
+  const errors: string[] = [];
+
+  for (const { label, run } of attempts) {
     try {
-      const raw = await fn();
+      const raw = await run();
       const msgs = normalizeMessages(raw);
-      if (msgs.length > 0) return msgs;
-    } catch {
-      /* próxima rota */
+      if (msgs.length > 0) return { messages: msgs };
+    } catch (e: any) {
+      errors.push(`${label}: ${e?.message ?? e}`);
     }
   }
 
-  return [];
+  try {
+    const raw = await wpp.callSessionApi("/all-chats-with-messages", "GET");
+    const chats = normalizeChats(raw);
+    const match = chats.find((c) => c.id === chatId || c.phone === chatIdToPhone(chatId));
+    if (match?.lastMessage) {
+      return {
+        messages: [
+          {
+            id: "preview",
+            body: match.lastMessage,
+            fromMe: false,
+            timestamp: match.timestamp,
+            type: "chat"
+          }
+        ],
+        hint: "Histórico completo indisponível; exibindo última mensagem do chat."
+      };
+    }
+  } catch {
+    /* ignora */
+  }
+
+  return {
+    messages: [],
+    hint:
+      errors[0]?.slice(0, 200) ??
+      "Não foi possível carregar mensagens. Confira se o WhatsApp está conectado."
+  };
 }
 
 export async function sendChatMessage(
@@ -181,9 +270,7 @@ export async function sendChatMessage(
   message: string,
   isGroup = false
 ): Promise<void> {
-  const clean = digitsOnly(phone);
-  const chatPhone =
-    phone.includes("@") ? phone : isGroup ? `${clean}@g.us` : `${clean}@c.us`;
+  const chatPhone = resolveChatId(phone.includes("@") ? phone : phone, isGroup);
 
   await wpp.callSessionApi("/send-message", "POST", {
     phone: chatPhone,

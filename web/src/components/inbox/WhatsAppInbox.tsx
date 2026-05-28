@@ -62,6 +62,7 @@ export function WhatsAppInbox() {
   const [newTagName, setNewTagName] = useState("");
   const [newTagColor, setNewTagColor] = useState("#25D366");
   const [showTagForm, setShowTagForm] = useState(false);
+  const [msgHint, setMsgHint] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const loadTags = useCallback(async () => {
@@ -90,14 +91,18 @@ export function WhatsAppInbox() {
 
   const loadMessages = useCallback(async (chat: Chat) => {
     setLoadingMsgs(true);
+    setMsgHint("");
     try {
-      const phone = encodeURIComponent(chat.isGroup ? chat.id : chat.phone);
-      const r = await api<{ ok: boolean; messages: Message[] }>(
-        `/api/inbox/chats/${phone}/messages`
+      const phone = encodeURIComponent(chat.phone);
+      const chatId = encodeURIComponent(chat.id);
+      const r = await api<{ ok: boolean; messages: Message[]; hint?: string; message?: string }>(
+        `/api/inbox/chats/${phone}/messages?chatId=${chatId}&isGroup=${chat.isGroup ? "1" : "0"}`
       );
       setMessages(r.messages ?? []);
-    } catch {
+      setMsgHint(r.hint ?? (r.ok ? "" : r.message ?? ""));
+    } catch (e: any) {
       setMessages([]);
+      setMsgHint(e?.message ?? "Erro ao carregar mensagens");
     } finally {
       setLoadingMsgs(false);
     }
@@ -410,9 +415,13 @@ export function WhatsAppInbox() {
                 <p className="text-center text-sm text-[#8696a0]">Carregando mensagens…</p>
               )}
               {!loadingMsgs && messages.length === 0 && (
-                <p className="text-center text-sm text-[#8696a0] py-8">
-                  Sem mensagens carregadas. Envie a primeira abaixo.
+                <p className="text-center text-sm text-[#8696a0] py-8 max-w-md mx-auto leading-relaxed">
+                  {msgHint ||
+                    "Sem mensagens no histórico. Envie a primeira mensagem abaixo ou aguarde o WPP sincronizar."}
                 </p>
+              )}
+              {!loadingMsgs && msgHint && messages.length > 0 && (
+                <p className="text-center text-xs text-[#8696a0] pb-2">{msgHint}</p>
               )}
               {messages.map((m) => (
                 <div

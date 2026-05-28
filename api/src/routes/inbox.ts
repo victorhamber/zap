@@ -33,9 +33,15 @@ export async function inboxRoutes(app: FastifyInstance) {
 
   app.get("/api/inbox/chats/:phone/messages", async (req) => {
     const phone = decodeURIComponent((req.params as { phone: string }).phone);
+    const q = req.query as { chatId?: string; isGroup?: string };
+    const chatId = q.chatId ? decodeURIComponent(q.chatId) : phone;
+    const isGroup = q.isGroup === "1" || q.isGroup === "true" || chatId.includes("@g.us");
     try {
-      const messages = await inbox.fetchMessages(phone);
-      return { ok: true, messages };
+      const { messages, hint } = await inbox.fetchMessages(phone, {
+        chatId,
+        isGroup
+      });
+      return { ok: true, messages, hint };
     } catch (e: any) {
       return { ok: false, message: e?.message ?? String(e), messages: [] };
     }

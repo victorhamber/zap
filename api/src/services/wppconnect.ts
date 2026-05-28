@@ -598,7 +598,7 @@ const BLOCKED_PROXY_PATHS = ["/generate-token", "/show-all-sessions"];
 
 export function validateProxyPath(path: string): string {
   const p = path.startsWith("/") ? path : `/${path}`;
-  if (!/^\/[a-zA-Z0-9/_-]+$/.test(p)) {
+  if (!/^\/[a-zA-Z0-9/_.@+-]+$/.test(p)) {
     throw new Error("Caminho da API inválido");
   }
   if (BLOCKED_PROXY_PATHS.some((b) => p.includes(b))) {
