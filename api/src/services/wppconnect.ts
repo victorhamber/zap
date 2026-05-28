@@ -218,11 +218,85 @@ export async function sendAudio(phone: string, url: string) {
 
 export async function checkConnection(): Promise<unknown> {
   const res = await wppFetch("/check-connection-session", { method: "GET" });
+  const body = await readWppJson(res);
   if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`check-connection falhou: ${res.status} ${body}`);
+    throw new Error(`check-connection: ${formatWppError(res.status, body)}`);
   }
-  return res.json().catch(() => ({}));
+  return body;
+}
+
+const CONNECTED_STATES = new Set([
+  "CONNECTED",
+  "ISCONNECTED",
+  "SUCCESS",
+  "INCHAT",
+  "MAIN",
+  "NORMAL",
+  "OPENING",
+  "PAIRING",
+  "SYNCING"
+]);
+
+export function isWppConnectedState(state: string): boolean {
+  const s = state.toUpperCase();
+  if (CONNECTED_STATES.has(s)) return true;
+  if (s.includes("CONNECTED") && !s.includes("DIS")) return true;
+  return false;
+}
+
+function parseConnectionCheck(data: unknown): boolean {
+  if (!data || typeof data !== "object") return false;
+  const o = data as Record<string, unknown>;
+  if (o.status === true || o.connected === true || o.isConnected === true) return true;
+  const msg = typeof o.message === "string" ? o.message : "";
+  if (/connected|conectad|inchats|main|normal|true/i.test(msg)) return true;
+  return false;
+}
+
+export async function verifyActiveSession() {
+  const settings = await getSettings();
+  const sessionName = settings.wppSession;
+
+  let state = "DESCONHECIDO";
+  let sessionStatus: unknown = null;
+  try {
+    sessionStatus = await getSessionStatus();
+    state = extractSessionState(sessionStatus);
+  } catch {
+    state = "INDISPONÍVEL";
+  }
+
+  let connection: unknown = null;
+  let phoneConnected = false;
+  try {
+    connection = await checkConnection();
+    phoneConnected = parseConnectionCheck(connection);
+  } catch {
+    phoneConnected = false;
+  }
+
+  const sessionAlive = isWppConnectedState(state);
+  const connected = phoneConnected || sessionAlive;
+
+  let message: string;
+  if (connected) {
+    message = `Instância "${sessionName}" conectada. Pronta para enviar mensagens e receber automações.`;
+  } else if (state === "CLOSED" || state.includes("QR") || state === "QRCODE" || state === "NOTLOGGED") {
+    message = `Instância "${sessionName}" desconectada (${state}). Clique em "Conectar / Mostrar QR" e escaneie no celular.`;
+  } else {
+    message = `Instância "${sessionName}" não está operacional (status: ${state}). Tente reconectar.`;
+  }
+
+  return {
+    connected,
+    state,
+    session: sessionName,
+    message,
+    phoneConnected,
+    sessionAlive,
+    sessionStatus,
+    connection
+  };
 }
 
 function inboundWebhookUrl(): string {

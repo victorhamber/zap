@@ -145,4 +145,23 @@ export async function settingsRoutes(app: FastifyInstance) {
       return reply.status(502).send({ ok: false, error: e?.message ?? String(e) });
     }
   });
+
+  app.get("/api/settings/wpp/verify", async (_req, reply) => {
+    try {
+      const result = await wpp.verifyActiveSession();
+      if (prisma) {
+        await prisma.appSettings.update({
+          where: { id: "default" },
+          data: {
+            connectionStatus: result.connected
+              ? `CONNECTED:${result.state}`
+              : `DISCONNECTED:${result.state}`
+          }
+        });
+      }
+      return { ok: true, ...result };
+    } catch (e: any) {
+      return reply.status(502).send({ ok: false, error: e?.message ?? String(e) });
+    }
+  });
 }

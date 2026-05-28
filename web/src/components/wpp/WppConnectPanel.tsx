@@ -8,18 +8,20 @@ type WppSettings = {
   connectionStatus: string | null;
 };
 
-const CONNECTED_STATES = new Set([
-  "CONNECTED",
-  "ISCONNECTED",
-  "SUCCESS",
-  "INCHAT",
-  "MAIN",
-  "NORMAL"
-]);
-
 function isConnectedState(state: string): boolean {
   const s = state.toUpperCase();
-  if (CONNECTED_STATES.has(s)) return true;
+  const ok = new Set([
+    "CONNECTED",
+    "ISCONNECTED",
+    "SUCCESS",
+    "INCHAT",
+    "MAIN",
+    "NORMAL",
+    "OPENING",
+    "PAIRING",
+    "SYNCING"
+  ]);
+  if (ok.has(s)) return true;
   return s.includes("CONNECTED") && !s.includes("DIS");
 }
 
@@ -30,29 +32,11 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
-  const [diag, setDiag] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadSettings = useCallback(async () => {
     const s = await api<WppSettings>("/api/settings/wpp");
     setSettings(s);
-  }, []);
-
-  const refreshSession = useCallback(async () => {
-    try {
-      const r = await api<{ ok: boolean; state?: string; status?: unknown; error?: string }>(
-        "/api/settings/wpp/session"
-      );
-      if (r.ok && r.state) {
-        setState(r.state);
-        if (isConnectedState(r.state)) {
-          setQrImage(null);
-          setMsg("WhatsApp conectado.");
-        }
-      }
-    } catch {
-      /* ignora entre polls */
-    }
   }, []);
 
   const refreshQr = useCallback(async () => {
@@ -68,10 +52,36 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
       if (r.qrImage) setQrImage(r.qrImage);
       if (r.state && isConnectedState(r.state)) {
         setQrImage(null);
-        setMsg("WhatsApp conectado.");
       }
     } catch {
       /* sessão pode ainda não ter QR */
+    }
+  }, []);
+
+  const verifyConnection = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true);
+    setError("");
+    try {
+      const r = await api<{
+        ok: boolean;
+        connected?: boolean;
+        state?: string;
+        message?: string;
+        error?: string;
+      }>("/api/settings/wpp/verify");
+      if (!r.ok) throw new Error(r.error ?? "Falha ao verificar");
+
+      if (r.state) setState(r.state);
+      if (r.connected) {
+        setQrImage(null);
+        setMsg(r.message ?? "WhatsApp conectado e operacional.");
+      } else {
+        setMsg(r.message ?? `Status atual: ${r.state ?? "desconhecido"}`);
+      }
+    } catch (e: any) {
+      setError(e?.message ?? "Não foi possível verificar a conexão");
+    } finally {
+      if (showLoading) setLoading(false);
     }
   }, []);
 
@@ -85,16 +95,15 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
   const startPolling = useCallback(() => {
     stopPolling();
     pollRef.current = setInterval(() => {
-      refreshSession();
       refreshQr();
     }, 4000);
-  }, [stopPolling, refreshSession, refreshQr]);
+  }, [stopPolling, refreshQr]);
 
   useEffect(() => {
     loadSettings();
-    refreshSession();
+    verifyConnection(false);
     return () => stopPolling();
-  }, [loadSettings, refreshSession, stopPolling]);
+  }, [loadSettings, verifyConnection, stopPolling]);
 
   useEffect(() => {
     if (qrImage && !isConnectedState(state)) startPolling();
@@ -154,7 +163,10 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
     setLoading(true);
     setError("");
     try {
-      await api("/api/settings/wpp/close-session", { method: "POST" });
+      await api("/api/settings/wpp/close-session", {
+        method: "POST",
+        body: JSON.stringify({})
+      });
       setQrImage(null);
       setState("CLOSED");
       setMsg("Sessão fechada.");
@@ -170,35 +182,16 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
     setLoading(true);
     setError("");
     try {
-      await api("/api/settings/wpp/logout-session", { method: "POST" });
+      await api("/api/settings/wpp/logout-session", {
+        method: "POST",
+        body: JSON.stringify({})
+      });
       setQrImage(null);
       setState("LOGOUT");
       setMsg("Desconectado. Conecte de novo para gerar novo QR.");
       stopPolling();
     } catch (e: any) {
       setError(e?.message ?? "Erro ao desconectar");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function runDiagnostics() {
-    setLoading(true);
-    setError("");
-    setDiag(null);
-    try {
-      const r = await api<{
-        ok: boolean;
-        steps?: Array<{ step: string; ok: boolean; detail: string }>;
-        baseUrl?: string;
-        error?: string;
-      }>("/api/settings/wpp/diagnostics");
-      if (r.error) throw new Error(r.error);
-      const lines = (r.steps ?? []).map((s) => `${s.ok ? "✓" : "✗"} ${s.step}: ${s.detail}`);
-      setDiag(lines.join("\n"));
-      if (!r.ok) setError("Diagnóstico encontrou falhas — veja abaixo.");
-    } catch (e: any) {
-      setError(e?.message ?? "Diagnóstico falhou");
     } finally {
       setLoading(false);
     }
@@ -236,7 +229,15 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
           {error}
         </div>
       )}
-      {msg && <p className="mt-3 text-sm text-zinc-400">{msg}</p>}
+      {msg && (
+        <p
+          className={`mt-3 text-sm ${
+            connected ? "text-emerald-400/90" : "text-zinc-400"
+          }`}
+        >
+          {msg}
+        </p>
+      )}
 
       {qrImage && !connected && (
         <div className="mt-5 flex flex-col items-center">
@@ -273,8 +274,9 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
         <button
           type="button"
           disabled={loading}
-          onClick={refreshSession}
+          onClick={() => verifyConnection(true)}
           className="rounded-xl border border-zinc-700 px-4 py-2 text-sm hover:bg-zinc-900 disabled:opacity-50"
+          title="Confere se o WhatsApp desta instância ainda está conectado"
         >
           Verificar status
         </button>
@@ -294,21 +296,7 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
         >
           Desconectar
         </button>
-        <button
-          type="button"
-          disabled={loading}
-          onClick={runDiagnostics}
-          className="rounded-xl border border-amber-700/50 px-4 py-2 text-sm text-amber-200/90 hover:bg-amber-950/30 disabled:opacity-50"
-        >
-          Testar ligação Zap → WPP
-        </button>
       </div>
-
-      {diag && (
-        <pre className="mt-4 max-h-48 overflow-auto rounded-xl border border-zinc-800 bg-black/40 p-3 text-xs text-zinc-400 whitespace-pre-wrap">
-          {diag}
-        </pre>
-      )}
 
       {!compact && (
         <p className="mt-4 text-xs text-zinc-500">
