@@ -46,11 +46,11 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
     try {
       await api("/api/wpp/instances", {
         method: "POST",
-        body: JSON.stringify({ name, label: newLabel.trim() || name, connect: true })
+        body: JSON.stringify({ name, label: newLabel.trim() || name, connect: false })
       });
       setNewName("");
       setNewLabel("");
-      setMsg(`Instância "${name}" criada. Escaneie o QR na aba Conexão.`);
+      setMsg(`Instância "${name}" criada. Vá em Conexão / QR e clique em Conectar.`);
       await load();
       onActivated?.();
     } catch (e: any) {

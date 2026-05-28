@@ -8,7 +8,7 @@ Repositório: https://github.com/victorhamber/zap
 2. **redis** — Redis
 3. **zap** — App (este repo, `Dockerfile`, porta `3000`)
 4. **zap-worker** — Worker (`Dockerfile.worker`, mesmas envs, sem domínio)
-5. **wppconnect** — já existente (`https://wpp.trajettu.com`)
+5. **wppconnect** — WPPConnect (`porta 21465`)
 
 ## App `zap` no EasyPanel
 
@@ -26,8 +26,6 @@ Repositório: https://github.com/victorhamber/zap
 
 ## Variáveis (app `zap` e `zap-worker`)
 
-Use os hosts internos que o EasyPanel mostra em cada serviço.
-
 ```env
 APP_PUBLIC_URL=https://zap.trajettu.com
 NODE_ENV=production
@@ -41,20 +39,45 @@ JWT_EXPIRES_IN=7d
 ADMIN_EMAIL=admin@trajettu.com
 ADMIN_PASSWORD=sua-senha-admin
 
-WPP_BASE_URL=https://wpp.trajettu.com
+# URL pública (navegador / documentação)
+WPP_BASE_URL=https://wpp.trajettu.com:21465
+
+# OBRIGATÓRIO em produção: URL interna Docker do serviço WPP (nome do app no EasyPanel)
+WPP_INTERNAL_URL=http://NOME_DO_SERVICO_WPP:21465
+
 WPP_SESSION=autofintech
-WPP_SECRET_KEY=mesma-do-wppconnect
+WPP_SECRET_KEY=mesma-chave-secretKey-do-wppconnect
 
 HOTMART_WEBHOOK_SECRET=
 CORS_ORIGIN=https://zap.trajettu.com
 ```
 
-## Após o primeiro deploy do app `zap`
+Substitua `NOME_DO_SERVICO_WPP` pelo hostname interno que o EasyPanel mostra (ex: `zap_wppconnect` ou `wpp`).
 
-No terminal do container:
+## WPPConnect — erros no log (AggregateError / startAllSessions)
 
-```bash
-npm run db:seed
+Se o log do WPP mostra `AggregateError` ao subir, é falha ao chamar **webhook** ou ao auto-iniciar sessões antigas.
+
+No `config` do WPPConnect, ajuste:
+
+```js
+startAllSession: false,
+webhook: {
+  url: null,
+  // ...
+},
 ```
 
+Depois reinicie o WPP. Conecte pelo **Zap → WhatsApp → Conexão / QR**.
+
+O webhook `https://zap.trajettu.com/api/webhooks/wppconnect` é configurado pelo Zap no `start-session` quando você clica em Conectar.
+
+## Após o primeiro deploy do app `zap`
+
+O bootstrap cria o admin automaticamente. Se precisar resetar senha: `npm run db:seed` no terminal do container.
+
 Login: `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
+
+## Diagnóstico no painel
+
+**WhatsApp → Conexão / QR → Testar ligação Zap → WPP** mostra se token, URL e sessão estão corretos.

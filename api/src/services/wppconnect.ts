@@ -1,6 +1,23 @@
 import { env } from "../env.js";
 import { prisma } from "../prisma.js";
 
+function wppBaseUrl(settings: { wppBaseUrl: string }): string {
+  const internal = env.WPP_INTERNAL_URL?.trim().replace(/\/$/, "");
+  if (internal) return internal;
+  return settings.wppBaseUrl.replace(/\/$/, "");
+}
+
+export function formatWppError(status: number, body: unknown): string {
+  if (typeof body === "string" && body.trim()) return body.slice(0, 400);
+  if (body && typeof body === "object") {
+    const o = body as Record<string, unknown>;
+    const msg = o.message ?? o.error ?? o.status;
+    if (typeof msg === "string") return msg;
+    if (Array.isArray(o.errors)) return JSON.stringify(o.errors).slice(0, 400);
+  }
+  return `HTTP ${status}`;
+}
+
 type TokenResponse = {
   status: string;
   session: string;
@@ -50,18 +67,32 @@ export async function setActiveSession(sessionName: string): Promise<void> {
 
 export async function refreshWppToken(sessionOverride?: string): Promise<string> {
   const settings = await getSettings();
-  const base = settings.wppBaseUrl.replace(/\/$/, "");
+  const base = wppBaseUrl(settings);
   const session = sessionOverride ?? settings.wppSession;
   const secret = env.WPP_SECRET_KEY;
 
   const url = `${base}/api/${encodeURIComponent(session)}/${encodeURIComponent(secret)}/generate-token`;
-  const res = await fetch(url, { method: "POST", headers: { accept: "application/json" } });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`WPP generate-token falhou: ${res.status} ${body}`);
+  let res: Response;
+  try {
+    res = await fetch(url, { method: "POST", headers: { accept: "application/json" } });
+  } catch (e: any) {
+    throw new Error(
+      `Zap não alcançou o WPPConnect em ${base}. Defina WPP_INTERNAL_URL (rede Docker) ou WPP_BASE_URL com porta correta. ${e?.message ?? e}`
+    );
   }
-  const data = (await res.json()) as TokenResponse;
+  const rawText = await res.text().catch(() => "");
+  let parsed: unknown = rawText;
+  try {
+    parsed = rawText ? JSON.parse(rawText) : {};
+  } catch {
+    /* texto */
+  }
+  if (!res.ok) {
+    throw new Error(`generate-token: ${formatWppError(res.status, parsed)}`);
+  }
+  const data = parsed as TokenResponse;
   const token = data.token;
+  if (!token) throw new Error("generate-token não retornou token — confira WPP_SECRET_KEY");
 
   if (prisma) {
     await prisma.appSettings.update({
@@ -81,20 +112,25 @@ export async function getWppToken(): Promise<string> {
 
 async function wppFetch(path: string, init: RequestInit, retry = true): Promise<Response> {
   const settings = await getSettings();
-  const base = settings.wppBaseUrl.replace(/\/$/, "");
+  const base = wppBaseUrl(settings);
   const session = settings.wppSession;
   const token = await getWppToken();
 
   const url = `${base}/api/${encodeURIComponent(session)}${path}`;
-  const res = await fetch(url, {
-    ...init,
-    headers: {
-      accept: "application/json",
-      "content-type": "application/json",
-      authorization: `Bearer ${token}`,
-      ...(init.headers ?? {})
-    }
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      ...init,
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+        authorization: `Bearer ${token}`,
+        ...(init.headers ?? {})
+      }
+    });
+  } catch (e: any) {
+    throw new Error(`Falha de rede ao chamar WPP (${base}): ${e?.message ?? e}`);
+  }
 
   if (res.status === 401 && retry) {
     await refreshWppToken();
@@ -102,6 +138,15 @@ async function wppFetch(path: string, init: RequestInit, retry = true): Promise<
   }
 
   return res;
+}
+
+async function readWppJson(res: Response): Promise<unknown> {
+  const text = await res.text().catch(() => "");
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    return text;
+  }
 }
 
 export async function sendText(phone: string, message: string) {
@@ -211,18 +256,29 @@ async function persistConnectionStatus(label: string, payload?: unknown) {
   });
 }
 
-export async function startSession(): Promise<unknown> {
-  const webhook = inboundWebhookUrl();
+async function postStartSession(webhook: string | null): Promise<{ res: Response; body: unknown }> {
+  const payload: Record<string, unknown> = { waitQrCode: true };
+  if (webhook) payload.webhook = webhook;
   const res = await wppFetch("/start-session", {
     method: "POST",
-    body: JSON.stringify({
-      webhook,
-      waitQrCode: false
-    })
+    body: JSON.stringify(payload)
   });
-  const body = await res.json().catch(() => ({}));
+  const body = await readWppJson(res);
+  return { res, body };
+}
+
+export async function startSession(): Promise<unknown> {
+  const webhook = inboundWebhookUrl();
+  let { res, body } = await postStartSession(webhook);
+
+  if (!res.ok && (res.status === 400 || res.status === 422)) {
+    const second = await postStartSession(null);
+    res = second.res;
+    body = second.body;
+  }
+
   if (!res.ok) {
-    throw new Error(`start-session falhou: ${res.status} ${JSON.stringify(body)}`);
+    throw new Error(`start-session: ${formatWppError(res.status, body)}`);
   }
   await persistConnectionStatus("start_session", body);
   return body;
@@ -270,15 +326,66 @@ export async function logoutSession(): Promise<unknown> {
 
 export async function listServerSessions(): Promise<unknown> {
   const settings = await getSettings();
-  const base = settings.wppBaseUrl.replace(/\/$/, "");
+  const base = wppBaseUrl(settings);
   const secret = env.WPP_SECRET_KEY;
   const url = `${base}/api/${encodeURIComponent(secret)}/show-all-sessions`;
-  const res = await fetch(url, { headers: { accept: "application/json" } });
-  const body = await res.json().catch(() => ({}));
+  let res: Response;
+  try {
+    res = await fetch(url, { headers: { accept: "application/json" } });
+  } catch (e: any) {
+    throw new Error(`Não foi possível listar sessões em ${base}: ${e?.message ?? e}`);
+  }
+  const body = await readWppJson(res);
   if (!res.ok) {
-    throw new Error(`show-all-sessions falhou: ${res.status} ${JSON.stringify(body)}`);
+    throw new Error(`show-all-sessions: ${formatWppError(res.status, body)}`);
   }
   return body;
+}
+
+export async function runWppDiagnostics() {
+  const settings = await getSettings();
+  const base = wppBaseUrl(settings);
+  const publicBase = settings.wppBaseUrl.replace(/\/$/, "");
+  const steps: Array<{ step: string; ok: boolean; detail: string }> = [];
+
+  steps.push({
+    step: "URL usada pelo Zap",
+    ok: true,
+    detail: env.WPP_INTERNAL_URL ? `${base} (interna)` : `${base} (pública)`
+  });
+
+  try {
+    await listServerSessions();
+    steps.push({ step: "Listar sessões (secret)", ok: true, detail: "OK" });
+  } catch (e: any) {
+    steps.push({ step: "Listar sessões (secret)", ok: false, detail: e.message });
+  }
+
+  try {
+    await refreshWppToken();
+    steps.push({ step: "Gerar token da sessão", ok: true, detail: `Sessão: ${settings.wppSession}` });
+  } catch (e: any) {
+    steps.push({ step: "Gerar token da sessão", ok: false, detail: e.message });
+  }
+
+  try {
+    const st = await getSessionStatus();
+    steps.push({
+      step: "Status da sessão",
+      ok: true,
+      detail: extractSessionState(st)
+    });
+  } catch (e: any) {
+    steps.push({ step: "Status da sessão", ok: false, detail: e.message });
+  }
+
+  return {
+    baseUrl: base,
+    publicUrl: publicBase,
+    session: settings.wppSession,
+    webhook: inboundWebhookUrl(),
+    steps
+  };
 }
 
 const BLOCKED_PROXY_PATHS = ["/generate-token", "/show-all-sessions"];

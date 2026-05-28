@@ -14,6 +14,8 @@ const EnvSchema = z.object({
   JWT_EXPIRES_IN: z.string().default("7d"),
 
   WPP_BASE_URL: z.string().default("https://wpp.trajettu.com"),
+  /** URL rede interna (EasyPanel). Ex: http://nome-servico-wpp:21465 */
+  WPP_INTERNAL_URL: z.string().optional(),
   WPP_SESSION: z.string().default("autofintech"),
   WPP_SECRET_KEY: isProd ? z.string().min(8) : z.string().default("dev-secret-key"),
 

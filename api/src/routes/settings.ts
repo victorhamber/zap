@@ -125,4 +125,14 @@ export async function settingsRoutes(app: FastifyInstance) {
       return reply.status(502).send({ ok: false, error: e?.message ?? String(e) });
     }
   });
+
+  app.get("/api/settings/wpp/diagnostics", async (_req, reply) => {
+    try {
+      const report = await wpp.runWppDiagnostics();
+      const allOk = report.steps.every((s) => s.ok);
+      return { ok: allOk, ...report };
+    } catch (e: any) {
+      return reply.status(502).send({ ok: false, error: e?.message ?? String(e) });
+    }
+  });
 }

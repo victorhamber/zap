@@ -35,10 +35,14 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     const text = await res.text().catch(() => "");
     let message = text || `HTTP ${res.status}`;
     try {
-      const json = JSON.parse(text) as { error?: string };
+      const json = JSON.parse(text) as { error?: string; message?: string };
       if (json.error) message = json.error;
+      else if (json.message) message = json.message;
     } catch {
       /* texto puro */
+    }
+    if (message === "Bad Request" && text.length > 20) {
+      message = text.slice(0, 500);
     }
     throw new Error(message);
   }

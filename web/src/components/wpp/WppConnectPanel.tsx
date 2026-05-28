@@ -30,6 +30,7 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
+  const [diag, setDiag] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadSettings = useCallback(async () => {
@@ -175,6 +176,28 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
     }
   }
 
+  async function runDiagnostics() {
+    setLoading(true);
+    setError("");
+    setDiag(null);
+    try {
+      const r = await api<{
+        ok: boolean;
+        steps?: Array<{ step: string; ok: boolean; detail: string }>;
+        baseUrl?: string;
+        error?: string;
+      }>("/api/settings/wpp/diagnostics");
+      if (r.error) throw new Error(r.error);
+      const lines = (r.steps ?? []).map((s) => `${s.ok ? "✓" : "✗"} ${s.step}: ${s.detail}`);
+      setDiag(lines.join("\n"));
+      if (!r.ok) setError("Diagnóstico encontrou falhas — veja abaixo.");
+    } catch (e: any) {
+      setError(e?.message ?? "Diagnóstico falhou");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   const connected = isConnectedState(state);
 
   return (
@@ -265,7 +288,21 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
         >
           Desconectar
         </button>
+        <button
+          type="button"
+          disabled={loading}
+          onClick={runDiagnostics}
+          className="rounded-xl border border-amber-700/50 px-4 py-2 text-sm text-amber-200/90 hover:bg-amber-950/30 disabled:opacity-50"
+        >
+          Testar ligação Zap → WPP
+        </button>
       </div>
+
+      {diag && (
+        <pre className="mt-4 max-h-48 overflow-auto rounded-xl border border-zinc-800 bg-black/40 p-3 text-xs text-zinc-400 whitespace-pre-wrap">
+          {diag}
+        </pre>
+      )}
 
       {!compact && (
         <p className="mt-4 text-xs text-zinc-500">
