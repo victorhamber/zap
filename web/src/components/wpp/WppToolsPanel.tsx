@@ -53,7 +53,11 @@ export function WppToolsPanel() {
       <div>
         <h2 className="text-lg font-semibold text-white">Ferramentas WPPConnect</h2>
         <p className="text-sm text-zinc-400 mt-1">
-          Ações da API na instância ativa — grupos, chats, envios e mais.
+          Ações da API na instância ativa — só funcionam com WhatsApp conectado (QR escaneado).
+        </p>
+        <p className="text-xs text-amber-200/90 mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+          Se o log do WPP mostra Code 21 ou SingletonLock, pare o wppconnect, limpe o volume
+          userDataDir e conecte de novo — não use estas ferramentas até o QR conectar.
         </p>
       </div>
 

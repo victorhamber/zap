@@ -92,6 +92,22 @@ WPP_HUMANIZE=true
 - Prefira o **mesmo IP** do servidor e volume persistente no WPPConnect.
 - Não existe “modo invisível” 100%: automação sempre tem risco. O painel imita o Web, mas o WhatsApp pode detectar API não oficial.
 
+## Checklist — não conecta (faça nesta ordem)
+
+1. **Pare** o `wppconnect` (scale 0). Não redeploy com o volume travado.
+2. No volume **`userDataDir`**, apague a pasta **`eatrend`** e **`autofintech`** inteiras (ou só os arquivos `SingletonLock`, `SingletonSocket`, `SingletonCookie` dentro delas).
+3. No volume **`tokens`**, apague `eatrend.data.json` e `autofintech.data.json` se existirem.
+4. No **config** do WPP (obrigatório):
+   - `startAllSession: false` (evita `AggregateError` ao subir)
+   - `webhook.url: null`
+   - `createOptions.autoClose: 0`
+5. **1 réplica** só do wppconnect.
+6. **Suba** o wppconnect; espere log sem Code 21.
+7. No Zap: **uma** instância ativa (`eatrend` *ou* `autofintech`) → **Conectar / Mostrar QR** → escaneie em até 30s.
+8. Não clique em **Listar grupos/chats** nas ferramentas antes do QR conectar (gera `req.client.* is not a function` no log).
+
+O aviso `punycode` no Node é inofensivo. `Auto Close Called` / `qrReadError` = escaneou tarde ou `autoClose` ainda em 60s — use `autoClose: 0`.
+
 ## Chrome travado: `profile appears to be in use` / Code 21
 
 Se o log do **wppconnect** mostra `Failed to launch the browser process: Code: 21` ou `The profile appears to be in use by another Chromium process`, o perfil no volume ficou **bloqueado** (arquivo `SingletonLock` de um container antigo). O Zap **não consegue** abrir QR até isso ser corrigido no WPP.

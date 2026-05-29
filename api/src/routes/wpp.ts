@@ -155,11 +155,28 @@ export async function wppRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: "Método inválido" });
     }
 
+    const safePath = path.split("?")[0];
+    const allowedOffline = ["/check-connection-session", "/status-session", "/qrcode-session"];
+    const needsLiveSession = !allowedOffline.some((p) => safePath === p || safePath.endsWith(p));
+
+    if (needsLiveSession) {
+      const check = await wpp.verifyActiveSession();
+      if (!check.connected) {
+        return reply.status(503).send({
+          ok: false,
+          error: check.message ?? wpp.MSG_NO_DEVICE,
+          browserLock: check.browserLock === true,
+          needsQr: true
+        });
+      }
+    }
+
     try {
       const data = await wpp.callSessionApi(path, method, body.payload);
       return { ok: true, data };
     } catch (e: any) {
-      return reply.status(502).send({ ok: false, error: e?.message ?? String(e) });
+      const msg = wpp.mapWppErrorMessage(e?.message ?? String(e));
+      return reply.status(502).send({ ok: false, error: msg });
     }
   });
 }
