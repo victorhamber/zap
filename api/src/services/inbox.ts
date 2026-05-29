@@ -93,6 +93,27 @@ function detectKind(id: string, o?: Record<string, unknown>): ChatKind {
   return "direct";
 }
 
+/** Texto da última mensagem no formato Evolution API (Baileys). */
+function evolutionLastPreview(lastMsg: Record<string, unknown>): string {
+  const inner =
+    lastMsg.message && typeof lastMsg.message === "object"
+      ? (lastMsg.message as Record<string, unknown>)
+      : null;
+  if (inner) {
+    if (typeof inner.conversation === "string" && inner.conversation.trim()) {
+      return inner.conversation.trim();
+    }
+    const ext = inner.extendedTextMessage as Record<string, unknown> | undefined;
+    if (ext && typeof ext.text === "string" && ext.text.trim()) return ext.text.trim();
+    if (inner.imageMessage) return "📷 Imagem";
+    if (inner.videoMessage) return "🎬 Vídeo";
+    if (inner.audioMessage || inner.pttMessage) return "🎤 Áudio";
+    if (inner.documentMessage) return "📎 Documento";
+    if (inner.stickerMessage) return "🎭 Sticker";
+  }
+  return messageBody(lastMsg);
+}
+
 function parseTimestamp(v: unknown): number {
   if (typeof v === "number") return v > 1e12 ? v : v * 1000;
   if (typeof v === "string") {
@@ -107,6 +128,8 @@ function parseChatItem(item: unknown): NormalizedChat | null {
   const o = item as Record<string, unknown>;
 
   const rawId =
+    extractWaId(o.remoteJid) ||
+    extractWaId(o.jid) ||
     extractWaId(o.id) ||
     extractWaId(o.chatId) ||
     extractWaId(o._id) ||
@@ -127,7 +150,8 @@ function parseChatItem(item: unknown): NormalizedChat | null {
       : null;
   const kind = detectKind(resolvedId, o);
   const name = String(
-    o.name ??
+    o.pushName ??
+      o.name ??
       o.formattedTitle ??
       contactObj?.name ??
       o.pushname ??
@@ -139,17 +163,16 @@ function parseChatItem(item: unknown): NormalizedChat | null {
       ? (o.lastMessage as Record<string, unknown>)
       : o;
 
-  const lastBody = String(
-    lastMsg?.body ??
-      lastMsg?.content ??
-      lastMsg?.caption ??
-      o.msg ??
-      o.preview ??
-      ""
-  );
+  const lastBody = evolutionLastPreview(lastMsg) || String(o.msg ?? o.preview ?? "");
 
   const ts = parseTimestamp(
-    lastMsg?.timestamp ?? lastMsg?.t ?? o.t ?? o.timestamp ?? o.time
+    lastMsg?.messageTimestamp ??
+      lastMsg?.timestamp ??
+      lastMsg?.t ??
+      o.conversationTimestamp ??
+      o.t ??
+      o.timestamp ??
+      o.time
   );
 
   const isGroup = kind === "group" || kind === "community";
@@ -173,7 +196,8 @@ export function normalizeChats(raw: unknown): NormalizedChat[] {
     const o = raw as Record<string, unknown>;
     if (Array.isArray(o.response)) list = o.response;
     else if (Array.isArray(o.chats)) list = o.chats;
-    else if (Array.isArray(o.data)) list = o.data;
+    else     if (Array.isArray(o.data)) list = o.data;
+    else if (Array.isArray(o.records)) list = o.records;
     else if (o.response && typeof o.response === "object") {
       list = Object.values(o.response as Record<string, unknown>);
     }
@@ -356,8 +380,7 @@ export type FetchChatsResult = {
 };
 
 export async function fetchChats(): Promise<FetchChatsResult> {
-  const { verifyActiveSession } = await import("./wppconnect.js");
-  const check = await verifyActiveSession();
+  const check = await wpp.verifyActiveSession();
   if (!check.connected) {
     return {
       chats: [],
@@ -408,6 +431,15 @@ export async function fetchChats(): Promise<FetchChatsResult> {
       errors.push(`${task.name}: ${msg}`);
     }
   });
+
+  if (map.size === 0 && check.connected) {
+    const { listStoredChatSummaries } = await import("./inboxStore.js");
+    const stored = await listStoredChatSummaries();
+    if (stored.length > 0) {
+      mergeChats(map, stored);
+      sourcesOk.push(`inbox-local (${stored.length})`);
+    }
+  }
 
   const chats = [...map.values()].sort((a, b) => {
     if (a.timestamp !== b.timestamp) return b.timestamp - a.timestamp;

@@ -1,5 +1,5 @@
 import { prisma } from "../prisma.js";
-import { extractWaId, type NormalizedMessage } from "./inbox.js";
+import { extractWaId, type NormalizedChat, type NormalizedMessage } from "./inbox.js";
 import { persistInboundMedia } from "./mediaConvert.js";
 import { isPersistedUploadUrl, toPublicMediaUrl } from "./uploads.js";
 import {
@@ -284,6 +284,39 @@ export function webhookMediaAlreadyInline(
   if (parsed.mediaUrl?.startsWith("data:")) return true;
   if (isLikelyBase64Payload(parsed.text)) return true;
   return false;
+}
+
+/** Conversas já capturadas via webhook (fallback quando a API não lista chats). */
+export async function listStoredChatSummaries(): Promise<NormalizedChat[]> {
+  if (!prisma) return [];
+  const session = await getSessionName();
+  const captureSince = await getCaptureSince();
+  const rows = await prisma.inboxMessage.findMany({
+    where: {
+      session,
+      ...(captureSince ? { timestamp: { gte: captureSince } } : {})
+    },
+    orderBy: { timestamp: "desc" },
+    distinct: ["chatId"],
+    take: 200,
+    select: { chatId: true, body: true, timestamp: true }
+  });
+
+  return rows.map((r) => {
+    const id = r.chatId;
+    const isGroup = id.includes("@g.us");
+    const phone = digitsOnly(id.replace(/@.*/, "")) || id.replace(/@.*/, "");
+    return {
+      id,
+      phone,
+      name: phone,
+      lastMessage: r.body.slice(0, 120),
+      timestamp: r.timestamp.getTime(),
+      isGroup,
+      kind: isGroup ? ("group" as const) : ("direct" as const),
+      unreadCount: 0
+    };
+  });
 }
 
 export async function listStoredMessages(
