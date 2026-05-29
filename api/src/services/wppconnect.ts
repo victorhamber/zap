@@ -100,25 +100,53 @@ export async function clearWppStoredAuth(connectionStatus: string): Promise<void
   });
 }
 
-/** Após escanear o QR o WPP emite browserClose ao recarregar — ignorar por um tempo. */
-let lastQrReadSuccessAt = 0;
-const PAIRING_GRACE_MS = 120_000;
+/** Janela em que o Zap não deve logout/start/check agressivo (QR + sync após scan). */
+let pairingQuietUntil = 0;
+const PAIRING_GRACE_MS = 180_000;
 
-function touchQrReadSuccess(): void {
-  lastQrReadSuccessAt = Date.now();
+function extendPairingQuiet(extraMs = PAIRING_GRACE_MS): void {
+  pairingQuietUntil = Math.max(pairingQuietUntil, Date.now() + extraMs);
 }
 
-function isInPairingGrace(): boolean {
-  return Date.now() - lastQrReadSuccessAt < PAIRING_GRACE_MS;
+export function isPairingQuiet(): boolean {
+  return Date.now() < pairingQuietUntil;
+}
+
+function clearPairingQuiet(): void {
+  pairingQuietUntil = 0;
+}
+
+function touchQrReadSuccess(): void {
+  extendPairingQuiet();
 }
 
 /** Estado estável com aparelho pareado (não QR / CONNECTING). */
 export function isStablePhoneConnectionState(state: string): boolean {
   const s = state.toUpperCase();
   if (!s || sessionNeedsQr(s)) return false;
-  if (s.includes("CONNECTING") || s.includes("QRREAD") || s === "PAIRING") return false;
+  if (
+    s.includes("CONNECTING") ||
+    s.includes("SYNCING") ||
+    s.includes("OPENING") ||
+    s.includes("QRREAD") ||
+    s === "PAIRING"
+  ) {
+    return false;
+  }
   const stable = new Set(["MAIN", "INCHAT", "CONNECTED", "SUCCESS", "NORMAL", "ISLOGGED"]);
   return stable.has(s);
+}
+
+function isSessionOpeningState(state: string): boolean {
+  const s = state.toUpperCase();
+  return (
+    sessionNeedsQr(s) ||
+    s.includes("CONNECTING") ||
+    s.includes("SYNCING") ||
+    s.includes("OPENING") ||
+    s === "PAIRING" ||
+    s === "INITIALIZING"
+  );
 }
 
 /**
@@ -126,34 +154,12 @@ export function isStablePhoneConnectionState(state: string): boolean {
  */
 export async function markSessionRequiresQr(reason: string): Promise<void> {
   const reasonNorm = reason.toLowerCase();
-  if (isInPairingGrace() && /browserclose|qrreadsuccess|pairing|islogged/.test(reasonNorm)) {
+  if (isPairingQuiet() && /browserclose|qrreadsuccess|pairing|islogged|syncing/.test(reasonNorm)) {
     return;
   }
 
-  const settings = await getSettings();
-  if (settings.wppToken) {
-    try {
-      const liveState = await readSessionStateSafe();
-      if (
-        liveState &&
-        (sessionNeedsQr(liveState) ||
-          liveState.includes("CONNECTING") ||
-          liveState.includes("QR"))
-      ) {
-        /* Sessão ainda abrindo QR — logout no WPP quebra o pareamento */
-      } else {
-        await wppFetch("/logout-session", {
-          method: "POST",
-          body: JSON.stringify({})
-        });
-      }
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (!isWppBrokenClientError(msg)) {
-        /* WPP offline ou sessão já morta */
-      }
-    }
-  }
+  /* Não chamar POST /logout-session no WPP durante QR — o middleware statusConnection
+   * encadeia logOutSession e quebra com req.client.logout is not a function. */
   await clearWppStoredAuth(`AWAITING_QR:${reason}`);
   const { resetInboxCapture } = await import("./inboxStore.js");
   await resetInboxCapture(true);
@@ -170,7 +176,7 @@ export async function handleWppLifecycleWebhook(body: Record<string, unknown>): 
   const st = normalizeStatusFind(status);
 
   if (ev === "logoutsession") {
-    await markSessionRequiresQr("LOGOUT");
+    if (!isPairingQuiet()) await markSessionRequiresQr("LOGOUT");
     return true;
   }
   if (ev === "status-find" || ev === "disconnected") {
@@ -182,7 +188,7 @@ export async function handleWppLifecycleWebhook(body: Record<string, unknown>): 
       );
       return true;
     }
-    if (st === "browserclose" && isInPairingGrace()) {
+    if (st === "browserclose" && isPairingQuiet()) {
       return true;
     }
     if (
@@ -514,7 +520,7 @@ export async function verifyActiveSession() {
   const wppUrlUsed = wppBaseUrl(settings);
 
   try {
-    await refreshWppToken();
+    await getWppToken();
   } catch (e: any) {
     const msg = e?.message ?? String(e);
     return {
@@ -566,11 +572,18 @@ export async function verifyActiveSession() {
 
   let connection: unknown = null;
   let phoneConnected = false;
-  try {
-    connection = await checkConnection();
-    phoneConnected = parseConnectionCheck(connection);
-  } catch {
-    phoneConnected = false;
+  const skipPhoneCheck =
+    isPairingQuiet() ||
+    state.includes("CONNECTING") ||
+    state.includes("SYNCING") ||
+    sessionNeedsQr(state);
+  if (!skipPhoneCheck) {
+    try {
+      connection = await checkConnection();
+      phoneConnected = parseConnectionCheck(connection);
+    } catch {
+      phoneConnected = false;
+    }
   }
 
   const sessionAlive = isWppConnectedState(state);
@@ -594,6 +607,10 @@ export async function verifyActiveSession() {
   const connected = !disconnected && phoneConnected && !needsQr;
   const connecting = !disconnected && (isConnecting || needsQr) && !connected;
   const noSession = !connected && !connecting;
+
+  if (connected) {
+    clearPairingQuiet();
+  }
 
   let message: string;
   if (connected) {
@@ -645,7 +662,13 @@ export async function registerInboundWebhook(): Promise<{ url: string; ok: boole
   const primary = inboundWebhookUrl();
 
   const state = await readSessionStateSafe();
-  if (!state || sessionNeedsQr(state) || state.includes("CONNECTING") || isInPairingGrace()) {
+  if (
+    !state ||
+    sessionNeedsQr(state) ||
+    state.includes("CONNECTING") ||
+    state.includes("SYNCING") ||
+    isPairingQuiet()
+  ) {
     return { url: primary, ok: true, detail: "deferred_until_stable_session" };
   }
   if (!isStablePhoneConnectionState(state)) {
@@ -782,9 +805,22 @@ async function postStartSession(
   return { res, body };
 }
 
-export async function startSession(options?: { waitQrCode?: boolean }): Promise<unknown> {
+export async function startSession(options?: {
+  waitQrCode?: boolean;
+  force?: boolean;
+}): Promise<unknown> {
   const waitQr =
     options?.waitQrCode !== undefined ? options.waitQrCode : env.WPP_START_WAIT_QR;
+
+  if (!options?.force) {
+    const live = await readSessionStateSafe();
+    if (live) {
+      if (isSessionOpeningState(live) || isPairingQuiet() || isStablePhoneConnectionState(live)) {
+        return getSessionStatus({ persist: false });
+      }
+    }
+  }
+
   const urls = [inboundWebhookUrl()];
   const fallback = inboundWebhookUrlFallback();
   if (fallback && !urls.includes(fallback)) urls.push(fallback);
@@ -803,10 +839,11 @@ export async function startSession(options?: { waitQrCode?: boolean }): Promise<
     throw new Error(`start-session: ${mapWppErrorMessage(formatWppError(res.status, body))}`);
   }
   const state = extractSessionState(body);
-  if (isWppConnectedState(state)) {
+  if (isWppConnectedState(state) && !sessionNeedsQr(state)) {
     await persistConnectionStatus(`CONNECTED:${state}`, body);
   } else {
-    await persistConnectionStatus("start_session", body);
+    extendPairingQuiet();
+    await persistConnectionStatus("AWAITING_QR:start_session", body);
   }
   return body;
 }
@@ -840,7 +877,7 @@ export async function getSessionStatus(options?: { persist?: boolean }): Promise
 
 async function readSessionStateSafe(): Promise<string | null> {
   try {
-    const status = await getSessionStatus();
+    const status = await getSessionStatus({ persist: false });
     return extractSessionState(status);
   } catch {
     return null;

@@ -20,6 +20,7 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
     'Clique em "Verificar status" para ver se há um aparelho conectado.'
   );
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollConnectingRef = useRef(false);
 
   const isConnected = noticeKind === "connected";
 
@@ -192,13 +193,17 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
           return;
         }
         if (r.connecting) {
+          pollConnectingRef.current = true;
           applyVerifyResult(r);
           return;
         }
       }
+      pollConnectingRef.current = false;
     } catch {
       /* segue para atualizar QR */
     }
+
+    if (pollConnectingRef.current) return;
 
     const hasQr = await refreshQr();
     if (hasQr) {
@@ -213,8 +218,9 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
 
   const startPolling = useCallback(() => {
     stopPolling();
+    pollConnectingRef.current = false;
     void pollWhileQr();
-    pollRef.current = setInterval(() => void pollWhileQr(), 5000);
+    pollRef.current = setInterval(() => void pollWhileQr(), 8000);
   }, [stopPolling, pollWhileQr]);
 
   useEffect(() => {

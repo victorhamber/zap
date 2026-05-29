@@ -146,7 +146,15 @@ webhook: {
 
 Depois reinicie o WPP. Conecte pelo **Zap → WhatsApp → Conexão / QR**.
 
+### Várias sessões no log (`[84]`, `[12122]`, `[123]` ao mesmo tempo)
+
+Cada nome de instância abre um Chrome separado. **Use só uma instância ativa** no painel (ex.: `eatrend` *ou* `123`) e **não** clique várias vezes em Conectar — isso gera `browser is already running` e `req.client.logout is not a function`.
+
+Antes de novo QR: pare o wppconnect, apague pastas antigas em `userDataDir/` que não usa mais, suba de novo com **1 réplica**.
+
 ### QR expira / `Auto Close Called` / `qrReadError` no log
+
+Enquanto o log mostrar `Auto close configured to 60s`, o WPP **ainda não** está com `autoClose: 0` — corrija o config e **reinicie** o container (redeploy não basta se o config estiver em volume antigo).
 
 Por padrão o WPPConnect fecha o Chrome **60 segundos** após abrir o QR (`autoClose: 60000`). Se você demorar para escanear, o celular pode parecer conectado mas o Zap mostra “sem conexão”.
 
