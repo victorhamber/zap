@@ -5,7 +5,7 @@
 # Selecione tudo abaixo, copie e cole no terminal; Enter no final.
 # =============================================================================
 
-cd /usr/src/wpp-server || { echo "Pasta /usr/src/wpp-server não encontrada"; exit 1; }
+cd /usr/src/wpp-server || cd /app || { echo "Pasta do WPP não encontrada"; exit 1; }
 
 echo "=== 1) Patch config (startAllSession + autoClose) ==="
 for f in ./dist/config.js ./src/config.ts; do
@@ -20,17 +20,38 @@ done
 
 echo ""
 echo "=== 2) Patch token path (excluir sessão no painel Zap) ==="
-found=0
-find . \( -name 'miscController.js' -o -name 'sessionController.js' \) 2>/dev/null | while read -r f; do
-  [ -f "$f" ] || continue
-  grep -q '__dirname.*tokens/' "$f" 2>/dev/null || continue
+
+patch_one_file() {
+  f="$1"
+  [ -f "$f" ] || return 0
+  grep -q '__dirname.*tokens/' "$f" 2>/dev/null || return 0
   echo "  -> $f"
   cp "$f" "${f}.bak.zap.$(date +%s)"
-  sed -i 's|__dirname + `../../../tokens/${session}.data.json`|require("path").join(process.cwd(), "tokens", `${session}.data.json`)|g' "$f"
-  sed -i 's|__dirname + `../../../tokens/${req.session}.data.json`|require("path").join(process.cwd(), "tokens", `${req.session}.data.json`)|g' "$f"
-  sed -i 's|__dirname + `../../../tokens/${req.params.session}.data.json`|require("path").join(process.cwd(), "tokens", `${req.params.session}.data.json`)|g' "$f"
-  found=1
+  sed -i 's|__dirname + `../../../tokens/${session}.data.json`|require("path").resolve(process.cwd(), "tokens", session + ".data.json")|g' "$f"
+  sed -i 's|__dirname + `../../../tokens/${req.session}.data.json`|require("path").resolve(process.cwd(), "tokens", req.session + ".data.json")|g' "$f"
+  sed -i 's|__dirname + `../../../tokens/${req.params.session}.data.json`|require("path").resolve(process.cwd(), "tokens", req.params.session + ".data.json")|g' "$f"
+  sed -i 's|__dirname + "../../../tokens/" + session + ".data.json"|require("path").resolve(process.cwd(), "tokens", session + ".data.json")|g' "$f"
+  sed -i 's|__dirname + "../../../tokens/" + req.session + ".data.json"|require("path").resolve(process.cwd(), "tokens", req.session + ".data.json")|g' "$f"
+  sed -i 's|__dirname + "../../../tokens/" + req.params.session + ".data.json"|require("path").resolve(process.cwd(), "tokens", req.params.session + ".data.json")|g' "$f"
+  sed -i "s|__dirname + '../../../tokens/' + session + '.data.json'|require('path').resolve(process.cwd(), 'tokens', session + '.data.json')|g" "$f"
+  sed -i "s|__dirname + '../../../tokens/' + req.session + '.data.json'|require('path').resolve(process.cwd(), 'tokens', req.session + '.data.json')|g" "$f"
+  sed -i 's|require("path").join(process.cwd(), "tokens", `${session}.data.json`)|require("path").resolve(process.cwd(), "tokens", session + ".data.json")|g' "$f"
+  sed -i 's|require("path").join(process.cwd(), "tokens", `${req.session}.data.json`)|require("path").resolve(process.cwd(), "tokens", req.session + ".data.json")|g' "$f"
+}
+
+for f in $(find . \( -path './node_modules/*' \) -prune -o \
+  \( -name 'miscController.js' -o -name 'sessionController.js' \) -print 2>/dev/null); do
+  patch_one_file "$f"
 done
+
+echo ""
+if grep -rq '__dirname.*tokens/' ./dist/controller 2>/dev/null; then
+  echo "ERRO: patch incompleto. Trechos restantes:"
+  grep -rn '__dirname.*tokens/' ./dist/controller 2>/dev/null | head -5
+  echo "Use deploy/APAGAR-TOKENS-MANUAL.sh no GitHub Zap para limpar tokens à mão."
+  exit 1
+fi
+echo "OK: patch de tokens aplicado."
 
 echo ""
 echo "=== 3) Variáveis no EasyPanel (serviço wppconnect) ==="
@@ -39,5 +60,5 @@ echo "  WPP_AUTO_CLOSE=0"
 echo ""
 echo "=== PRONTO ==="
 echo "1) Reinicie o wppconnect (Stop -> Start, 1 réplica)"
-echo "2) No Zap: Limpar órfãs no WPP"
-echo "3) Depois use só a sessão 123 (ou a que precisar)"
+echo "2) No Zap: Limpar órfãs ou Remover instâncias"
+echo "3) Se ainda falhar: cole deploy/APAGAR-TOKENS-MANUAL.sh (GitHub victorhamber/zap)"

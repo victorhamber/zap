@@ -1158,9 +1158,11 @@ function sleepMs(ms: number): Promise<void> {
 }
 
 const WPP_TOKEN_PATH_BUG_HINT =
-  "Bug conhecido do WPPConnect 2.x: o token em tokens/<sessão>.data.json não foi apagado. " +
-  "No console do wppconnect (EasyPanel), rode o script deploy/wppconnect-config-fix.sh do repo Zap " +
-  "ou use deploy/Dockerfile.wppconnect, reinicie o WPP e tente Remover de novo.";
+  "O WPPConnect não apagou tokens/<sessão>.data.json (bug 2.x sem patch). " +
+  "No console EasyPanel do wppconnect, cole o arquivo inteiro deploy/COLE-NO-CONSOLE-WPPCONNECT.sh " +
+  "(GitHub victorhamber/zap), reinicie o WPP e tente de novo. " +
+  "Emergência: deploy/APAGAR-TOKENS-MANUAL.sh no mesmo repo (apaga .data.json à mão). " +
+  "Build permanente: deploy/Dockerfile.wppconnect.";
 
 /** Sessão com browser aberto no WPP (não só arquivo em tokens/). */
 function isSessionBrowserOpenState(state: string): boolean {

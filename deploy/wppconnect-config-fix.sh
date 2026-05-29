@@ -30,16 +30,8 @@ if [ -f ./deploy/patch-wpp-token-path.sh ]; then
 elif [ -f /patch-wpp-token-path.sh ]; then
   sh /patch-wpp-token-path.sh .
 else
-  echo "=== Patch token path (inline) ==="
-  find . \( -name 'miscController.js' -o -name 'sessionController.js' \) 2>/dev/null | while read -r f; do
-    [ -f "$f" ] || continue
-    grep -q '__dirname.*tokens/' "$f" 2>/dev/null || continue
-    echo "  -> $f"
-    cp "$f" "${f}.bak.zap.$(date +%s)"
-    sed -i 's|__dirname + `../../../tokens/${session}.data.json`|require("path").join(process.cwd(), "tokens", `${session}.data.json`)|g' "$f"
-    sed -i 's|__dirname + `../../../tokens/${req.session}.data.json`|require("path").join(process.cwd(), "tokens", `${req.session}.data.json`)|g' "$f"
-    sed -i 's|__dirname + `../../../tokens/${req.params.session}.data.json`|require("path").join(process.cwd(), "tokens", `${req.params.session}.data.json`)|g' "$f"
-  done
+  echo "=== Patch token path ==="
+  echo "Copie deploy/COLE-NO-CONSOLE-WPPCONNECT.sh do GitHub victorhamber/zap e cole no console EasyPanel."
 fi
 
 echo ""

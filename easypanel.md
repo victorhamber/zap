@@ -92,10 +92,11 @@ Imagens `wppconnect-server` 2.x (incl. `ibsddev/wppconnect-server:latest`) têm 
 
 **Correção (uma vez no servidor WPP):**
 
-1. No GitHub abra `deploy/COLE-NO-CONSOLE-WPPCONNECT.sh`, **copie o arquivo inteiro** e **cole** no console EasyPanel do **wppconnect** (aba Sh).  
-   **Não** digite `deploy/wppconnect-config-fix.sh` — esse caminho **não existe** dentro do container.
-2. **OU** build com `deploy/Dockerfile.wppconnect` (mesma base `ibsddev/wppconnect-server:latest` + patch automático).
-3. Reinicie o wppconnect → no Zap use **Limpar órfãs** ou **Remover** de novo.
+1. No GitHub abra [`deploy/COLE-NO-CONSOLE-WPPCONNECT.sh`](https://github.com/victorhamber/zap/blob/main/deploy/COLE-NO-CONSOLE-WPPCONNECT.sh), **copie o arquivo inteiro** e **cole** no console EasyPanel do **wppconnect** (aba Sh).  
+   O script deve imprimir `OK: patch de tokens aplicado.` Se aparecer `ERRO: patch incompleto`, a imagem usa outro layout — use o passo 2 de emergência.
+2. **Emergência (limpar agora):** [`deploy/APAGAR-TOKENS-MANUAL.sh`](https://github.com/victorhamber/zap/blob/main/deploy/APAGAR-TOKENS-MANUAL.sh) — cole no console, opcional `export MANTER_SESSAO=nome` antes, reinicie o WPP.
+3. **Permanente:** build com `deploy/Dockerfile.wppconnect` (base `ibsddev/wppconnect-server:latest` + patch na imagem).
+4. Reinicie o wppconnect → no Zap use **Limpar órfãs** ou **Remover** de novo.
 
 Depois disso, criar/apagar instâncias pelo painel funciona sem apagar volume manualmente.
 
