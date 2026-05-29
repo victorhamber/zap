@@ -197,7 +197,24 @@ O webhook é configurado pelo Zap no `start-session` quando você conecta. Com `
 
 Teste rápido: `GET https://zap.trajettu.com/api/webhooks/wppconnect` deve retornar `{ ok: true }`. Após uma mensagem recebida, `lastWebhookAt` aparece nessa resposta.
 
-No painel: **POST /api/wpp/sync-webhook** (autenticado) ou botão equivalente re-registra o webhook na sessão ativa.
+No painel: **Atualizar webhook** (Conexão / QR) re-registra a URL no WPP.
+
+### Não recebe mensagens (só envia)
+
+O Inbox **não puxa histórico** do WhatsApp — só grava o que o **wppconnect** envia por POST para o Zap.
+
+Checklist:
+
+1. No serviço **zap**, `ZAP_INTERNAL_URL` = hostname Docker do Zap (ex. `http://zap_zap:3000`) — **obrigatório**.
+2. `WPP_INTERNAL_URL` no zap apontando para o wppconnect (ex. `http://zap_wppconnect:21465`).
+3. Após conectar o QR: **Atualizar webhook** no painel.
+4. Envie uma mensagem **de outro número** (ou de um contato) **para** o WhatsApp vinculado — não só do painel Zap.
+5. Confira `GET /api/webhooks/wppconnect` (público): após a mensagem, `lastWebhookAt` deve atualizar.
+6. Apagar o **volume** do wppconnect não apaga o Postgres do Zap, mas a sessão precisa de **novo QR** e **novo webhook** (passo 3).
+
+Se o volume do wppconnect foi recriado, monte de novo `userDataDir` e `tokens` para não perder a sessão a cada deploy.
+
+Opcional no **wppconnect** (`dist/config.js` ou patch): `webhook.url` = mesma URL interna (`http://zap_zap:3000/api/webhooks/wppconnect`) e `onSelfMessage: true` se quiser ver mensagens enviadas pelo próprio celular no Inbox.
 
 ## Após o primeiro deploy do app `zap`
 

@@ -201,6 +201,7 @@ export async function handleWppLifecycleWebhook(body: Record<string, unknown>): 
       );
       const { ensureInboxCaptureStarted } = await import("./inboxStore.js");
       await ensureInboxCaptureStarted();
+      void registerInboundWebhook().catch(() => {});
       return true;
     }
     if (st === "browserclose" && isPairingQuiet()) {
@@ -686,9 +687,30 @@ function inboundWebhookUrlFallback(): string | null {
   return `${base}/api/webhooks/wppconnect`;
 }
 
-/** Re-registra o webhook na sessão WPP (útil após deploy ou sessão antiga sem webhook). */
-export async function registerInboundWebhook(): Promise<{ url: string; ok: boolean; detail?: string }> {
+async function postStartSessionWithWebhook(
+  webhookUrl: string
+): Promise<{ res: Response; body: unknown }> {
+  return postStartSession(webhookUrl, false);
+}
+
+/**
+ * Registra URL de webhook no WPP sem derrubar a sessão (quando possível).
+ * Mensagens recebidas só chegam ao Inbox se o WPP conseguir POSTar nesta URL.
+ */
+export async function registerInboundWebhook(options?: {
+  forceRestart?: boolean;
+}): Promise<{ url: string; ok: boolean; detail?: string }> {
   const primary = inboundWebhookUrl();
+  const fallback = inboundWebhookUrlFallback();
+
+  if (!env.ZAP_INTERNAL_URL?.trim()) {
+    return {
+      url: primary,
+      ok: false,
+      detail:
+        "ZAP_INTERNAL_URL não está definido no serviço zap. O WPP precisa alcançar o Zap pela rede Docker (ex.: http://zap_zap:3000)."
+    };
+  }
 
   const state = await readSessionStateSafe();
   if (
@@ -700,6 +722,18 @@ export async function registerInboundWebhook(): Promise<{ url: string; ok: boole
   ) {
     return { url: primary, ok: true, detail: "deferred_until_stable_session" };
   }
+
+  const tryUrls = [primary, ...(fallback && fallback !== primary ? [fallback] : [])];
+
+  if (!options?.forceRestart) {
+    for (const url of tryUrls) {
+      const attempt = await postStartSessionWithWebhook(url);
+      if (attempt.res.ok) {
+        return { url, ok: true, detail: "webhook_registered_without_restart" };
+      }
+    }
+  }
+
   if (!isStablePhoneConnectionState(state)) {
     return { url: primary, ok: true, detail: "session_not_stable_yet" };
   }
@@ -714,37 +748,43 @@ export async function registerInboundWebhook(): Promise<{ url: string; ok: boole
     return { url: primary, ok: false, detail: msg };
   }
 
-  // Sessão estável: WPP ignora `webhook` no start-session — fecha e reabre sem QR.
   if (state && !isDisconnectedState(state)) {
     try {
       await wppFetch("/close-session", { method: "POST", body: JSON.stringify({}) });
-      await new Promise((r) => setTimeout(r, 1200));
+      await sleepMs(1200);
     } catch {
       /* tenta start mesmo assim */
     }
   }
 
-  let { res, body } = await postStartSession(primary, false);
-  if (!res.ok) {
-    const fallback = inboundWebhookUrlFallback();
-    if (fallback && fallback !== primary) {
-      const second = await postStartSession(fallback, false);
-      res = second.res;
-      body = second.body;
+  let lastDetail = "";
+  for (const url of tryUrls) {
+    const attempt = await postStartSessionWithWebhook(url);
+    if (attempt.res.ok) {
+      const newState = extractSessionState(attempt.body);
+      if (isWppConnectedState(newState)) {
+        await persistConnectionStatus(`CONNECTED:${newState}`, attempt.body);
+      }
+      return { url, ok: true, detail: "webhook_registered_after_restart" };
     }
+    lastDetail = formatWppError(attempt.res.status, attempt.body);
   }
-  if (!res.ok) {
-    return {
-      url: primary,
-      ok: false,
-      detail: formatWppError(res.status, body)
-    };
-  }
-  const newState = extractSessionState(body);
-  if (isWppConnectedState(newState)) {
-    await persistConnectionStatus(`CONNECTED:${newState}`, body);
-  }
-  return { url: primary, ok: true };
+
+  return { url: primary, ok: false, detail: lastDetail || "start-session com webhook falhou" };
+}
+
+export function getInboundWebhookDiagnostics(): {
+  webhookUrl: string;
+  webhookPublic: string | null;
+  zapInternalUrl: string | null;
+  needsInternalUrl: boolean;
+} {
+  return {
+    webhookUrl: inboundWebhookUrl(),
+    webhookPublic: inboundWebhookUrlFallback(),
+    zapInternalUrl: env.ZAP_INTERNAL_URL?.trim() || null,
+    needsInternalUrl: !env.ZAP_INTERNAL_URL?.trim()
+  };
 }
 
 function qrImageFromTextCode(text: string): string {
@@ -873,6 +913,7 @@ export async function startSession(options?: {
     await persistConnectionStatus(`CONNECTED:${state}`, body);
     const { ensureInboxCaptureStarted } = await import("./inboxStore.js");
     await ensureInboxCaptureStarted();
+    void registerInboundWebhook().catch(() => {});
   } else if (isWppConnectedState(state) && !sessionNeedsQr(state)) {
     extendPairingQuiet();
     await persistConnectionStatus(`CONNECTED:${state}`, body);

@@ -359,7 +359,7 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
       if (r.ok) {
         setNoticeKind("info");
         setNoticeText(
-          `Webhook atualizado: ${r.url ?? ""}. Envie uma mensagem de teste do celular.`
+          `Webhook: ${r.url ?? ""}${r.detail ? ` (${r.detail})` : ""}. Envie uma mensagem de outro celular para este WhatsApp e abra o menu WhatsApp no Zap.`
         );
         await verifyConnection(false);
       } else {
@@ -545,10 +545,11 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
 
       {!compact && (
         <p className="mt-4 text-xs text-zinc-500 leading-relaxed">
-          Mensagens recebidas dependem do webhook no WPP. No EasyPanel, defina{" "}
-          <code className="text-zinc-400">ZAP_INTERNAL_URL=http://zap:3000</code> no serviço{" "}
-          <strong className="text-zinc-400">zap</strong> e clique em{" "}
-          <strong className="text-zinc-400">Atualizar webhook</strong> após o deploy.
+          Mensagens recebidas: o WPP envia POST para{" "}
+          <code className="text-zinc-400">ZAP_INTERNAL_URL/api/webhooks/wppconnect</code>. No
+          serviço <strong className="text-zinc-400">zap</strong>, use o hostname Docker (ex.{" "}
+          <code className="text-zinc-400">http://zap_zap:3000</code>). Após o QR, clique em{" "}
+          <strong className="text-zinc-400">Atualizar webhook</strong> e teste do celular.
           Teste:{" "}
           <code className="text-zinc-400 break-all">/api/webhooks/wppconnect</code> deve retornar{" "}
           <code className="text-zinc-400">{`{ "ok": true }`}</code>.

@@ -52,6 +52,8 @@ const SKIP_EVENTS = new Set([
 const MESSAGE_EVENTS = new Set([
   "onmessage",
   "message",
+  "onanymessage",
+  "anymessage",
   "onselfmessage",
   "selfmessage",
   "unreadmessages"

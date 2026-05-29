@@ -82,6 +82,7 @@ export async function webhookRoutes(app: FastifyInstance) {
     }
 
     const parsed = parseWppWebhookMessage(body);
+    let saved = false;
     if (parsed) {
       const msgType = parsed.type === "ptt" ? "audio" : parsed.type;
 
@@ -94,6 +95,7 @@ export async function webhookRoutes(app: FastifyInstance) {
         waMessageId: parsed.waMessageId,
         timestamp: parsed.timestamp
       });
+      saved = true;
 
       const needsMediaDownload =
         parsed.waMessageId &&
@@ -126,7 +128,9 @@ export async function webhookRoutes(app: FastifyInstance) {
       asString((body.message as Record<string, unknown> | undefined)?.body) ??
       "";
 
-    if (!from) return { ok: true, skipped: "no_from" };
+    if (!from) {
+      return { ok: true, skipped: "no_from", event: getWppWebhookEvent(body), saved };
+    }
 
     const phone = normalizePhone(from.replace(/@.*/, ""));
     const tagNames = await getContactTagNames(phone);
@@ -154,6 +158,6 @@ export async function webhookRoutes(app: FastifyInstance) {
       if (result && "runId" in result) started.push(result.runId as string);
     }
 
-    return { ok: true, started };
+    return { ok: true, started, saved, event: getWppWebhookEvent(body) };
   });
 }

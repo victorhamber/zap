@@ -3,6 +3,7 @@ import { prisma } from "../prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import { env } from "../env.js";
 import * as wpp from "../services/wppconnect.js";
+import { getLastWppWebhookAt, getLastWppWebhookEvent } from "../services/wppWebhook.js";
 
 export async function settingsRoutes(app: FastifyInstance) {
   app.addHook("preHandler", requireAuth);
@@ -124,14 +125,25 @@ export async function settingsRoutes(app: FastifyInstance) {
         });
       }
 
+      const connected =
+        wpp.isStablePhoneConnectionState(state) ||
+        (!needsQr && wpp.isWppConnectedState(state));
+      const webhook =
+        connected || wpp.isStablePhoneConnectionState(state)
+          ? await wpp.registerInboundWebhook().catch((e: Error) => ({
+              url: wpp.getInboundWebhookDiagnostics().webhookUrl,
+              ok: false,
+              detail: e.message
+            }))
+          : null;
+
       return {
         ok: true,
         state,
         needsQr,
-        connected:
-          wpp.isStablePhoneConnectionState(state) ||
-          (!needsQr && wpp.isWppConnectedState(state)),
+        connected,
         qrImage,
+        webhook,
         raw: { start: raw, qrcode: qrRaw }
       };
     } catch (e: any) {
@@ -224,6 +236,24 @@ export async function settingsRoutes(app: FastifyInstance) {
       }
       return { ok: false, message: msg.slice(0, 400) };
     }
+  });
+
+  app.get("/api/settings/wpp/webhook-status", async () => {
+    const diag = wpp.getInboundWebhookDiagnostics();
+    const lastAt = getLastWppWebhookAt();
+    const lastEvent = getLastWppWebhookEvent();
+    return {
+      ok: true,
+      ...diag,
+      lastWebhookAt: lastAt,
+      lastWebhookEvent: lastEvent,
+      receivingOk: Boolean(lastAt),
+      hint: diag.needsInternalUrl
+        ? "Defina ZAP_INTERNAL_URL no serviço zap (rede Docker). Sem isso o WPP não entrega mensagens recebidas."
+        : lastAt
+          ? "O Zap já recebeu eventos do WPP. Envie uma mensagem de teste e confira lastWebhookAt."
+          : "Após conectar, clique em Atualizar webhook e envie uma mensagem do celular. Se lastWebhookAt continuar vazio, o wppconnect não está alcançando o Zap."
+    };
   });
 
   app.get("/api/settings/wpp/diagnostics", async () => {
