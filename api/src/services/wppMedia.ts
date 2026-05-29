@@ -1,4 +1,4 @@
-import * as wpp from "./wppconnect.js";
+import * as wpp from "./whatsapp/index.js";
 import { persistInboundMedia } from "./mediaConvert.js";
 import { normalizeWppWebhookBody } from "./wppWebhook.js";
 

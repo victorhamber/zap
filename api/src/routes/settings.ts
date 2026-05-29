@@ -2,7 +2,8 @@ import type { FastifyInstance } from "fastify";
 import { prisma } from "../prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import { env } from "../env.js";
-import * as wpp from "../services/wppconnect.js";
+import * as wpp from "../services/whatsapp/index.js";
+import { isEvolution } from "../services/whatsapp/index.js";
 import {
   getLastWppWebhookAt,
   getLastWppWebhookEvent,
@@ -16,17 +17,19 @@ export async function settingsRoutes(app: FastifyInstance) {
   app.get("/api/settings/wpp", async () => {
     if (!prisma) {
       return {
-        wppBaseUrl: env.WPP_BASE_URL,
+        provider: isEvolution ? "evolution" : "wppconnect",
+        wppBaseUrl: isEvolution ? env.EVOLUTION_BASE_URL : env.WPP_BASE_URL,
         wppSession: env.WPP_SESSION,
-        hasToken: false,
+        hasToken: isEvolution ? Boolean(env.EVOLUTION_API_KEY) : false,
         connectionStatus: null
       };
     }
     const s = await prisma.appSettings.findUnique({ where: { id: "default" } });
     return {
-      wppBaseUrl: s?.wppBaseUrl ?? env.WPP_BASE_URL,
+      provider: isEvolution ? "evolution" : "wppconnect",
+      wppBaseUrl: isEvolution ? env.EVOLUTION_BASE_URL : (s?.wppBaseUrl ?? env.WPP_BASE_URL),
       wppSession: s?.wppSession ?? env.WPP_SESSION,
-      hasToken: Boolean(s?.wppToken),
+      hasToken: isEvolution ? Boolean(env.EVOLUTION_API_KEY) : Boolean(s?.wppToken),
       connectionStatus: s?.connectionStatus
     };
   });

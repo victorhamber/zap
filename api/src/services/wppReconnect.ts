@@ -7,7 +7,7 @@ import {
   refreshWppToken,
   startSession,
   verifyActiveSession
-} from "./wppconnect.js";
+} from "./whatsapp/index.js";
 
 let reconnectInFlight = false;
 let lastReconnectAt = 0;

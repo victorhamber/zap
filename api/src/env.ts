@@ -15,6 +15,8 @@ const EnvSchema = z.object({
   JWT_SECRET: isProd ? z.string().min(32) : z.string().default("dev-jwt-secret-change-in-production-32chars"),
   JWT_EXPIRES_IN: z.string().default("7d"),
 
+  /** wppconnect (legado) | evolution */
+  WHATSAPP_PROVIDER: z.enum(["wppconnect", "evolution"]).default("wppconnect"),
   WPP_BASE_URL: z.string().default("https://wpp.trajettu.com"),
   /** URL rede interna (EasyPanel). Ex: http://nome-servico-wpp:21465 */
   WPP_INTERNAL_URL: z.string().optional(),
@@ -37,6 +39,11 @@ const EnvSchema = z.object({
     .string()
     .optional()
     .transform((v) => v === "true"),
+
+  /** Evolution API — https://doc.evolution-api.com */
+  EVOLUTION_BASE_URL: z.string().default("http://localhost:8080"),
+  EVOLUTION_INTERNAL_URL: z.string().optional(),
+  EVOLUTION_API_KEY: z.string().default(""),
 
   HOTMART_WEBHOOK_SECRET: z.string().optional(),
   ADMIN_EMAIL: z.string().email().default("admin@trajettu.com"),

@@ -1,6 +1,7 @@
 import bcrypt from "bcrypt";
 import { prisma } from "./prisma.js";
 import { env, flags } from "./env.js";
+import { isEvolution } from "./services/whatsapp/index.js";
 import { defaultHotmartGraph } from "./engine/graph.js";
 import {
   startWppReconnectWatchdog,
@@ -60,13 +61,24 @@ export async function bootstrapDatabase() {
     await ensureInboxCaptureStarted();
   }
 
+  console.log(`[bootstrap] WhatsApp provider: ${isEvolution ? "evolution" : "wppconnect"}`);
+
   if (flags.isProd) {
     if (!env.ZAP_INTERNAL_URL?.trim()) {
       console.warn(
-        "[bootstrap] AVISO: ZAP_INTERNAL_URL não definido — mensagens recebidas do WhatsApp provavelmente NÃO chegarão ao inbox."
+        "[bootstrap] AVISO: ZAP_INTERNAL_URL não definido — mensagens recebidas provavelmente NÃO chegarão ao inbox."
       );
     }
-    if (!env.WPP_INTERNAL_URL?.trim()) {
+    if (isEvolution) {
+      if (!env.EVOLUTION_API_KEY?.trim()) {
+        console.warn("[bootstrap] AVISO: EVOLUTION_API_KEY não definida.");
+      }
+      if (!env.EVOLUTION_INTERNAL_URL?.trim()) {
+        console.warn(
+          "[bootstrap] AVISO: EVOLUTION_INTERNAL_URL não definido — use URL interna Docker (ex.: http://evolution:8080)."
+        );
+      }
+    } else if (!env.WPP_INTERNAL_URL?.trim()) {
       console.warn(
         "[bootstrap] AVISO: WPP_INTERNAL_URL não definido — o Zap pode não alcançar o wppconnect na rede Docker."
       );

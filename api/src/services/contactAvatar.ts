@@ -1,4 +1,4 @@
-import * as wpp from "./wppconnect.js";
+import * as wpp from "./whatsapp/index.js";
 import { buildWppSendTarget } from "./wppSend.js";
 
 const cache = new Map<string, { url: string; expiresAt: number }>();

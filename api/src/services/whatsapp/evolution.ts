@@ -1,0 +1,646 @@
+/**
+ * Provedor Evolution API v2 — substituto do WPPConnect quando WHATSAPP_PROVIDER=evolution
+ */
+import { prisma } from "../../prisma.js";
+import { env } from "../../env.js";
+import { evolutionApiKey, evolutionBaseUrl } from "./provider.js";
+
+export const MSG_NO_DEVICE =
+  "Nenhum WhatsApp conectado na Evolution. Crie/conecte a instância e escaneie o QR.";
+export const MSG_NO_SESSION_CLOSE = "Sessão já está desconectada na Evolution.";
+export const MSG_NO_SESSION_LOGOUT = "Sessão já está deslogada na Evolution.";
+export const MSG_QR_TIMEOUT = "QR expirou. Clique em Conectar / Mostrar QR de novo.";
+export const MSG_WPP_NO_QR = "Evolution não retornou QR. Verifique logs do serviço Evolution.";
+export const MSG_WPP_AGGREGATE_BOOT = "Erro ao subir instâncias na Evolution.";
+export const MSG_BROWSER_PROFILE_LOCK = "Perfil Chrome travado (não se aplica à Evolution Baileys).";
+
+export function isWppNetworkError(message: string): boolean {
+  return /fetch failed|econnrefused|network|502|503/i.test(message);
+}
+
+export function isWppBrowserLockError(_message: string): boolean {
+  return false;
+}
+
+export function isWppBrokenClientError(_message: string): boolean {
+  return false;
+}
+
+export function mapWppErrorMessage(message: string): string {
+  return message.slice(0, 400);
+}
+
+export function isDisconnectedState(state: string): boolean {
+  const s = state.toUpperCase();
+  return s.includes("DISCONNECT") || s.includes("CLOSE") || s === "UNPAIRED";
+}
+
+export function isPhoneUnlinkedStatus(status: string): boolean {
+  return /unpair|logout|not.?logged/i.test(status);
+}
+
+export async function clearWppStoredAuth(connectionStatus: string): Promise<void> {
+  if (!prisma) return;
+  await prisma.appSettings.update({
+    where: { id: "default" },
+    data: { wppToken: "evolution", connectionStatus }
+  });
+}
+
+export function isPairingQuiet(): boolean {
+  return false;
+}
+
+export function isStablePhoneConnectionState(state: string): boolean {
+  const s = state.toUpperCase();
+  return s === "OPEN" || s.includes("CONNECTED:OPEN") || s === "CONNECTED";
+}
+
+export async function markSessionRequiresQr(reason: string): Promise<void> {
+  if (!prisma) return;
+  await prisma.appSettings.update({
+    where: { id: "default" },
+    data: { connectionStatus: `AWAITING_QR:${reason}`, wppToken: "evolution" }
+  });
+}
+
+export async function handleWppLifecycleWebhook(_body: Record<string, unknown>): Promise<boolean> {
+  return false;
+}
+
+export function httpErrorMeansNoSession(status: number): boolean {
+  return status === 404;
+}
+
+export function formatWppError(status: number, body: unknown): string {
+  if (typeof body === "object" && body && "message" in body) {
+    return String((body as { message: unknown }).message);
+  }
+  return `HTTP ${status}`;
+}
+
+async function getInstanceName(): Promise<string> {
+  if (!prisma) return env.WPP_SESSION.trim().toLowerCase();
+  const s = await prisma.appSettings.findUnique({ where: { id: "default" } });
+  return (s?.wppSession ?? env.WPP_SESSION).trim().toLowerCase();
+}
+
+async function evoFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const base = evolutionBaseUrl();
+  const url = `${base}${path.startsWith("/") ? path : `/${path}`}`;
+  const headers: Record<string, string> = {
+    accept: "application/json",
+  };
+  if (init.body) headers["content-type"] = "application/json";
+  const key = evolutionApiKey();
+  if (key) headers.apikey = key;
+
+  return fetch(url, {
+    ...init,
+    headers: { ...headers, ...(init.headers as Record<string, string>) }
+  });
+}
+
+async function readJson(res: Response): Promise<unknown> {
+  const text = await res.text().catch(() => "");
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    return { message: text };
+  }
+}
+
+function inboundWebhookUrl(): string {
+  const internal = env.ZAP_INTERNAL_URL?.replace(/\/$/, "");
+  if (internal) return `${internal}/api/webhooks/evolution`;
+  return `${env.APP_PUBLIC_URL.replace(/\/$/, "")}/api/webhooks/evolution`;
+}
+
+export async function getActiveWppSessionName(): Promise<string> {
+  return getInstanceName();
+}
+
+export async function setActiveSession(sessionName: string): Promise<void> {
+  const name = sessionName.trim().toLowerCase();
+  if (!prisma) return;
+  await prisma.appSettings.update({
+    where: { id: "default" },
+    data: { wppSession: name, wppToken: "evolution" }
+  });
+  await ensureInstanceExists(name);
+}
+
+async function ensureInstanceExists(instance: string): Promise<void> {
+  const list = await listServerSessions().catch(() => []);
+  const names = parseWppServerSessionNames(list);
+  if (names.includes(instance)) return;
+
+  const res = await evoFetch("/instance/create", {
+    method: "POST",
+    body: JSON.stringify({
+      instanceName: instance,
+      integration: "WHATSAPP-BAILEYS",
+      qrcode: true
+    })
+  });
+  if (!res.ok && res.status !== 403) {
+    const body = await readJson(res);
+    const msg = formatWppError(res.status, body);
+    if (!/already exists|já existe/i.test(msg)) {
+      throw new Error(`Evolution create instance: ${msg}`);
+    }
+  }
+}
+
+export async function refreshWppToken(_sessionOverride?: string): Promise<string> {
+  if (!evolutionApiKey()) {
+    throw new Error("EVOLUTION_API_KEY não configurada no serviço zap.");
+  }
+  const instance = await getInstanceName();
+  await ensureInstanceExists(instance);
+  if (prisma) {
+    await prisma.appSettings.update({
+      where: { id: "default" },
+      data: { wppToken: "evolution", connectionStatus: "token_ok" }
+    });
+  }
+  return "evolution";
+}
+
+export async function getWppToken(): Promise<string> {
+  return refreshWppToken();
+}
+
+function digitsOnly(s: string): string {
+  return s.replace(/\D/g, "");
+}
+
+function toEvolutionNumber(chatId: string, isGroup?: boolean): string {
+  if (chatId.includes("@")) return chatId;
+  const d = digitsOnly(chatId);
+  if (!d) return chatId;
+  return isGroup ? `${d}@g.us` : `${d}@s.whatsapp.net`;
+}
+
+export async function sendText(phone: string, message: string) {
+  const instance = await getInstanceName();
+  const res = await evoFetch(`/message/sendText/${encodeURIComponent(instance)}`, {
+    method: "POST",
+    body: JSON.stringify({
+      number: toEvolutionNumber(phone),
+      text: message
+    })
+  });
+  if (!res.ok) throw new Error(`sendText: ${formatWppError(res.status, await readJson(res))}`);
+}
+
+export async function sendImage(phone: string, url: string, caption?: string) {
+  const instance = await getInstanceName();
+  const res = await evoFetch(`/message/sendMedia/${encodeURIComponent(instance)}`, {
+    method: "POST",
+    body: JSON.stringify({
+      number: toEvolutionNumber(phone),
+      mediatype: "image",
+      media: url,
+      caption: caption ?? ""
+    })
+  });
+  if (!res.ok) throw new Error(`sendMedia image: ${formatWppError(res.status, await readJson(res))}`);
+}
+
+export async function sendVideo(phone: string, url: string, caption?: string) {
+  const instance = await getInstanceName();
+  const res = await evoFetch(`/message/sendMedia/${encodeURIComponent(instance)}`, {
+    method: "POST",
+    body: JSON.stringify({
+      number: toEvolutionNumber(phone),
+      mediatype: "video",
+      media: url,
+      caption: caption ?? ""
+    })
+  });
+  if (!res.ok) throw new Error(`sendMedia video: ${formatWppError(res.status, await readJson(res))}`);
+}
+
+export async function sendAudio(phone: string, url: string) {
+  const instance = await getInstanceName();
+  const res = await evoFetch(`/message/sendMedia/${encodeURIComponent(instance)}`, {
+    method: "POST",
+    body: JSON.stringify({
+      number: toEvolutionNumber(phone),
+      mediatype: "audio",
+      media: url
+    })
+  });
+  if (!res.ok) throw new Error(`sendMedia audio: ${formatWppError(res.status, await readJson(res))}`);
+}
+
+export async function checkConnection(): Promise<unknown> {
+  const instance = await getInstanceName();
+  const res = await evoFetch(
+    `/instance/connectionState/${encodeURIComponent(instance)}`,
+    { method: "GET" }
+  );
+  const body = await readJson(res);
+  if (!res.ok) throw new Error(formatWppError(res.status, body));
+  return body;
+}
+
+export function isWppConnectedState(state: string): boolean {
+  const s = state.toUpperCase();
+  return s === "OPEN" || s.includes("CONNECTED");
+}
+
+export function parseConnectionCheck(data: unknown): boolean {
+  if (!data || typeof data !== "object") return false;
+  const o = data as Record<string, unknown>;
+  const inst = o.instance as Record<string, unknown> | undefined;
+  const state = String(inst?.state ?? o.state ?? "").toLowerCase();
+  return state === "open";
+}
+
+export function sessionNeedsQr(state: string): boolean {
+  const s = state.toUpperCase();
+  return s.includes("QR") || s === "CONNECTING" || s === "CLOSE";
+}
+
+export async function verifyActiveSession() {
+  try {
+    const raw = await checkConnection();
+    const state = extractSessionState(raw);
+    const connected = parseConnectionCheck(raw);
+    return {
+      connected,
+      connecting: state.toUpperCase().includes("CONNECT"),
+      ghostSession: false,
+      wppReachable: true,
+      message: connected ? "Conectado (Evolution)" : `Estado: ${state}`,
+      phoneConnected: connected,
+      sessionAlive: true,
+      sessionStatus: state,
+      state,
+      browserLock: false
+    };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return {
+      connected: false,
+      connecting: false,
+      ghostSession: false,
+      wppReachable: !isWppNetworkError(msg),
+      message: msg,
+      phoneConnected: false,
+      sessionAlive: false,
+      sessionStatus: "UNKNOWN",
+      state: "UNKNOWN",
+      browserLock: false
+    };
+  }
+}
+
+export async function registerInboundWebhook(): Promise<{
+  url: string;
+  ok: boolean;
+  detail?: string;
+}> {
+  const url = inboundWebhookUrl();
+  if (!env.ZAP_INTERNAL_URL?.trim()) {
+    return {
+      url,
+      ok: false,
+      detail: "Defina ZAP_INTERNAL_URL (ex.: http://zap_zap:3000) para a Evolution chamar o webhook."
+    };
+  }
+  const instance = await getInstanceName();
+  await ensureInstanceExists(instance);
+
+  const res = await evoFetch(`/webhook/set/${encodeURIComponent(instance)}`, {
+    method: "POST",
+    body: JSON.stringify({
+      webhook: {
+        enabled: true,
+        url,
+        webhookByEvents: false,
+        webhookBase64: false,
+        events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED", "SEND_MESSAGE"]
+      }
+    })
+  });
+  const body = await readJson(res);
+  if (!res.ok) {
+    return { url, ok: false, detail: formatWppError(res.status, body) };
+  }
+  return { url, ok: true, detail: "evolution_webhook_set" };
+}
+
+export function getInboundWebhookDiagnostics(): {
+  webhookUrl: string;
+  webhookPublic: string | null;
+  needsInternalUrl: boolean;
+} {
+  const url = inboundWebhookUrl();
+  return {
+    webhookUrl: url,
+    webhookPublic: env.APP_PUBLIC_URL ? `${env.APP_PUBLIC_URL.replace(/\/$/, "")}/api/webhooks/evolution` : null,
+    needsInternalUrl: !env.ZAP_INTERNAL_URL?.trim()
+  };
+}
+
+export function extractQrImage(data: unknown): string | null {
+  if (!data || typeof data !== "object") return null;
+  const o = data as Record<string, unknown>;
+  const base64 = o.base64 ?? o.qrcode ?? (o.qrcode as Record<string, unknown>)?.base64;
+  if (typeof base64 === "string" && base64.length > 40) {
+    return base64.startsWith("data:") ? base64 : `data:image/png;base64,${base64}`;
+  }
+  const nested = o.response ?? o.data;
+  if (nested && typeof nested === "object") return extractQrImage(nested);
+  return null;
+}
+
+export function extractSessionState(data: unknown): string {
+  if (!data || typeof data !== "object") return "UNKNOWN";
+  const o = data as Record<string, unknown>;
+  const inst = o.instance as Record<string, unknown> | undefined;
+  const state = inst?.state ?? o.state ?? o.status;
+  if (typeof state === "string") return state.toUpperCase();
+  return "UNKNOWN";
+}
+
+export async function startSession(_options?: {
+  waitQrCode?: boolean;
+  force?: boolean;
+}): Promise<unknown> {
+  const instance = await getInstanceName();
+  await ensureInstanceExists(instance);
+  await registerInboundWebhook().catch(() => {});
+
+  const res = await evoFetch(`/instance/connect/${encodeURIComponent(instance)}`, {
+    method: "GET"
+  });
+  const body = await readJson(res);
+  if (!res.ok) throw new Error(formatWppError(res.status, body));
+
+  const stateRes = await checkConnection().catch(() => null);
+  const state = stateRes ? extractSessionState(stateRes) : "CONNECTING";
+  if (prisma) {
+    await prisma.appSettings.update({
+      where: { id: "default" },
+      data: {
+        connectionStatus: parseConnectionCheck(stateRes) ? `CONNECTED:${state}` : `AWAITING_QR:${state}`,
+        wppToken: "evolution"
+      }
+    });
+  }
+  return { ...((body as object) ?? {}), state, qrcode: extractQrImage(body) };
+}
+
+export async function getQrCode(): Promise<{ qrImage: string | null; raw: unknown }> {
+  const instance = await getInstanceName();
+  const res = await evoFetch(`/instance/connect/${encodeURIComponent(instance)}`, {
+    method: "GET"
+  });
+  const raw = await readJson(res);
+  return { qrImage: extractQrImage(raw), raw };
+}
+
+export async function fetchQrFromSessionStatus(): Promise<string | null> {
+  const { qrImage } = await getQrCode();
+  return qrImage;
+}
+
+export async function waitForQrImageAfterStart(): Promise<{
+  qrImage: string | null;
+  state?: string;
+  raw: unknown;
+}> {
+  await new Promise((r) => setTimeout(r, 1500));
+  const { qrImage, raw } = await getQrCode();
+  const state = extractSessionState(raw);
+  return { qrImage, state, raw };
+}
+
+export async function getSessionStatus(): Promise<unknown> {
+  return checkConnection();
+}
+
+export async function closeSession(): Promise<{ raw?: unknown; noSession: boolean }> {
+  const instance = await getInstanceName();
+  const res = await evoFetch(`/instance/logout/${encodeURIComponent(instance)}`, {
+    method: "DELETE"
+  });
+  const raw = await readJson(res);
+  if (prisma) {
+    await prisma.appSettings.update({
+      where: { id: "default" },
+      data: { connectionStatus: "DISCONNECTED:logout" }
+    });
+  }
+  return { raw, noSession: res.status === 404 };
+}
+
+export async function logoutSession(): Promise<{ raw?: unknown; noSession: boolean }> {
+  return closeSession();
+}
+
+export function parseWppServerSessionNames(serverPayload: unknown): string[] {
+  const names: string[] = [];
+  let list: unknown[] = [];
+  if (Array.isArray(serverPayload)) list = serverPayload;
+  else if (serverPayload && typeof serverPayload === "object") {
+    const o = serverPayload as Record<string, unknown>;
+    if (Array.isArray(o.response)) list = o.response;
+    else if (Array.isArray(o.instances)) list = o.instances;
+  }
+  for (const item of list) {
+    if (typeof item === "string") {
+      names.push(item.trim().toLowerCase());
+      continue;
+    }
+    if (item && typeof item === "object") {
+      const n = String(
+        (item as Record<string, unknown>).instanceName ??
+          (item as Record<string, unknown>).name ??
+          ""
+      )
+        .trim()
+        .toLowerCase();
+      if (n) names.push(n);
+    }
+  }
+  return [...new Set(names)];
+}
+
+export async function listServerSessions(): Promise<unknown> {
+  const res = await evoFetch("/instance/fetchInstances", { method: "GET" });
+  const body = await readJson(res);
+  if (!res.ok) throw new Error(formatWppError(res.status, body));
+  return body;
+}
+
+export async function purgeWppSessionFromServer(
+  sessionName: string
+): Promise<{ ok: boolean; detail: string; stillOnServer?: boolean }> {
+  const name = sessionName.trim().toLowerCase();
+  try {
+    await evoFetch(`/instance/logout/${encodeURIComponent(name)}`, { method: "DELETE" }).catch(
+      () => {}
+    );
+    const res = await evoFetch(`/instance/delete/${encodeURIComponent(name)}`, {
+      method: "DELETE"
+    });
+    if (!res.ok && res.status !== 404) {
+      const body = await readJson(res);
+      return { ok: false, detail: formatWppError(res.status, body), stillOnServer: true };
+    }
+    await new Promise((r) => setTimeout(r, 400));
+    const names = parseWppServerSessionNames(await listServerSessions());
+    if (names.includes(name)) {
+      return {
+        ok: false,
+        stillOnServer: true,
+        detail: `Instância "${name}" ainda listada na Evolution.`
+      };
+    }
+    return { ok: true, detail: "Instância removida da Evolution." };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, detail: msg, stillOnServer: true };
+  }
+}
+
+export async function purgeOrphanWppSessions(keepNames: string[]): Promise<{
+  purged: string[];
+  failed: Array<{ name: string; error: string }>;
+}> {
+  const keep = new Set(keepNames.map((n) => n.trim().toLowerCase()));
+  let server: string[] = [];
+  try {
+    server = parseWppServerSessionNames(await listServerSessions());
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { purged: [], failed: [{ name: "*", error: msg }] };
+  }
+  const purged: string[] = [];
+  const failed: Array<{ name: string; error: string }> = [];
+  for (const name of server) {
+    if (keep.has(name)) continue;
+    const r = await purgeWppSessionFromServer(name);
+    if (r.ok) purged.push(name);
+    else failed.push({ name, error: r.detail });
+  }
+  return { purged, failed };
+}
+
+export async function runWppDiagnostics() {
+  const instance = await getInstanceName();
+  const base = evolutionBaseUrl();
+  const steps: Array<{ step: string; ok: boolean; detail: string }> = [];
+  steps.push({
+    step: "Evolution URL",
+    ok: true,
+    detail: env.EVOLUTION_INTERNAL_URL ? `${base} (interna)` : base
+  });
+  try {
+    await listServerSessions();
+    steps.push({ step: "Listar instâncias", ok: true, detail: "OK" });
+  } catch (e: unknown) {
+    steps.push({
+      step: "Listar instâncias",
+      ok: false,
+      detail: e instanceof Error ? e.message : String(e)
+    });
+  }
+  try {
+    await refreshWppToken();
+    steps.push({ step: "API Key / instância", ok: true, detail: instance });
+  } catch (e: unknown) {
+    steps.push({
+      step: "API Key / instância",
+      ok: false,
+      detail: e instanceof Error ? e.message : String(e)
+    });
+  }
+  const { getLastWppWebhookAt } = await import("../wppWebhook.js");
+  return {
+    baseUrl: base,
+    publicUrl: env.EVOLUTION_BASE_URL,
+    session: instance,
+    webhook: inboundWebhookUrl(),
+    webhookPublic: getInboundWebhookDiagnostics().webhookPublic,
+    zapInternalUrl: env.ZAP_INTERNAL_URL ?? null,
+    lastWebhookAt: getLastWppWebhookAt(),
+    steps,
+    provider: "evolution"
+  };
+}
+
+export function validateProxyPath(path: string): string {
+  const p = path.startsWith("/") ? path : `/${path}`;
+  if (!/^\/[a-zA-Z0-9/_.@+%?=&-]+$/.test(p)) {
+    throw new Error("Caminho da API inválido");
+  }
+  return p;
+}
+
+export async function callSessionApi(
+  path: string,
+  method: "GET" | "POST" | "PUT" | "DELETE",
+  body?: unknown
+): Promise<unknown> {
+  const safe = validateProxyPath(path);
+  const instance = await getInstanceName();
+
+  if (safe === "/list-chats" || safe.startsWith("/list-chats")) {
+    const res = await evoFetch(`/chat/findChats/${encodeURIComponent(instance)}`, {
+      method: "POST",
+      body: JSON.stringify({})
+    });
+    const data = await readJson(res);
+    if (!res.ok) throw new Error(formatWppError(res.status, data));
+    return data;
+  }
+
+  if (safe.startsWith("/all-groups")) {
+    return { response: [] };
+  }
+
+  if (safe.startsWith("/profile-pic/")) {
+    const phone = safe.split("/profile-pic/")[1]?.split("?")[0] ?? "";
+    const res = await evoFetch(
+      `/chat/fetchProfilePictureUrl/${encodeURIComponent(instance)}`,
+      {
+        method: "POST",
+        body: JSON.stringify({ number: decodeURIComponent(phone) })
+      }
+    );
+    const data = await readJson(res);
+    if (!res.ok) throw new Error(formatWppError(res.status, data));
+    return data;
+  }
+
+  if (safe.startsWith("/get-messages/")) {
+    const phone = safe.split("/get-messages/")[1]?.split("?")[0] ?? "";
+    const res = await evoFetch(`/chat/findMessages/${encodeURIComponent(instance)}`, {
+      method: "POST",
+      body: JSON.stringify({
+        where: { key: { remoteJid: decodeURIComponent(phone) } },
+        page: 1,
+        offset: 40
+      })
+    });
+    const data = await readJson(res);
+    if (!res.ok) throw new Error(formatWppError(res.status, data));
+    return data;
+  }
+
+  if (safe === "/send-message" && method === "POST" && body && typeof body === "object") {
+    const b = body as Record<string, unknown>;
+    const phone = String(b.phone ?? "");
+    const message = String(b.message ?? "");
+    await sendText(phone, message);
+    return { success: true };
+  }
+
+  throw new Error(`Rota Evolution não mapeada: ${method} ${safe}`);
+}

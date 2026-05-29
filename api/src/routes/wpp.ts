@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { prisma } from "../prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import { env } from "../env.js";
-import * as wpp from "../services/wppconnect.js";
+import * as wpp from "../services/whatsapp/index.js";
 import { resetInboxForSession } from "../services/inboxStore.js";
 import { undismissSession } from "../utils/wppDismissed.js";
 

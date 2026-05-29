@@ -3,7 +3,7 @@ import { prisma } from "../prisma.js";
 import { enqueueFlowJob } from "../queue.js";
 import { getByPath, asString } from "../utils/jsonPathLite.js";
 import { normalizePhone } from "../utils/phone.js";
-import * as wpp from "../services/wppconnect.js";
+import * as wpp from "../services/whatsapp/index.js";
 import { getNextNodeId, getNode, parseGraph } from "./graph.js";
 import type {
   DelayNodeData,

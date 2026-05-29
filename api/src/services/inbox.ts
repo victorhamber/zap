@@ -1,4 +1,4 @@
-import * as wpp from "./wppconnect.js";
+import * as wpp from "./whatsapp/index.js";
 import { listStoredMessages, saveInboxMessage } from "./inboxStore.js";
 import { buildWppSendTarget, sendWppApi, sendWppText } from "./wppSend.js";
 import { convertWebmDataUrlToOgg } from "./mediaConvert.js";

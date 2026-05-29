@@ -1,4 +1,4 @@
-import * as wpp from "./wppconnect.js";
+import * as wpp from "./whatsapp/index.js";
 import { extractWaId } from "./inbox.js";
 import { parseWppWebhookMessage, saveInboxMessage } from "./inboxStore.js";
 import { buildWppSendTarget } from "./wppSend.js";

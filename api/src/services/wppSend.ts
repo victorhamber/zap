@@ -1,4 +1,4 @@
-import * as wpp from "./wppconnect.js";
+import * as wpp from "./whatsapp/index.js";
 
 function digitsOnly(s: string): string {
   return s.replace(/\D/g, "");
