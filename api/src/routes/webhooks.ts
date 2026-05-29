@@ -278,6 +278,7 @@ export async function webhookRoutes(app: FastifyInstance) {
 
       await ensureInboxCaptureStarted();
 
+      const key = (payload.key ?? {}) as Record<string, unknown>;
       const msgType = parsed.type === "ptt" ? "audio" : parsed.type;
       await saveInboxMessage({
         chatId: parsed.chatId,
@@ -287,7 +288,13 @@ export async function webhookRoutes(app: FastifyInstance) {
         mediaUrl: parsed.mediaUrl,
         waMessageId: parsed.waMessageId,
         timestamp: parsed.timestamp,
-        sessionName: parsed.instance || activeSession
+        sessionName: parsed.instance || activeSession,
+        peerJids: [
+          String(key.remoteJid ?? ""),
+          String(key.remoteJidAlt ?? ""),
+          String(key.participant ?? ""),
+          String(key.participantAlt ?? "")
+        ].filter(Boolean)
       });
       saved = true;
       touchWppWebhookSaved();

@@ -214,6 +214,22 @@ async function resolveEvolutionSendNumber(chatId: string, isGroup?: boolean): Pr
   return evolutionSendNumber(jid, false);
 }
 
+/** Resolve @lid → JID de telefone real via Evolution API. */
+export async function resolveEvolutionPeerJid(
+  chatId: string,
+  isGroup?: boolean
+): Promise<string | null> {
+  try {
+    const num = await resolveEvolutionSendNumber(chatId, isGroup);
+    if (num.includes("@")) return normalizeDirectJid(num);
+    const d = digitsOnly(num);
+    if (isValidWhatsAppPhoneDigits(d)) return `${d}@s.whatsapp.net`;
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 function toEvolutionNumber(chatId: string, isGroup?: boolean): string {
   return evolutionSendNumber(chatId, isGroup);
 }

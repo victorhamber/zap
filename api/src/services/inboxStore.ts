@@ -9,6 +9,12 @@ import {
   mimeFromMessageType
 } from "./mediaText.js";
 import { normalizeDirectJid } from "./waJid.js";
+import {
+  expandChatIdVariants,
+  getMappedPhoneJid,
+  loadWaLidMap,
+  recordWaJidMapping
+} from "./waLidMap.js";
 
 function digitsOnly(s: string): string {
   return s.replace(/\D/g, "");
@@ -36,6 +42,11 @@ function chatIdVariants(chatId: string): string[] {
   }
   if (raw.includes("@") && !out.includes(raw)) add(raw);
   return out;
+}
+
+async function chatIdVariantsResolved(session: string, chatId: string): Promise<string[]> {
+  await loadWaLidMap(session);
+  return expandChatIdVariants(session, chatId);
 }
 
 async function getSessionName(): Promise<string> {
@@ -248,7 +259,7 @@ async function findDuplicateInboxMessage(params: {
     if (byWaId) return byWaId;
   }
 
-  const variants = chatIdVariants(params.chatId);
+  const variants = await chatIdVariantsResolved(params.session, params.chatId);
   const windowStart = new Date(params.timestamp.getTime() - 120_000);
   const windowEnd = new Date(params.timestamp.getTime() + 45_000);
 
@@ -274,6 +285,7 @@ export async function saveInboxMessage(params: {
   waMessageId?: string | null;
   timestamp?: Date;
   sessionName?: string;
+  peerJids?: string[];
 }): Promise<void> {
   if (!prisma) return;
 
@@ -307,6 +319,10 @@ export async function saveInboxMessage(params: {
     }
     return;
   }
+
+  await recordWaJidMapping(session, chatId, ...(params.peerJids ?? []), params.chatId).catch(
+    () => {}
+  );
 
   await prisma.inboxMessage.create({
     data: {
@@ -387,7 +403,7 @@ export async function listStoredMessages(
   }
 
   const session = await getSessionName();
-  const variants = chatIdVariants(chatId);
+  const variants = await chatIdVariantsResolved(session, chatId);
   const captureSince = await getCaptureSince();
 
   const rows = await prisma.inboxMessage.findMany({

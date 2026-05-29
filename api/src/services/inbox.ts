@@ -10,6 +10,14 @@ import {
   normalizeDirectJid
 } from "./waJid.js";
 import {
+  extractEvolutionKeyFields,
+  getMappedPhoneJid,
+  loadWaLidMap,
+  recordWaJidMapping,
+  recordWaJidMappingSync,
+  flushWaLidMap
+} from "./waLidMap.js";
+import {
   readUploadFileBase64,
   rewriteUploadUrlForWpp,
   saveUploadFromData,
@@ -126,16 +134,22 @@ function parseTimestamp(v: unknown): number {
   return 0;
 }
 
-function parseChatItem(item: unknown): NormalizedChat | null {
+function parseChatItem(item: unknown, session?: string): NormalizedChat | null {
   if (!item || typeof item !== "object") return null;
   const o = item as Record<string, unknown>;
 
-  const peer = canonicalEvolutionChatId({
-    remoteJid: o.remoteJid ?? o.id ?? o.jid ?? o._id ?? o.chatId,
-    remoteJidAlt: o.remoteJidAlt ?? o.remoteJidalt ?? o.pn,
-    participant: o.participant,
-    participantAlt: o.participantAlt
-  });
+  const keyFields = extractEvolutionKeyFields(o);
+  if (session) {
+    recordWaJidMappingSync(
+      session,
+      keyFields.remoteJid,
+      keyFields.remoteJidAlt,
+      keyFields.participant,
+      keyFields.participantAlt
+    );
+  }
+
+  const peer = canonicalEvolutionChatId(keyFields, o);
 
   const rawId =
     extractWaId(peer) ||
@@ -157,6 +171,11 @@ function parseChatItem(item: unknown): NormalizedChat | null {
         resolveChatId(rawId, kindHint === "group" || kindHint === "community" || o.isGroup === true)
       );
   if (!isValidWaId(resolvedId)) return null;
+
+  if (session && isLikelyInternalLidJid(resolvedId)) {
+    const mapped = getMappedPhoneJid(session, resolvedId);
+    if (mapped) resolvedId = mapped;
+  }
 
   const displayName = String(
     o.pushName ?? o.name ?? o.formattedTitle ?? o.notify ?? o.verifiedName ?? ""
@@ -219,7 +238,7 @@ function parseChatItem(item: unknown): NormalizedChat | null {
   };
 }
 
-export function normalizeChats(raw: unknown): NormalizedChat[] {
+export function normalizeChats(raw: unknown, session?: string): NormalizedChat[] {
   let list: unknown[] = [];
   if (Array.isArray(raw)) list = raw;
   else if (raw && typeof raw === "object") {
@@ -233,7 +252,7 @@ export function normalizeChats(raw: unknown): NormalizedChat[] {
     }
   }
 
-  return list.map(parseChatItem).filter((c): c is NormalizedChat => Boolean(c));
+  return list.map((item) => parseChatItem(item, session)).filter((c): c is NormalizedChat => Boolean(c));
 }
 
 function messageBody(o: Record<string, unknown>): string {
@@ -315,14 +334,21 @@ function extractArray(raw: unknown): unknown[] {
 }
 
 /** Chave única por telefone real — evita duplicata @lid vs @s.whatsapp.net */
-function chatDedupeKey(c: NormalizedChat): string {
+function chatDedupeKey(c: NormalizedChat, session?: string): string {
   if (c.isGroup || c.kind !== "direct") {
     const gid = digitsOnly(c.id) || c.id.replace(/@.*/, "");
     return `g:${gid}`;
   }
+  if (session && isLikelyInternalLidJid(c.id)) {
+    const mapped = getMappedPhoneJid(session, c.id);
+    if (mapped) {
+      const md = digitsOnly(mapped);
+      if (isValidWhatsAppPhoneDigits(md)) return `p:${md}`;
+    }
+  }
   const d = digitsOnly(c.id);
   if (isValidWhatsAppPhoneDigits(d)) return `p:${d}`;
-  if (c.name && c.name !== d) return `n:${c.name.toLowerCase()}`;
+  if (c.name && c.name !== d && c.name !== c.phone) return `n:${c.name.toLowerCase()}`;
   return `id:${c.id}`;
 }
 
@@ -363,9 +389,9 @@ function mergeTwoChats(a: NormalizedChat, b: NormalizedChat): NormalizedChat {
   };
 }
 
-function mergeChats(map: Map<string, NormalizedChat>, list: NormalizedChat[]) {
+function mergeChats(map: Map<string, NormalizedChat>, list: NormalizedChat[], session?: string) {
   for (const c of list) {
-    const key = chatDedupeKey(c);
+    const key = chatDedupeKey(c, session);
     const prev = map.get(key);
     map.set(key, prev ? mergeTwoChats(prev, c) : c);
   }
@@ -462,6 +488,10 @@ export async function fetchChats(): Promise<FetchChatsResult> {
     };
   }
 
+  const { defaultWhatsAppSession } = await import("../env.js");
+  const session = defaultWhatsAppSession();
+  await loadWaLidMap(session);
+
   const map = new Map<string, NormalizedChat>();
   const sourcesOk: string[] = [];
   const errors: string[] = [];
@@ -474,7 +504,7 @@ export async function fetchChats(): Promise<FetchChatsResult> {
     {
       name: "list-chats",
       run: () => wpp.callSessionApi("/list-chats", "POST", { onlyUsers: true }),
-      parse: normalizeChats
+      parse: (raw) => normalizeChats(raw, session)
     },
     {
       name: "all-groups",
@@ -491,7 +521,7 @@ export async function fetchChats(): Promise<FetchChatsResult> {
       const parsed = task.parse(result.value);
       if (parsed.length > 0) {
         sourcesOk.push(`${task.name} (${parsed.length})`);
-        mergeChats(map, parsed);
+        mergeChats(map, parsed, session);
       } else {
         errors.push(`${task.name}: resposta vazia`);
       }
@@ -506,18 +536,30 @@ export async function fetchChats(): Promise<FetchChatsResult> {
     const { listStoredChatSummaries } = await import("./inboxStore.js");
     const stored = await listStoredChatSummaries();
     if (stored.length > 0) {
-      mergeChats(map, stored);
+      mergeChats(map, stored, session);
       sourcesOk.push(`inbox-local (${stored.length})`);
     }
   }
 
+  const resolvedChats = [...map.values()].map((c) => {
+    if (c.isGroup || !isLikelyInternalLidJid(c.id)) return c;
+    const mapped = getMappedPhoneJid(session, c.id);
+    if (!mapped) return c;
+    return {
+      ...c,
+      id: mapped,
+      phone: digitsOnly(mapped) || c.phone
+    };
+  });
+
   const chats = mergeContactNames(
-    [...map.values()].sort((a, b) => {
+    resolvedChats.sort((a, b) => {
       if (a.timestamp !== b.timestamp) return b.timestamp - a.timestamp;
       return a.name.localeCompare(b.name, "pt-BR");
     }),
     await loadEvolutionContactNames()
   );
+  await flushWaLidMap(session);
   return { chats, sourcesOk, errors };
 }
 
@@ -528,14 +570,45 @@ export async function fetchMessages(
   _phone: string,
   options: FetchMessagesOptions
 ): Promise<{ messages: NormalizedMessage[]; hint?: string; captureSince?: string | null }> {
-  const chatId = resolveChatId(options.chatId, options.isGroup);
+  const { defaultWhatsAppSession } = await import("../env.js");
+  const session = defaultWhatsAppSession();
+  await loadWaLidMap(session);
+
+  let chatId = resolveChatId(options.chatId, options.isGroup);
+  const mapped = getMappedPhoneJid(session, chatId);
+  if (mapped) chatId = mapped;
+
   try {
     const { syncRecentMessagesFromWpp } = await import("./inboxSync.js");
     await syncRecentMessagesFromWpp(chatId, options.isGroup, 40);
+    if (mapped && mapped !== options.chatId) {
+      await syncRecentMessagesFromWpp(options.chatId, options.isGroup, 40);
+    }
   } catch {
     /* webhook é o caminho principal; sync é fallback */
   }
-  const { messages, captureSince } = await listStoredMessages(chatId, options.count ?? 200);
+  let { messages, captureSince } = await listStoredMessages(chatId, options.count ?? 200);
+
+  if (messages.length === 0 && options.chatId !== chatId) {
+    const fallback = await listStoredMessages(options.chatId, options.count ?? 200);
+    messages = fallback.messages;
+    captureSince = fallback.captureSince;
+  }
+
+  if (messages.length === 0 && isLikelyInternalLidJid(options.chatId)) {
+    try {
+      const { resolveEvolutionPeerJid } = await import("./whatsapp/evolution.js");
+      const peer = await resolveEvolutionPeerJid(options.chatId, options.isGroup);
+      if (peer) {
+        await recordWaJidMapping(session, options.chatId, peer);
+        const retry = await listStoredMessages(peer, options.count ?? 200);
+        messages = retry.messages;
+        captureSince = retry.captureSince;
+      }
+    } catch {
+      /* Evolution indisponível para resolver @lid */
+    }
+  }
 
   if (messages.length === 0) {
     return { messages: [], hint: INBOX_HINT_EMPTY, captureSince };
