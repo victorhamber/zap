@@ -61,14 +61,23 @@ function parseWppErrorMessage(err: unknown): string {
 async function callSendMessage(
   target: WppSendTarget,
   message: string
-): Promise<void> {
-  await wpp.callSessionApi("/send-message", "POST", {
+): Promise<string | null> {
+  const raw = await wpp.callSessionApi("/send-message", "POST", {
     phone: target.phone,
     message,
     isGroup: target.isGroup,
     isLid: target.isLid,
     isNewsletter: target.isNewsletter
   });
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const key = o.key;
+  if (key && typeof key === "object") {
+    const id = String((key as Record<string, unknown>).id ?? "").trim();
+    if (id) return id;
+  }
+  const id = String(o.id ?? "").trim();
+  return id || null;
 }
 
 /** Envia texto; se falhar com @c.us, tenta isLid (contatos novos do WhatsApp). */
@@ -76,19 +85,17 @@ export async function sendWppText(
   chatId: string,
   message: string,
   isGroup?: boolean
-): Promise<void> {
+): Promise<string | null> {
   const primary = buildWppSendTarget(chatId, isGroup);
   try {
-    await callSendMessage(primary, message);
-    return;
+    return await callSendMessage(primary, message);
   } catch (first) {
     if (primary.isLid || primary.isGroup) {
       throw new Error(parseWppErrorMessage(first));
     }
     const lidRetry: WppSendTarget = { ...primary, isLid: true };
     try {
-      await callSendMessage(lidRetry, message);
-      return;
+      return await callSendMessage(lidRetry, message);
     } catch (second) {
       throw new Error(parseWppErrorMessage(second));
     }

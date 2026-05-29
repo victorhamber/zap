@@ -159,7 +159,7 @@ function parseChatItem(item: unknown): NormalizedChat | null {
   if (!isValidWaId(resolvedId)) return null;
 
   const displayName = String(
-    o.pushName ?? o.name ?? o.formattedTitle ?? ""
+    o.pushName ?? o.name ?? o.formattedTitle ?? o.notify ?? o.verifiedName ?? ""
   ).trim();
   if (isLikelyInternalLidJid(resolvedId) && !displayName) return null;
 
@@ -174,19 +174,24 @@ function parseChatItem(item: unknown): NormalizedChat | null {
       ? (o.contact as Record<string, unknown>)
       : null;
   const kind = detectKind(resolvedId, o);
-  const name = String(
-    o.pushName ??
-      o.name ??
-      o.formattedTitle ??
-      contactObj?.name ??
-      o.pushname ??
-      o.shortName ??
-      (kind === "direct" ? phone : resolvedId.split("@")[0])
-  );
   const lastMsg =
     o.lastMessage && typeof o.lastMessage === "object"
       ? (o.lastMessage as Record<string, unknown>)
       : o;
+  const lastMsgPush = String(lastMsg?.pushName ?? lastMsg?.notify ?? "").trim();
+  const name = String(
+    o.pushName ??
+      o.name ??
+      o.formattedTitle ??
+      o.notify ??
+      o.verifiedName ??
+      contactObj?.name ??
+      contactObj?.pushname ??
+      o.pushname ??
+      o.shortName ??
+      lastMsgPush ??
+      (kind === "direct" ? phone : resolvedId.split("@")[0])
+  ).trim();
 
   const lastBody = evolutionLastPreview(lastMsg) || String(o.msg ?? o.preview ?? "");
 
@@ -406,6 +411,44 @@ export type FetchChatsResult = {
   errors: string[];
 };
 
+function mergeContactNames(
+  chats: NormalizedChat[],
+  namesByPhone: Map<string, string>
+): NormalizedChat[] {
+  return chats.map((c) => {
+    if (c.isGroup || c.kind !== "direct") return c;
+    const key = digitsOnly(c.phone) || digitsOnly(c.id);
+    const fromContacts = key ? namesByPhone.get(key) : undefined;
+    if (!fromContacts) return c;
+    const looksLikePhone = !c.name || c.name === c.phone || /^\d+$/.test(c.name);
+    if (!looksLikePhone) return c;
+    return { ...c, name: fromContacts };
+  });
+}
+
+async function loadEvolutionContactNames(): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  try {
+    const raw = await wpp.callSessionApi("/find-contacts", "POST", {});
+    const list = extractArray(raw);
+    for (const item of list) {
+      if (!item || typeof item !== "object") continue;
+      const o = item as Record<string, unknown>;
+      const id = extractWaId(o.id ?? o.jid ?? o.remoteJid ?? o.phone);
+      const phone = digitsOnly(id);
+      const name = String(
+        o.pushName ?? o.name ?? o.notify ?? o.verifiedName ?? o.shortName ?? ""
+      ).trim();
+      if (phone && name && isValidWhatsAppPhoneDigits(phone)) {
+        map.set(phone, name);
+      }
+    }
+  } catch {
+    /* opcional */
+  }
+  return map;
+}
+
 export async function fetchChats(): Promise<FetchChatsResult> {
   const check = await wpp.verifyActiveSession();
   if (!check.connected) {
@@ -468,10 +511,13 @@ export async function fetchChats(): Promise<FetchChatsResult> {
     }
   }
 
-  const chats = [...map.values()].sort((a, b) => {
-    if (a.timestamp !== b.timestamp) return b.timestamp - a.timestamp;
-    return a.name.localeCompare(b.name, "pt-BR");
-  });
+  const chats = mergeContactNames(
+    [...map.values()].sort((a, b) => {
+      if (a.timestamp !== b.timestamp) return b.timestamp - a.timestamp;
+      return a.name.localeCompare(b.name, "pt-BR");
+    }),
+    await loadEvolutionContactNames()
+  );
   return { chats, sourcesOk, errors };
 }
 
@@ -504,12 +550,13 @@ export async function sendChatMessage(
   isGroup = false
 ): Promise<void> {
   const target = buildWppSendTarget(chatId, isGroup);
-  await sendWppText(chatId, message, isGroup);
+  const waMessageId = await sendWppText(chatId, message, isGroup);
   await saveInboxMessage({
     chatId: target.jid,
     body: message,
     fromMe: true,
-    type: "chat"
+    type: "chat",
+    waMessageId
   });
 }
 

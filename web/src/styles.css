@@ -69,6 +69,14 @@ body {
   background: linear-gradient(180deg, transparent, var(--wa-bg-composer) 24%);
 }
 
+.wa-inbox .wa-audio-player {
+  user-select: none;
+}
+
+.wa-inbox .wa-video {
+  display: block;
+}
+
 .wa-inbox .wa-audio {
   filter: invert(1) hue-rotate(180deg);
   opacity: 0.92;

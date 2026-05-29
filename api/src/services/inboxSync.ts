@@ -4,7 +4,7 @@ import { parseWppWebhookMessage, saveInboxMessage } from "./inboxStore.js";
 import { buildWppSendTarget } from "./wppSend.js";
 
 const lastSyncByChat = new Map<string, number>();
-const SYNC_COOLDOWN_MS = 25_000;
+const SYNC_COOLDOWN_MS = 45_000;
 
 function messageToWebhookShape(item: Record<string, unknown>): Record<string, unknown> {
   return {

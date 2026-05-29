@@ -218,7 +218,20 @@ function toEvolutionNumber(chatId: string, isGroup?: boolean): string {
   return evolutionSendNumber(chatId, isGroup);
 }
 
-export async function sendText(phone: string, message: string) {
+export function extractEvolutionSentMessageId(data: unknown): string | null {
+  if (!data || typeof data !== "object") return null;
+  const o = data as Record<string, unknown>;
+  const candidates = [o.key, (o.message as Record<string, unknown> | undefined)?.key, o];
+  for (const key of candidates) {
+    if (!key || typeof key !== "object") continue;
+    const id = String((key as Record<string, unknown>).id ?? "").trim();
+    if (id) return id.slice(0, 240);
+  }
+  const direct = String(o.id ?? o.messageId ?? "").trim();
+  return direct ? direct.slice(0, 240) : null;
+}
+
+export async function sendText(phone: string, message: string): Promise<string | null> {
   const instance = await getInstanceName();
   const number = await resolveEvolutionSendNumber(phone);
   const res = await evoFetch(`/message/sendText/${encodeURIComponent(instance)}`, {
@@ -228,10 +241,12 @@ export async function sendText(phone: string, message: string) {
       text: message
     })
   });
-  if (!res.ok) throw new Error(`sendText: ${formatWppError(res.status, await readJson(res))}`);
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(`sendText: ${formatWppError(res.status, data)}`);
+  return extractEvolutionSentMessageId(data);
 }
 
-export async function sendImage(phone: string, url: string, caption?: string) {
+export async function sendImage(phone: string, url: string, caption?: string): Promise<string | null> {
   const instance = await getInstanceName();
   const number = await resolveEvolutionSendNumber(phone);
   const res = await evoFetch(`/message/sendMedia/${encodeURIComponent(instance)}`, {
@@ -243,10 +258,12 @@ export async function sendImage(phone: string, url: string, caption?: string) {
       caption: caption ?? ""
     })
   });
-  if (!res.ok) throw new Error(`sendMedia image: ${formatWppError(res.status, await readJson(res))}`);
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(`sendMedia image: ${formatWppError(res.status, data)}`);
+  return extractEvolutionSentMessageId(data);
 }
 
-export async function sendVideo(phone: string, url: string, caption?: string) {
+export async function sendVideo(phone: string, url: string, caption?: string): Promise<string | null> {
   const instance = await getInstanceName();
   const number = await resolveEvolutionSendNumber(phone);
   const res = await evoFetch(`/message/sendMedia/${encodeURIComponent(instance)}`, {
@@ -258,10 +275,12 @@ export async function sendVideo(phone: string, url: string, caption?: string) {
       caption: caption ?? ""
     })
   });
-  if (!res.ok) throw new Error(`sendMedia video: ${formatWppError(res.status, await readJson(res))}`);
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(`sendMedia video: ${formatWppError(res.status, data)}`);
+  return extractEvolutionSentMessageId(data);
 }
 
-export async function sendAudio(phone: string, url: string) {
+export async function sendAudio(phone: string, url: string): Promise<string | null> {
   const instance = await getInstanceName();
   const number = await resolveEvolutionSendNumber(phone);
   const res = await evoFetch(`/message/sendMedia/${encodeURIComponent(instance)}`, {
@@ -272,7 +291,9 @@ export async function sendAudio(phone: string, url: string) {
       media: url
     })
   });
-  if (!res.ok) throw new Error(`sendMedia audio: ${formatWppError(res.status, await readJson(res))}`);
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(`sendMedia audio: ${formatWppError(res.status, data)}`);
+  return extractEvolutionSentMessageId(data);
 }
 
 export async function sendDocument(
@@ -683,13 +704,27 @@ export async function callSessionApi(
 
   if (safe.startsWith("/profile-pic/")) {
     const phone = safe.split("/profile-pic/")[1]?.split("?")[0] ?? "";
+    const number = decodeURIComponent(phone);
+    const resolved = isLikelyInternalLidJid(number)
+      ? await resolveEvolutionSendNumber(number).catch(() => number)
+      : evolutionSendNumber(number, false);
     const res = await evoFetch(
       `/chat/fetchProfilePictureUrl/${encodeURIComponent(instance)}`,
       {
         method: "POST",
-        body: JSON.stringify({ number: decodeURIComponent(phone) })
+        body: JSON.stringify({ number: resolved })
       }
     );
+    const data = await readJson(res);
+    if (!res.ok) throw new Error(formatWppError(res.status, data));
+    return data;
+  }
+
+  if (safe === "/find-contacts" || safe.startsWith("/find-contacts")) {
+    const res = await evoFetch(`/chat/findContacts/${encodeURIComponent(instance)}`, {
+      method: "POST",
+      body: JSON.stringify({})
+    });
     const data = await readJson(res);
     if (!res.ok) throw new Error(formatWppError(res.status, data));
     return data;
@@ -714,8 +749,8 @@ export async function callSessionApi(
     const b = body as Record<string, unknown>;
     const phone = phoneFromCallBody(b);
     const message = String(b.message ?? "");
-    await sendText(phone, message);
-    return { success: true };
+    const waMessageId = await sendText(phone, message);
+    return { success: true, id: waMessageId, key: waMessageId ? { id: waMessageId } : undefined };
   }
 
   if (

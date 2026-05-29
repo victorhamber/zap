@@ -55,10 +55,23 @@ export async function inboxRoutes(app: FastifyInstance) {
 
       return {
         ok: chats.length > 0,
-        chats: chats.map((ch) => ({
-          ...ch,
-          contact: byKey.get(ch.id) ?? byKey.get(ch.phone) ?? null
-        })),
+        chats: chats.map((ch) => {
+          const contact = byKey.get(ch.id) ?? byKey.get(ch.phone) ?? null;
+          const contactName = contact?.name?.trim();
+          const looksLikePhone =
+            !ch.name || ch.name === ch.phone || /^\d{8,}$/.test(ch.name.replace(/\D/g, ""));
+          const name =
+            contactName && contactName !== contact?.phone
+              ? contactName
+              : looksLikePhone && contactName
+                ? contactName
+                : ch.name;
+          return {
+            ...ch,
+            name,
+            contact
+          };
+        }),
         sourcesOk,
         errors,
         message

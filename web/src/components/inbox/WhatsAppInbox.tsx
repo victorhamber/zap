@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/client";
 import { InboxComposer, type QuickReply } from "./InboxComposer";
+import { WaAudioPlayer } from "./WaAudioPlayer";
 import { WhatsAppAvatar } from "./WhatsAppAvatar";
 
 type Tag = { id: string; name: string; color: string };
@@ -78,9 +79,18 @@ function mediaUrlFromMessage(m: Message): string | null {
   return `data:${mime};base64,${m.body.replace(/\s/g, "")}`;
 }
 
-const InboxMessageContent = memo(function InboxMessageContent({ message: m }: { message: Message }) {
+const InboxMessageContent = memo(function InboxMessageContent({
+  message: m
+}: {
+  message: Message;
+}) {
   const url = mediaUrlFromMessage(m);
-  const showCaption = m.body && !isBase64Blob(m.body) && !m.body.startsWith("📷") && !m.body.startsWith("🎤") && !m.body.startsWith("🎬");
+  const showCaption =
+    m.body &&
+    !isBase64Blob(m.body) &&
+    !m.body.startsWith("📷") &&
+    !m.body.startsWith("🎤") &&
+    !m.body.startsWith("🎬");
   const isMedia =
     url &&
     (m.type === "image" ||
@@ -92,7 +102,13 @@ const InboxMessageContent = memo(function InboxMessageContent({ message: m }: { 
   if (isMedia && (m.type === "image" || m.type === "sticker")) {
     return (
       <div className="space-y-1">
-        <img src={url} alt="" loading="lazy" decoding="async" className="max-w-full rounded-xl max-h-64 object-contain" />
+        <img
+          src={url}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          className="max-w-full rounded-xl max-h-72 object-contain"
+        />
         {showCaption && <p className="text-sm whitespace-pre-wrap">{m.body}</p>}
       </div>
     );
@@ -100,7 +116,13 @@ const InboxMessageContent = memo(function InboxMessageContent({ message: m }: { 
   if (isMedia && m.type === "video") {
     return (
       <div className="space-y-1">
-        <video src={url} controls preload="metadata" className="max-w-full rounded-xl max-h-64" />
+        <video
+          src={url}
+          controls
+          preload="metadata"
+          playsInline
+          className="wa-video w-full min-w-[240px] max-w-[min(100%,360px)] rounded-xl max-h-80 bg-black/40"
+        />
         {showCaption && <p className="text-sm whitespace-pre-wrap">{m.body}</p>}
       </div>
     );
@@ -108,7 +130,7 @@ const InboxMessageContent = memo(function InboxMessageContent({ message: m }: { 
   if (isMedia && (m.type === "audio" || m.type === "ptt")) {
     return (
       <div className="space-y-1">
-        <audio src={url} controls preload="none" className="wa-audio w-full min-w-[200px] max-w-[280px] h-9" />
+        <WaAudioPlayer src={url} fromMe={m.fromMe} />
         {showCaption && <p className="text-sm whitespace-pre-wrap">{m.body}</p>}
       </div>
     );
@@ -130,6 +152,25 @@ const InboxMessageContent = memo(function InboxMessageContent({ message: m }: { 
   }
   return <p className="text-sm whitespace-pre-wrap">{m.body || "—"}</p>;
 });
+
+function mergePendingMessages(server: Message[], pending: Message[]): Message[] {
+  if (pending.length === 0) return server;
+  const merged = [...server];
+  for (const p of pending) {
+    const duplicated = server.some(
+      (m) =>
+        m.fromMe === p.fromMe &&
+        m.body === p.body &&
+        Math.abs(m.timestamp - p.timestamp) < 120_000
+    );
+    if (!duplicated) merged.push(p);
+  }
+  return merged.sort((a, b) => a.timestamp - b.timestamp);
+}
+
+function isOptimisticMessageId(id: string): boolean {
+  return id.startsWith("opt-");
+}
 
 function formatTime(ts: number): string {
   if (!ts) return "";
@@ -287,15 +328,17 @@ export function WhatsAppInbox() {
       );
       const next = r.messages ?? [];
       setMessages((prev) => {
+        const pending = prev.filter((m) => isOptimisticMessageId(m.id));
+        const merged = mergePendingMessages(next, pending);
         if (
-          prev.length === next.length &&
+          prev.length === merged.length &&
           prev.length > 0 &&
-          prev[prev.length - 1]?.id === next[next.length - 1]?.id &&
-          prev[prev.length - 1]?.mediaUrl === next[next.length - 1]?.mediaUrl
+          prev[prev.length - 1]?.id === merged[merged.length - 1]?.id &&
+          prev[prev.length - 1]?.mediaUrl === merged[merged.length - 1]?.mediaUrl
         ) {
           return prev;
         }
-        return next;
+        return merged;
       });
       setMsgHint(r.hint ?? (r.ok ? "" : r.message ?? ""));
     } catch (e: any) {
@@ -322,7 +365,7 @@ export function WhatsAppInbox() {
   useEffect(() => {
     if (!selected || !pageVisible) return;
     loadMessages(selected);
-    const t = setInterval(() => loadMessages(selected, true), 4000);
+    const t = setInterval(() => loadMessages(selected, true), 2500);
     return () => clearInterval(t);
   }, [selected, pageVisible, loadMessages]);
 
@@ -391,22 +434,42 @@ export function WhatsAppInbox() {
 
   async function sendMessage() {
     if (!selected || !draft.trim()) return;
+    const text = draft.trim();
+    const optimisticId = `opt-${Date.now()}`;
     setSendError("");
-    const r = await api<{ ok: boolean; message?: string }>("/api/inbox/send", {
-      method: "POST",
-      body: JSON.stringify({
-        chatId: selected.id,
-        message: draft.trim(),
-        isGroup: selected.isGroup
-      })
-    });
-    if (!r.ok) {
-      setSendError(r.message ?? "Falha ao enviar");
-      return;
-    }
     setDraft("");
-    await loadMessages(selected, true);
-    await loadChats(true);
+
+    const optimistic: Message = {
+      id: optimisticId,
+      body: text,
+      fromMe: true,
+      timestamp: Date.now(),
+      type: "chat"
+    };
+    setMessages((prev) => [...prev, optimistic]);
+
+    try {
+      const r = await api<{ ok: boolean; message?: string }>("/api/inbox/send", {
+        method: "POST",
+        body: JSON.stringify({
+          chatId: selected.id,
+          message: text,
+          isGroup: selected.isGroup
+        })
+      });
+      if (!r.ok) {
+        setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
+        setDraft(text);
+        setSendError(r.message ?? "Falha ao enviar");
+        return;
+      }
+      void loadMessages(selected, true);
+      void loadChats(true);
+    } catch (e: any) {
+      setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
+      setDraft(text);
+      setSendError(e?.message ?? "Erro ao enviar");
+    }
   }
 
   async function sendMedia(

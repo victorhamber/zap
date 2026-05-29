@@ -7,6 +7,12 @@ const TTL_MS = 6 * 60 * 60 * 1000;
 function extractProfilePicUrl(raw: unknown): string | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
+  for (const key of ["profilePictureUrl", "profilePicUrl", "url", "img"] as const) {
+    const v = o[key];
+    if (typeof v === "string" && (v.startsWith("http") || v.startsWith("data:"))) {
+      return v.trim();
+    }
+  }
   const resp = o.response ?? o.profilePicUrl ?? o.img ?? o.url;
   if (typeof resp === "string" && resp.trim()) {
     const s = resp.trim();

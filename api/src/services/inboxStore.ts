@@ -218,6 +218,53 @@ function peerChatIdFromWebhook(
   ]);
 }
 
+function inboxMessageDedupeKey(row: {
+  waMessageId: string | null;
+  fromMe: boolean;
+  body: string;
+  timestamp: Date;
+  chatId: string;
+}): string {
+  if (row.waMessageId) return `wa:${row.waMessageId}`;
+  const sec = Math.floor(row.timestamp.getTime() / 1000);
+  return `${row.fromMe ? 1 : 0}|${row.body}|${sec}|${row.chatId}`;
+}
+
+async function findDuplicateInboxMessage(params: {
+  session: string;
+  chatId: string;
+  body: string;
+  fromMe: boolean;
+  waMessageId: string | null;
+  timestamp: Date;
+}): Promise<{ id: string; waMessageId: string | null } | null> {
+  if (!prisma) return null;
+
+  if (params.waMessageId) {
+    const byWaId = await prisma.inboxMessage.findFirst({
+      where: { session: params.session, waMessageId: params.waMessageId },
+      select: { id: true, waMessageId: true }
+    });
+    if (byWaId) return byWaId;
+  }
+
+  const variants = chatIdVariants(params.chatId);
+  const windowStart = new Date(params.timestamp.getTime() - 120_000);
+  const windowEnd = new Date(params.timestamp.getTime() + 45_000);
+
+  return prisma.inboxMessage.findFirst({
+    where: {
+      session: params.session,
+      chatId: { in: variants },
+      fromMe: params.fromMe,
+      body: params.body,
+      timestamp: { gte: windowStart, lte: windowEnd }
+    },
+    orderBy: { timestamp: "desc" },
+    select: { id: true, waMessageId: true }
+  });
+}
+
 export async function saveInboxMessage(params: {
   chatId: string;
   body: string;
@@ -243,11 +290,22 @@ export async function saveInboxMessage(params: {
   const waMessageId = params.waMessageId?.slice(0, 240) ?? null;
   const timestamp = params.timestamp ?? new Date();
 
-  if (waMessageId) {
-    const dup = await prisma.inboxMessage.findFirst({
-      where: { session, waMessageId }
-    });
-    if (dup) return;
+  const duplicate = await findDuplicateInboxMessage({
+    session,
+    chatId,
+    body,
+    fromMe: params.fromMe,
+    waMessageId,
+    timestamp
+  });
+  if (duplicate) {
+    if (waMessageId && !duplicate.waMessageId) {
+      await prisma.inboxMessage.update({
+        where: { id: duplicate.id },
+        data: { waMessageId }
+      });
+    }
+    return;
   }
 
   await prisma.inboxMessage.create({
@@ -342,7 +400,15 @@ export async function listStoredMessages(
     take: limit
   });
 
-  const messages: NormalizedMessage[] = rows.map((r) => {
+  const seen = new Set<string>();
+  const dedupedRows = rows.filter((r) => {
+    const key = inboxMessageDedupeKey(r);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  const messages: NormalizedMessage[] = dedupedRows.map((r) => {
     let body = r.body;
     let mediaUrl = toPublicMediaUrl(r.mediaUrl) ?? r.mediaUrl;
     const normalizedType = r.type === "ptt" ? "audio" : r.type;
