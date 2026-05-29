@@ -1029,7 +1029,24 @@ export async function callSessionApi(
   }
 
   if (safe.startsWith("/all-groups")) {
-    return { response: [] };
+    const res = await evoFetch(`/chat/findChats/${encodeURIComponent(instance)}`, {
+      method: "POST",
+      body: JSON.stringify({})
+    });
+    const data = await readJson(res);
+    if (!res.ok) throw new Error(formatWppError(res.status, data));
+    const list = extractEvolutionChatList(data);
+    const groups = list.filter((item) => {
+      const o = item as Record<string, unknown>;
+      const jid = String(
+        (o.key as Record<string, unknown> | undefined)?.remoteJid ??
+          o.remoteJid ??
+          o.id ??
+          ""
+      );
+      return jid.includes("@g.us");
+    });
+    return { response: groups };
   }
 
   if (safe.startsWith("/profile-pic/")) {
@@ -1145,6 +1162,79 @@ function extractBase64FromEvolutionResponse(raw: unknown): { base64: string; mim
   const mime = String(o.mimetype ?? o.mimeType ?? "application/octet-stream");
   if (!base64 || base64.length < 32) return null;
   return { base64, mime };
+}
+
+function extractEvolutionChatList(data: unknown): Record<string, unknown>[] {
+  if (Array.isArray(data)) {
+    return data.filter((x): x is Record<string, unknown> => Boolean(x) && typeof x === "object");
+  }
+  if (!data || typeof data !== "object") return [];
+  const o = data as Record<string, unknown>;
+  for (const key of ["response", "chats", "data", "records"]) {
+    const val = o[key];
+    if (Array.isArray(val)) {
+      return val.filter((x): x is Record<string, unknown> => Boolean(x) && typeof x === "object");
+    }
+  }
+  if (o.response && typeof o.response === "object" && !Array.isArray(o.response)) {
+    return Object.values(o.response as Record<string, unknown>).filter(
+      (x): x is Record<string, unknown> => Boolean(x) && typeof x === "object"
+    );
+  }
+  return [];
+}
+
+function extractEvolutionMessageRecords(data: unknown): Record<string, unknown>[] {
+  if (Array.isArray(data)) {
+    return data.filter((x): x is Record<string, unknown> => Boolean(x) && typeof x === "object");
+  }
+  if (!data || typeof data !== "object") return [];
+  const o = data as Record<string, unknown>;
+  if (Array.isArray(o.records)) {
+    return o.records.filter((x): x is Record<string, unknown> => Boolean(x) && typeof x === "object");
+  }
+  if (o.messages && typeof o.messages === "object") {
+    const m = o.messages as Record<string, unknown>;
+    if (Array.isArray(m.records)) {
+      return m.records.filter((x): x is Record<string, unknown> => Boolean(x) && typeof x === "object");
+    }
+    if (Array.isArray(m)) {
+      return m.filter((x): x is Record<string, unknown> => Boolean(x) && typeof x === "object");
+    }
+  }
+  if (Array.isArray(o.messages)) {
+    return o.messages.filter((x): x is Record<string, unknown> => Boolean(x) && typeof x === "object");
+  }
+  return [];
+}
+
+/** Localiza payload completo da mensagem para download sob demanda. */
+export async function findEvolutionMessageByKey(
+  remoteJid: string,
+  messageId: string
+): Promise<Record<string, unknown> | null> {
+  const instance = await getInstanceName();
+  const res = await evoFetch(`/chat/findMessages/${encodeURIComponent(instance)}`, {
+    method: "POST",
+    body: JSON.stringify({
+      where: {
+        key: {
+          remoteJid,
+          id: messageId
+        }
+      },
+      page: 1,
+      offset: 5
+    })
+  });
+  const data = await readJson(res);
+  if (!res.ok) return null;
+
+  for (const item of extractEvolutionMessageRecords(data)) {
+    const key = (item.key ?? {}) as Record<string, unknown>;
+    if (String(key.id ?? "") === messageId) return item;
+  }
+  return null;
 }
 
 /** Baixa mídia de mensagem recebida (webhook sem base64 inline). */

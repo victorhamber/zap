@@ -67,6 +67,8 @@ export function MediaLibrary() {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -76,6 +78,7 @@ export function MediaLibrary() {
       setItems(r.items ?? []);
       setTotalBytes(r.totalBytes ?? 0);
       setTotalFiles(r.totalFiles ?? 0);
+      setSelected(new Set());
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Erro ao carregar mídias");
       setItems([]);
@@ -98,6 +101,64 @@ export function MediaLibrary() {
         KIND_LABEL[i.kind].toLowerCase().includes(q)
     );
   }, [items, search]);
+
+  const allFilteredSelected =
+    filtered.length > 0 && filtered.every((i) => selected.has(i.filename));
+  const selectedCount = filtered.filter((i) => selected.has(i.filename)).length;
+
+  function toggleSelect(filename: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(filename)) next.delete(filename);
+      else next.add(filename);
+      return next;
+    });
+  }
+
+  function toggleSelectAllFiltered() {
+    if (allFilteredSelected) {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (const item of filtered) next.delete(item.filename);
+        return next;
+      });
+      return;
+    }
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const item of filtered) next.add(item.filename);
+      return next;
+    });
+  }
+
+  async function handleBulkDelete(mode: "selected" | "all") {
+    const count = mode === "all" ? filtered.length : selectedCount;
+    if (count === 0) return;
+
+    const msg =
+      mode === "all"
+        ? `Excluir todas as ${filtered.length} mídia(s) visíveis?\n\nOs arquivos serão removidos do servidor.`
+        : `Excluir ${selectedCount} mídia(s) selecionada(s)?\n\nOs arquivos serão removidos do servidor.`;
+    if (!window.confirm(msg)) return;
+
+    setBulkDeleting(true);
+    try {
+      const filenames =
+        mode === "all"
+          ? filtered.map((i) => i.filename)
+          : filtered.filter((i) => selected.has(i.filename)).map((i) => i.filename);
+
+      await api<{ ok: boolean; deleted?: number }>("/api/media/delete-bulk", {
+        method: "POST",
+        body: JSON.stringify({ filenames })
+      });
+      await load();
+    } catch (e: unknown) {
+      window.alert(e instanceof Error ? e.message : "Falha ao excluir");
+    } finally {
+      setBulkDeleting(false);
+    }
+  }
 
   async function handleDelete(item: MediaItem) {
     const msg =
@@ -126,8 +187,8 @@ export function MediaLibrary() {
         <div>
           <h1 className="text-2xl font-semibold text-white">Mídias</h1>
           <p className="text-sm text-zinc-400 mt-1 max-w-2xl leading-relaxed">
-            Arquivos recebidos e enviados salvos no servidor. Exclua o que não precisar para
-            liberar espaço ou baixe novamente quando quiser.
+            Arquivos salvos no servidor (geralmente após você abrir ou enviar mídia). Exclua o que
+            não precisar para liberar espaço ou baixe novamente quando quiser.
           </p>
         </div>
         <button
@@ -188,6 +249,36 @@ export function MediaLibrary() {
         />
       </div>
 
+      {!loading && filtered.length > 0 && (
+        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+          <label className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={allFilteredSelected}
+              onChange={toggleSelectAllFiltered}
+              className="rounded border-zinc-600"
+            />
+            Selecionar todas ({filtered.length})
+          </label>
+          <button
+            type="button"
+            disabled={bulkDeleting || selectedCount === 0}
+            onClick={() => void handleBulkDelete("selected")}
+            className="rounded-lg border border-red-500/30 px-3 py-1.5 text-xs text-red-300 hover:bg-red-500/10 disabled:opacity-40"
+          >
+            {bulkDeleting ? "Excluindo…" : `Excluir selecionadas (${selectedCount})`}
+          </button>
+          <button
+            type="button"
+            disabled={bulkDeleting}
+            onClick={() => void handleBulkDelete("all")}
+            className="rounded-lg border border-red-500/40 px-3 py-1.5 text-xs text-red-200 hover:bg-red-500/10 disabled:opacity-40"
+          >
+            Excluir todas visíveis
+          </button>
+        </div>
+      )}
+
       {error && (
         <p className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
           {error}
@@ -205,9 +296,20 @@ export function MediaLibrary() {
           {filtered.map((item) => (
             <article
               key={item.filename}
-              className="rounded-2xl border border-zinc-800 bg-zinc-950/50 overflow-hidden flex flex-col"
+              className={`rounded-2xl border bg-zinc-950/50 overflow-hidden flex flex-col ${
+                selected.has(item.filename) ? "border-emerald-500/40" : "border-zinc-800"
+              }`}
             >
               <div className="aspect-video bg-zinc-900 relative flex items-center justify-center overflow-hidden">
+                <label className="absolute top-2 right-2 z-10 flex items-center justify-center w-7 h-7 rounded-full bg-black/60 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(item.filename)}
+                    onChange={() => toggleSelect(item.filename)}
+                    aria-label={`Selecionar ${item.filename}`}
+                    className="rounded border-zinc-500"
+                  />
+                </label>
                 {item.kind === "image" ? (
                   <img
                     src={item.url}

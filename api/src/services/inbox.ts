@@ -107,6 +107,8 @@ export type NormalizedMessage = {
   timestamp: number;
   type: string;
   mediaUrl?: string | null;
+  waMessageId?: string | null;
+  mediaPending?: boolean;
 };
 
 export type FetchMessagesOptions = {
@@ -234,7 +236,13 @@ function parseChatItem(item: unknown, session?: string): NormalizedChat | null {
       );
   if (!isValidWaId(resolvedId)) return null;
 
-  if (session && isLikelyInternalLidJid(resolvedId)) {
+  const kindEarly = detectKind(resolvedId, o);
+  if (
+    session &&
+    kindEarly !== "group" &&
+    kindEarly !== "community" &&
+    isLikelyInternalLidJid(resolvedId)
+  ) {
     const mapped = getMappedPhoneJid(session, resolvedId);
     if (mapped) resolvedId = mapped;
   }
@@ -628,7 +636,7 @@ export async function fetchChats(): Promise<FetchChatsResult> {
     }
   });
 
-  if (map.size === 0 && check.connected) {
+  if (check.connected) {
     const { listStoredChatSummaries } = await import("./inboxStore.js");
     const stored = await listStoredChatSummaries();
     if (stored.length > 0) {
@@ -675,8 +683,11 @@ export async function fetchMessages(
   await loadWaLidMap(session);
 
   let chatId = resolveChatId(options.chatId, options.isGroup);
-  const mapped = getMappedPhoneJid(session, chatId);
-  if (mapped) chatId = mapped;
+  let mapped: string | null = null;
+  if (!options.isGroup) {
+    mapped = getMappedPhoneJid(session, chatId);
+    if (mapped) chatId = mapped;
+  }
 
   try {
     const { syncRecentMessagesFromWpp } = await import("./inboxSync.js");

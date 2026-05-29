@@ -24,20 +24,25 @@ export const WhatsAppAvatar = memo(function WhatsAppAvatar({
 }: Props) {
   const [url, setUrl] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
-  const fetched = useRef(false);
 
   useEffect(() => {
+    setUrl(null);
     const el = ref.current;
-    if (!el || fetched.current) return;
+    if (!el) return;
+
+    let cancelled = false;
 
     const load = () => {
-      if (fetched.current) return;
-      fetched.current = true;
+      if (cancelled) return;
       void api<{ url: string | null }>(
         `/api/inbox/avatar?chatId=${encodeURIComponent(chatId)}&isGroup=${isGroup ? "1" : "0"}`
       )
-        .then((r) => setUrl(r.url))
-        .catch(() => setUrl(null));
+        .then((r) => {
+          if (!cancelled) setUrl(r.url);
+        })
+        .catch(() => {
+          if (!cancelled) setUrl(null);
+        });
     };
 
     if (typeof IntersectionObserver === "undefined") {
@@ -55,7 +60,10 @@ export const WhatsAppAvatar = memo(function WhatsAppAvatar({
       { rootMargin: "80px" }
     );
     io.observe(el);
-    return () => io.disconnect();
+    return () => {
+      cancelled = true;
+      io.disconnect();
+    };
   }, [chatId, isGroup]);
 
   const px = `${size}px`;

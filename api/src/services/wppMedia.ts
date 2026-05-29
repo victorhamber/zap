@@ -41,6 +41,28 @@ function serializedMessageId(body: Record<string, unknown>): string | null {
   return null;
 }
 
+/** Baixa mídia sob demanda (mensagem já salva no banco). */
+export async function downloadMediaForStoredMessage(params: {
+  chatId: string;
+  waMessageId: string;
+  type: string;
+}): Promise<string | null> {
+  if (env.WHATSAPP_PROVIDER === "evolution") {
+    const { findEvolutionMessageByKey } = await import("./whatsapp/evolution.js");
+    const payload = await findEvolutionMessageByKey(params.chatId, params.waMessageId);
+    if (!payload) return null;
+    return downloadInboundMedia({}, params.waMessageId, payload);
+  }
+
+  const normalized = {
+    id: params.waMessageId,
+    type: params.type,
+    chatId: params.chatId,
+    isMedia: true
+  };
+  return downloadInboundMedia(normalized, params.waMessageId);
+}
+
 /** Baixa mídia criptografada (WPPConnect ou Evolution). */
 export async function downloadInboundMedia(
   webhookBody: Record<string, unknown>,

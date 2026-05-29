@@ -42,7 +42,11 @@ export function Layout() {
       >
         <div className={`border-b border-zinc-800/80 ${collapsed ? "p-3" : "p-5"}`}>
           <div className={`flex items-center ${collapsed ? "justify-center" : "gap-3"}`}>
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/15 border border-emerald-500/25 text-lg font-bold text-emerald-400 shrink-0">
+            <div
+              className={`flex items-center justify-center rounded-xl bg-emerald-500/15 border border-emerald-500/25 font-bold text-emerald-400 shrink-0 ${
+                collapsed ? "h-11 w-11 text-xl" : "h-10 w-10 text-lg"
+              }`}
+            >
               Z
             </div>
             {!collapsed && (
@@ -53,7 +57,7 @@ export function Layout() {
             )}
           </div>
         </div>
-        <nav className={`flex-1 space-y-0.5 ${collapsed ? "p-2" : "p-3"}`}>
+        <nav className={`flex-1 space-y-1 ${collapsed ? "p-2" : "p-3"}`}>
           {links.map((l) => {
             const active =
               loc.pathname === l.to ||
@@ -64,15 +68,26 @@ export function Layout() {
                 key={l.to}
                 to={l.to}
                 title={collapsed ? l.label : undefined}
-                className={`flex items-center rounded-xl text-sm transition ${
-                  collapsed ? "justify-center px-2 py-2.5" : "gap-2.5 px-3 py-2.5"
+                className={`flex items-center rounded-xl transition ${
+                  collapsed
+                    ? "justify-center min-h-[48px] w-full py-2"
+                    : "gap-3 px-3 py-2.5 text-sm"
                 } ${
                   active
                     ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/20"
                     : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200 border border-transparent"
                 }`}
               >
-                <span className="text-xs opacity-70">{l.icon}</span>
+                <span
+                  className={
+                    collapsed
+                      ? "text-[26px] leading-none select-none"
+                      : "text-xl leading-none select-none shrink-0 w-7 text-center"
+                  }
+                  aria-hidden
+                >
+                  {l.icon}
+                </span>
                 {!collapsed && l.label}
               </Link>
             );
@@ -82,8 +97,10 @@ export function Layout() {
           <button
             type="button"
             onClick={() => setCollapsed((v) => !v)}
-            className={`w-full rounded-xl text-sm text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300 transition ${
-              collapsed ? "px-2 py-2.5 text-center" : "px-3 py-2.5 text-left"
+            className={`w-full rounded-xl text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300 transition ${
+              collapsed
+                ? "flex min-h-[48px] items-center justify-center text-2xl font-semibold leading-none"
+                : "px-3 py-2.5 text-left text-sm"
             }`}
             title={collapsed ? "Expandir menu" : "Recolher menu"}
           >
@@ -95,8 +112,10 @@ export function Layout() {
               clearToken();
               window.location.href = "/login";
             }}
-            className={`w-full rounded-xl text-sm text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300 transition ${
-              collapsed ? "px-2 py-2.5 text-center" : "px-3 py-2.5 text-left"
+            className={`w-full rounded-xl text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300 transition ${
+              collapsed
+                ? "flex min-h-[48px] items-center justify-center text-xl leading-none"
+                : "px-3 py-2.5 text-left text-sm"
             }`}
             title={collapsed ? "Sair" : undefined}
           >

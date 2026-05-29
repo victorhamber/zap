@@ -35,11 +35,11 @@ export async function syncRecentMessagesFromWpp(
   if (now - last < SYNC_COOLDOWN_MS) return 0;
   lastSyncByChat.set(key, now);
 
-  const phone = encodeURIComponent(target.phone);
+  const remoteJid = encodeURIComponent(target.jid);
   let raw: unknown;
   try {
     raw = await wpp.callSessionApi(
-      `/get-messages/${phone}?count=${Math.min(count, 50)}`,
+      `/get-messages/${remoteJid}?count=${Math.min(count, 50)}`,
       "GET"
     );
   } catch {

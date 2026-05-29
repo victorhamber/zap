@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../api/client";
 import type { QuickReply } from "../../types/quickReply";
 
@@ -116,6 +116,8 @@ const ATTACH_ITEMS: Array<{
 ];
 
 const EMOJIS = ["😀", "😂", "❤️", "👍", "🙏", "🔥", "✅", "😉", "🎉", "💬"];
+/** ~5 linhas, similar ao WhatsApp Web antes de rolar. */
+const DRAFT_MAX_HEIGHT_PX = 150;
 
 export function InboxComposer({
   draft,
@@ -137,9 +139,23 @@ export function InboxComposer({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingAccept, setPendingAccept] = useState("image/*,video/*");
   const attachRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mimeRef = useRef("audio/webm");
 
   const hasText = draft.trim().length > 0;
+
+  const resizeTextarea = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "0px";
+    const next = Math.min(el.scrollHeight, DRAFT_MAX_HEIGHT_PX);
+    el.style.height = `${next}px`;
+    el.style.overflowY = el.scrollHeight > DRAFT_MAX_HEIGHT_PX ? "auto" : "hidden";
+  }, []);
+
+  useEffect(() => {
+    resizeTextarea();
+  }, [draft, resizeTextarea]);
 
   useEffect(() => {
     if (!recording) return;
@@ -394,7 +410,7 @@ export function InboxComposer({
           <IconPlus />
         </button>
 
-        <div className="flex-1 flex items-end gap-1 rounded-3xl bg-[var(--wa-bg-input)] px-3 py-1.5 min-h-[44px] max-h-32 border border-transparent focus-within:border-[#3b4a54]/80">
+        <div className="flex-1 flex items-end gap-1 rounded-3xl bg-[var(--wa-bg-input)] px-3 py-1.5 min-h-[44px] border border-transparent focus-within:border-[#3b4a54]/80">
           <button
             type="button"
             disabled={disabled}
@@ -408,6 +424,7 @@ export function InboxComposer({
             <IconSmile />
           </button>
           <textarea
+            ref={textareaRef}
             value={draft}
             onChange={(e) => onDraftChange(e.target.value)}
             onKeyDown={(e) => {
@@ -419,7 +436,7 @@ export function InboxComposer({
             rows={1}
             disabled={disabled || uploading}
             placeholder="Mensagem"
-            className="flex-1 resize-none bg-transparent border-0 text-[15px] leading-snug text-[var(--wa-text-primary)] placeholder:text-[var(--wa-text-secondary)] max-h-28 py-2 focus:outline-none focus:ring-0 disabled:opacity-50"
+            className="flex-1 w-full min-h-[24px] resize-none overflow-hidden bg-transparent border-0 text-[15px] leading-snug text-[var(--wa-text-primary)] placeholder:text-[var(--wa-text-secondary)] py-2 focus:outline-none focus:ring-0 disabled:opacity-50"
           />
         </div>
 

@@ -248,3 +248,27 @@ export async function deleteMediaFile(
 
   return { ok: true };
 }
+
+export async function deleteMediaFiles(
+  filenames: string[]
+): Promise<{ ok: boolean; deleted: number; failed: string[] }> {
+  const unique = [...new Set(filenames.map((f) => f.trim()).filter(Boolean))];
+  let deleted = 0;
+  const failed: string[] = [];
+
+  for (const filename of unique) {
+    const result = await deleteMediaFile(filename);
+    if (result.ok) deleted += 1;
+    else failed.push(filename);
+  }
+
+  return { ok: failed.length === 0, deleted, failed };
+}
+
+export async function deleteAllMediaFiles(
+  filter: MediaFilter = "all"
+): Promise<{ ok: boolean; deleted: number }> {
+  const { items } = await listMediaLibrary(filter);
+  const result = await deleteMediaFiles(items.map((i) => i.filename));
+  return { ok: result.failed.length === 0, deleted: result.deleted };
+}
