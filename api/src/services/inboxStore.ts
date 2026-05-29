@@ -416,15 +416,9 @@ export async function listStoredMessages(
     take: limit
   });
 
-  const sortedRows = [...rows].sort((a, b) => {
-    if (a.waMessageId && !b.waMessageId) return -1;
-    if (!a.waMessageId && b.waMessageId) return 1;
-    return a.timestamp.getTime() - b.timestamp.getTime();
-  });
-
   const seen = new Set<string>();
   const seenContent = new Set<string>();
-  const dedupedRows = sortedRows.filter((r) => {
+  const dedupedRows = rows.filter((r) => {
     const key = inboxMessageDedupeKey(r);
     const sec = Math.floor(r.timestamp.getTime() / 1000);
     const contentKey = `${r.fromMe ? 1 : 0}|${r.body}|${sec}`;
@@ -433,6 +427,8 @@ export async function listStoredMessages(
     seenContent.add(contentKey);
     return true;
   });
+
+  dedupedRows.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
 
   const messages: NormalizedMessage[] = dedupedRows.map((r) => {
     let body = r.body;

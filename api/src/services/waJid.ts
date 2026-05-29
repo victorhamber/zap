@@ -1,5 +1,27 @@
 /** Normalização de JIDs WhatsApp (Evolution / Baileys LID vs telefone). */
 
+const GENERIC_SELF_CHAT_NAMES = new Set([
+  "você",
+  "voce",
+  "you",
+  "meu",
+  "eu",
+  "myself",
+  "eu mesmo",
+  "mensagens salvas",
+  "message yourself"
+]);
+
+/** Nomes genéricos de chat consigo mesmo — não usar em contatos externos. */
+export function isGenericSelfChatName(name: string | null | undefined): boolean {
+  const n = String(name ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+  if (!n) return false;
+  return GENERIC_SELF_CHAT_NAMES.has(n);
+}
+
 export function digitsOnly(s: string): string {
   return s.replace(/\D/g, "");
 }
@@ -75,6 +97,11 @@ export function isValidWhatsAppPhoneDigits(digits: string): boolean {
 }
 
 /** Número para API Evolution (preferir só dígitos do telefone). */
+export function isOwnerPhoneDigits(chatDigits: string, ownerDigits: string | null): boolean {
+  if (!ownerDigits || !chatDigits) return false;
+  return chatDigits === ownerDigits;
+}
+
 export function evolutionSendNumber(jid: string, isGroup?: boolean): string {
   const normalized = normalizeDirectJid(jid);
   if (isGroup || normalized.endsWith("@g.us")) {

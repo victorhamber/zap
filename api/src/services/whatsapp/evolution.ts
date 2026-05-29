@@ -11,7 +11,11 @@ import {
   isValidWhatsAppPhoneDigits,
   normalizeDirectJid
 } from "../waJid.js";
-import { readUploadFileBase64, rewriteUploadUrlForWpp } from "../uploads.js";
+import {
+  MEDIA_SEND_URL_THRESHOLD_BYTES,
+  readUploadFileBase64,
+  rewriteUploadUrlForWpp
+} from "../uploads.js";
 
 export const MSG_NO_DEVICE =
   "Nenhum WhatsApp conectado na Evolution. Crie/conecte a instância e escaneie o QR.";
@@ -247,6 +251,23 @@ export function extractEvolutionSentMessageId(data: unknown): string | null {
   return direct ? direct.slice(0, 240) : null;
 }
 
+export async function markEvolutionChatAsRead(
+  chatId: string,
+  waMessageIds: Array<{ id: string; remoteJid: string; fromMe?: boolean }>
+): Promise<void> {
+  if (waMessageIds.length === 0) return;
+  const instance = await getInstanceName();
+  const readMessages = waMessageIds.map((m) => ({
+    id: m.id,
+    remoteJid: normalizeDirectJid(m.remoteJid),
+    fromMe: m.fromMe === true
+  }));
+  await evoFetch(`/chat/markMessageAsRead/${encodeURIComponent(instance)}`, {
+    method: "POST",
+    body: JSON.stringify({ readMessages })
+  }).catch(() => {});
+}
+
 export async function sendText(phone: string, message: string): Promise<string | null> {
   const instance = await getInstanceName();
   const number = await resolveEvolutionSendNumber(phone);
@@ -299,11 +320,15 @@ async function resolveEvolutionMediaInput(
   if (media.startsWith("http://") || media.startsWith("https://")) {
     const local = await readUploadFileBase64(media);
     if (local?.base64) {
-      return {
-        media: local.base64,
-        mimeType: inferMimeType(local.filename, mimeHint),
-        fileName: fileNameHint?.trim() || local.filename
-      };
+      const bytes = Buffer.byteLength(local.base64, "base64");
+      const isVideo = mimeType.startsWith("video/");
+      if (!isVideo && bytes <= MEDIA_SEND_URL_THRESHOLD_BYTES) {
+        return {
+          media: local.base64,
+          mimeType: inferMimeType(local.filename, mimeHint),
+          fileName: fileNameHint?.trim() || local.filename
+        };
+      }
     }
     return { media: rewriteUploadUrlForWpp(media), mimeType, fileName };
   }
@@ -714,6 +739,172 @@ export async function listServerSessions(): Promise<unknown> {
   return body;
 }
 
+let cachedOwnerDigits: { session: string; digits: string; expires: number } | null = null;
+
+function extractOwnerDigitsFromInstance(item: Record<string, unknown>): string | null {
+  const candidates = [
+    item.ownerJid,
+    item.owner,
+    item.wuid,
+    item.number,
+    (item.instance as Record<string, unknown> | undefined)?.ownerJid,
+    (item.instance as Record<string, unknown> | undefined)?.wuid
+  ];
+  for (const raw of candidates) {
+    const d = digitsOnly(String(raw ?? ""));
+    if (isValidWhatsAppPhoneDigits(d)) return d;
+  }
+  return null;
+}
+
+/** Telefone da instância conectada (ex.: 5521995758554) — evita rotular contatos como "Você". */
+export async function getConnectedOwnerDigits(): Promise<string | null> {
+  const instance = (await getInstanceName()).trim().toLowerCase();
+  const now = Date.now();
+  if (
+    cachedOwnerDigits &&
+    cachedOwnerDigits.session === instance &&
+    cachedOwnerDigits.expires > now
+  ) {
+    return cachedOwnerDigits.digits;
+  }
+
+  try {
+    const raw = await listServerSessions();
+    let list: unknown[] = [];
+    if (Array.isArray(raw)) list = raw;
+    else if (raw && typeof raw === "object") {
+      const o = raw as Record<string, unknown>;
+      if (Array.isArray(o.response)) list = o.response;
+      else if (Array.isArray(o.instances)) list = o.instances;
+    }
+
+    for (const item of list) {
+      if (!item || typeof item !== "object") continue;
+      const row = item as Record<string, unknown>;
+      const name = String(row.instanceName ?? row.name ?? "")
+        .trim()
+        .toLowerCase();
+      if (name !== instance) continue;
+      const digits = extractOwnerDigitsFromInstance(row);
+      if (digits) {
+        cachedOwnerDigits = { session: instance, digits, expires: now + 120_000 };
+        return digits;
+      }
+    }
+  } catch {
+    /* opcional */
+  }
+  return null;
+}
+
+export type ConnectedInstanceProfile = {
+  instanceName: string;
+  profileName: string | null;
+  profilePictureUrl: string | null;
+  phone: string | null;
+  connected: boolean;
+};
+
+let cachedProfile: {
+  session: string;
+  profile: ConnectedInstanceProfile;
+  expires: number;
+} | null = null;
+
+function parseInstanceList(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) return raw;
+  if (raw && typeof raw === "object") {
+    const o = raw as Record<string, unknown>;
+    if (Array.isArray(o.response)) return o.response;
+    if (Array.isArray(o.instances)) return o.instances;
+  }
+  return [];
+}
+
+function findInstanceRow(list: unknown[], instance: string): Record<string, unknown> | null {
+  for (const item of list) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    const name = String(row.instanceName ?? row.name ?? "")
+      .trim()
+      .toLowerCase();
+    if (name === instance) return row;
+  }
+  return null;
+}
+
+/** Nome e foto do WhatsApp conectado na instância Evolution. */
+export async function getConnectedInstanceProfile(): Promise<ConnectedInstanceProfile> {
+  const instance = (await getInstanceName()).trim().toLowerCase();
+  const now = Date.now();
+  if (cachedProfile && cachedProfile.session === instance && cachedProfile.expires > now) {
+    return cachedProfile.profile;
+  }
+
+  const fallback: ConnectedInstanceProfile = {
+    instanceName: instance,
+    profileName: null,
+    profilePictureUrl: null,
+    phone: null,
+    connected: false
+  };
+
+  let connected = false;
+  try {
+    connected = parseConnectionCheck(await checkConnection());
+  } catch {
+    /* opcional */
+  }
+
+  try {
+    const row = findInstanceRow(parseInstanceList(await listServerSessions()), instance);
+    if (!row) {
+      const profile = { ...fallback, connected };
+      cachedProfile = { session: instance, profile, expires: now + 120_000 };
+      return profile;
+    }
+
+    const profileName =
+      String(row.profileName ?? row.pushName ?? row.ownerName ?? "").trim() || null;
+    let profilePictureUrl =
+      String(row.profilePicUrl ?? row.profilePictureUrl ?? row.picture ?? "").trim() || null;
+    const phone = extractOwnerDigitsFromInstance(row);
+
+    if (!profilePictureUrl && phone && connected) {
+      try {
+        const res = await evoFetch(
+          `/chat/fetchProfilePictureUrl/${encodeURIComponent(instance)}`,
+          {
+            method: "POST",
+            body: JSON.stringify({ number: phone })
+          }
+        );
+        const data = await readJson(res);
+        if (res.ok && data && typeof data === "object") {
+          const d = data as Record<string, unknown>;
+          profilePictureUrl =
+            String(d.profilePictureUrl ?? d.url ?? d.picture ?? "").trim() || profilePictureUrl;
+        }
+      } catch {
+        /* opcional */
+      }
+    }
+
+    const profile: ConnectedInstanceProfile = {
+      instanceName: instance,
+      profileName,
+      profilePictureUrl,
+      phone,
+      connected
+    };
+    cachedProfile = { session: instance, profile, expires: now + 120_000 };
+    return profile;
+  } catch {
+    return { ...fallback, connected };
+  }
+}
+
 export async function purgeWppSessionFromServer(
   sessionName: string
 ): Promise<{ ok: boolean; detail: string; stillOnServer?: boolean }> {
@@ -921,9 +1112,18 @@ export async function callSessionApi(
     const caption = String(b.caption ?? "");
     const opts = { mimeType, fileName };
     let waMessageId: string | null = null;
-    if (/\.(mp4|webm|mov|mkv)(\?|$)/.test(filename)) {
+    const sendAs = String(b.sendAs ?? "auto").toLowerCase();
+    if (sendAs === "document") {
+      waMessageId = await sendDocument(phone, media, caption, fileName, opts);
+    } else if (
+      (sendAs === "video" || sendAs === "auto") &&
+      /\.(mp4|webm|mov|mkv)(\?|$)/.test(filename)
+    ) {
       waMessageId = await sendVideo(phone, media, caption, opts);
-    } else if (/\.(jpe?g|png|gif|webp)(\?|$)/.test(filename)) {
+    } else if (
+      (sendAs === "image" || sendAs === "auto") &&
+      /\.(jpe?g|png|gif|webp)(\?|$)/.test(filename)
+    ) {
       waMessageId = await sendImage(phone, media, caption, opts);
     } else {
       waMessageId = await sendDocument(phone, media, caption, fileName, opts);

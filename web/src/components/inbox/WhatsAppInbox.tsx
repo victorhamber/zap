@@ -47,6 +47,56 @@ const TAB_LABELS: Record<ChatTab, string> = {
   community: "Comunidades"
 };
 
+type SessionProfile = {
+  instanceName: string;
+  profileName: string | null;
+  profilePictureUrl: string | null;
+  phone: string | null;
+  connected: boolean;
+};
+
+function formatPhoneDisplay(phone: string | null | undefined): string {
+  if (!phone) return "";
+  const d = phone.replace(/\D/g, "");
+  if (d.length === 13 && d.startsWith("55")) {
+    return `+${d.slice(0, 2)} ${d.slice(2, 4)} ${d.slice(4, 9)}-${d.slice(9)}`;
+  }
+  if (d.length === 12 && d.startsWith("55")) {
+    return `+${d.slice(0, 2)} ${d.slice(2, 4)} ${d.slice(4, 8)}-${d.slice(8)}`;
+  }
+  return d.startsWith("55") ? `+${d}` : d;
+}
+
+function sessionInitials(name: string): string {
+  const p = name.trim().split(/\s+/);
+  if (p.length >= 2) return (p[0][0] + p[1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+}
+
+function IconRefresh({ className = "w-5 h-5" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden>
+      <path d="M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08a5.99 5.99 0 01-5.65 4c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" />
+    </svg>
+  );
+}
+
+function IconSettings({ className = "w-5 h-5" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden>
+      <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.488.488 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.488.488 0 00-.59.22L2.74 8.87a.49.49 0 00.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.49.49 0 00-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1112 8.4a3.6 3.6 0 010 7.2z" />
+    </svg>
+  );
+}
+
+function IconPlay({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden>
+      <path d="M8 5v14l11-7L8 5z" />
+    </svg>
+  );
+}
+
 function usePageVisible() {
   const [visible, setVisible] = useState(() =>
     typeof document !== "undefined" ? !document.hidden : true
@@ -261,7 +311,14 @@ export function WhatsAppInbox() {
   const [error, setError] = useState("");
   const [newTagName, setNewTagName] = useState("");
   const [newTagColor, setNewTagColor] = useState("#25D366");
-  const [showTagForm, setShowTagForm] = useState(false);
+  const [showTagManager, setShowTagManager] = useState(false);
+  const [editingTagId, setEditingTagId] = useState<string | null>(null);
+  const [editTagName, setEditTagName] = useState("");
+  const [editTagColor, setEditTagColor] = useState("#25D366");
+  const [sessionProfile, setSessionProfile] = useState<SessionProfile | null>(null);
+  const [flowMenuOpen, setFlowMenuOpen] = useState(false);
+  const [flowNotice, setFlowNotice] = useState("");
+  const flowMenuRef = useRef<HTMLDivElement>(null);
   const [msgHint, setMsgHint] = useState("");
   const [sendError, setSendError] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -280,6 +337,15 @@ export function WhatsAppInbox() {
   const loadQuickReplies = useCallback(async () => {
     const r = await api<{ replies: QuickReply[] }>("/api/inbox/quick-replies");
     setQuickReplies(r.replies ?? []);
+  }, []);
+
+  const loadSessionProfile = useCallback(async () => {
+    try {
+      const r = await api<{ ok: boolean; profile: SessionProfile | null }>("/api/inbox/session-profile");
+      if (r.profile) setSessionProfile(r.profile);
+    } catch {
+      /* opcional */
+    }
   }, []);
 
   const loadChats = useCallback(async (silent = false) => {
@@ -347,7 +413,19 @@ export function WhatsAppInbox() {
     loadFlows();
     loadQuickReplies();
     loadChats();
-  }, [loadTags, loadFlows, loadQuickReplies, loadChats]);
+    void loadSessionProfile();
+  }, [loadTags, loadFlows, loadQuickReplies, loadChats, loadSessionProfile]);
+
+  useEffect(() => {
+    if (!flowMenuOpen) return;
+    const close = (e: MouseEvent) => {
+      if (flowMenuRef.current && !flowMenuRef.current.contains(e.target as Node)) {
+        setFlowMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [flowMenuOpen]);
 
   useEffect(() => {
     if (!pageVisible) return;
@@ -421,8 +499,46 @@ export function WhatsAppInbox() {
       body: JSON.stringify({ name, color: newTagColor })
     });
     setNewTagName("");
-    setShowTagForm(false);
     await loadTags();
+  }
+
+  async function updateTag(id: string) {
+    const name = editTagName.trim();
+    if (!name) return;
+    await api(`/api/tags/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ name, color: editTagColor })
+    });
+    setEditingTagId(null);
+    await loadTags();
+    await loadChats(true);
+    if (selected) {
+      const r = await api<{ ok: boolean; chats: Chat[] }>("/api/inbox/chats");
+      const updated = r.chats?.find((c) => c.id === selected.id);
+      if (updated) setSelected(updated);
+    }
+  }
+
+  async function deleteTag(tag: Tag) {
+    if (!window.confirm(`Excluir a tag "${tag.name}"? Ela será removida de todos os contatos.`)) {
+      return;
+    }
+    await api(`/api/tags/${tag.id}`, { method: "DELETE" });
+    if (editingTagId === tag.id) setEditingTagId(null);
+    await loadTags();
+    await loadChats(true);
+    if (selected) {
+      const r = await api<{ ok: boolean; chats: Chat[] }>("/api/inbox/chats");
+      const updated = r.chats?.find((c) => c.id === selected.id);
+      if (updated) setSelected(updated);
+    }
+  }
+
+  function startEditTag(tag: Tag) {
+    setEditingTagId(tag.id);
+    setEditTagName(tag.name);
+    setEditTagColor(tag.color);
+    setShowTagManager(true);
   }
 
   async function sendMessage() {
@@ -493,15 +609,28 @@ export function WhatsAppInbox() {
 
   async function startFlow(flowId: string) {
     if (!selected) return;
-    await api("/api/inbox/start-flow", {
-      method: "POST",
-      body: JSON.stringify({
-        chatId: selected.id,
-        flowId,
-        name: selected.name,
-        isGroup: selected.isGroup
-      })
-    });
+    setFlowMenuOpen(false);
+    setFlowNotice("");
+    const flow = flows.find((f) => f.id === flowId);
+    try {
+      const r = await api<{ ok: boolean; message?: string; error?: string }>("/api/inbox/start-flow", {
+        method: "POST",
+        body: JSON.stringify({
+          chatId: selected.id,
+          flowId,
+          name: selected.name,
+          isGroup: selected.isGroup
+        })
+      });
+      if (r.ok) {
+        setFlowNotice(`Fluxo "${flow?.name ?? "automação"}" iniciado para ${selected.name}.`);
+        setSendError("");
+      } else {
+        setSendError(r.message ?? r.error ?? "Falha ao iniciar fluxo");
+      }
+    } catch (e: unknown) {
+      setSendError(e instanceof Error ? e.message : "Erro ao iniciar fluxo");
+    }
   }
 
   function toggleTag(tagId: string) {
@@ -524,28 +653,47 @@ export function WhatsAppInbox() {
   return (
     <div className="wa-inbox flex flex-1 min-h-0 w-full bg-[var(--wa-bg-app)] text-[var(--wa-text-primary)] overflow-hidden">
       <aside className="flex w-[393px] max-w-[38vw] min-w-[260px] shrink-0 flex-col border-r border-[#2a3942] bg-[#111b21] min-h-0">
-        <header className="h-[59px] px-4 flex items-center gap-3 bg-[#202c33] shrink-0">
-          <div className="h-10 w-10 rounded-full bg-[#6b7c85] flex items-center justify-center text-sm font-medium">
-            Z
+        <header className="h-[59px] px-3 flex items-center gap-3 bg-[#202c33] shrink-0">
+          <div className="h-11 w-11 rounded-full bg-[#6b7c85] flex items-center justify-center overflow-hidden shrink-0">
+            {sessionProfile?.profilePictureUrl ? (
+              <img
+                src={sessionProfile.profilePictureUrl}
+                alt=""
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <span className="text-sm font-semibold text-white">
+                {sessionInitials(sessionProfile?.profileName ?? sessionProfile?.instanceName ?? "Z")}
+              </span>
+            )}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="font-medium text-[#e9edef]">Conversas</div>
-            <div className="text-xs text-[#8696a0] truncate">Zap · instância ativa</div>
+            <div className="font-medium text-[#e9edef] truncate text-[15px]">
+              {sessionProfile?.profileName ?? "WhatsApp conectado"}
+            </div>
+            <div className="text-xs text-[#8696a0] truncate">
+              {sessionProfile?.connected ? "Conectado" : "Desconectado"}
+              {sessionProfile?.instanceName ? ` · ${sessionProfile.instanceName}` : ""}
+              {sessionProfile?.phone ? ` · ${formatPhoneDisplay(sessionProfile.phone)}` : ""}
+            </div>
           </div>
           <button
             type="button"
-            onClick={() => loadChats()}
-            className="text-xs text-[#8696a0] hover:text-[#00a884] shrink-0"
-            title="Atualizar lista"
+            onClick={() => {
+              void loadChats();
+              void loadSessionProfile();
+            }}
+            className="p-2.5 rounded-full text-[#aebac1] hover:text-[#00a884] hover:bg-[#374955] shrink-0 transition-colors"
+            title="Atualizar conversas"
           >
-            ↻
+            <IconRefresh />
           </button>
           <Link
             to="/settings"
-            className="text-xs text-[#00a884] hover:underline shrink-0"
+            className="p-2.5 rounded-full text-[#aebac1] hover:text-[#00a884] hover:bg-[#374955] shrink-0 transition-colors"
             title="Configurações"
           >
-            ⚙
+            <IconSettings />
           </Link>
         </header>
 
@@ -606,7 +754,10 @@ export function WhatsAppInbox() {
               chat={chat}
               active={selected?.id === chat.id}
               onSelect={() => {
-                setSelected(chat);
+                setSelected({ ...chat, unreadCount: 0 });
+                setChats((prev) =>
+                  prev.map((c) => (c.id === chat.id ? { ...c, unreadCount: 0 } : c))
+                );
                 setSendError("");
               }}
             />
@@ -654,39 +805,66 @@ export function WhatsAppInbox() {
               <button
                 type="button"
                 onClick={() => loadMessages(selected)}
-                className="text-xs text-[#8696a0] hover:text-[#00a884]"
+                className="p-2 rounded-full text-[#aebac1] hover:text-[#00a884] hover:bg-[#374955] shrink-0"
                 title="Atualizar mensagens"
               >
-                ↻
+                <IconRefresh className="w-[18px] h-[18px]" />
               </button>
-              <select
-                className="rounded-lg bg-[#2a3942] text-xs text-[#e9edef] px-2 py-1.5 max-w-[120px] border-0"
-                defaultValue=""
-                onChange={(e) => {
-                  if (e.target.value) {
-                    void startFlow(e.target.value);
-                    e.target.value = "";
-                  }
-                }}
-              >
-                <option value="">▶ Fluxo</option>
-                {flows.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.name}
-                  </option>
-                ))}
-              </select>
+              <div className="relative shrink-0" ref={flowMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setFlowMenuOpen((v) => !v)}
+                  className="flex items-center gap-1.5 rounded-lg bg-[#2a3942] px-3 py-2 text-xs text-[#e9edef] hover:bg-[#374955] min-w-[96px]"
+                  title="Iniciar fluxo de automação para este contato"
+                >
+                  <IconPlay />
+                  <span>Fluxo</span>
+                  <span className="opacity-60">▾</span>
+                </button>
+                {flowMenuOpen && (
+                  <div className="absolute right-0 top-full mt-1 z-30 min-w-[220px] max-w-[280px] rounded-xl bg-[#233138] border border-[#3b4a54]/70 shadow-2xl py-1 overflow-hidden">
+                    <p className="px-3 py-2 text-[11px] text-[#8696a0] border-b border-[#3b4a54]/50">
+                      Adicionar {selected.name} a um fluxo
+                    </p>
+                    {flows.length === 0 ? (
+                      <p className="px-3 py-3 text-xs text-[#8696a0]">
+                        Nenhum fluxo ativo. Crie e ative em Automações.
+                      </p>
+                    ) : (
+                      flows.map((f) => (
+                        <button
+                          key={f.id}
+                          type="button"
+                          onClick={() => void startFlow(f.id)}
+                          className="w-full text-left px-3 py-2.5 text-sm text-[#e9edef] hover:bg-[#2a3942] truncate"
+                        >
+                          {f.name}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
               <button
                 type="button"
-                onClick={() => setShowTagForm((v) => !v)}
-                className="rounded-lg bg-[#2a3942] px-2 py-1.5 text-xs hover:bg-[#374955]"
+                onClick={() => setShowTagManager((v) => !v)}
+                className="rounded-lg bg-[#2a3942] px-3 py-2 text-xs hover:bg-[#374955] shrink-0"
               >
-                + Tag
+                Tags
               </button>
             </header>
 
+            {flowNotice && (
+              <div className="px-3 py-1.5 bg-[#00a884]/10 border-b border-[#00a884]/30 text-xs text-[#53bdeb]">
+                {flowNotice}
+              </div>
+            )}
+
             <div className="px-3 py-1.5 bg-[#111b21] border-b border-[#2a3942]/60 flex flex-wrap gap-1.5 items-center max-h-[72px] overflow-y-auto">
-              <span className="text-[11px] text-[#8696a0]">Tags:</span>
+              <span className="text-[11px] text-[#8696a0]">Tags do contato:</span>
+              {tags.length === 0 && (
+                <span className="text-[11px] text-[#8696a0]">Nenhuma tag criada</span>
+              )}
               {tags.map((tag) => {
                 const on = activeTags.some((t) => t.id === tag.id);
                 return (
@@ -698,6 +876,7 @@ export function WhatsAppInbox() {
                       on ? "text-white border-transparent" : "border-[#3b4a54] text-[#8696a0]"
                     }`}
                     style={on ? { backgroundColor: tag.color } : undefined}
+                    title={on ? "Remover tag do contato" : "Aplicar tag ao contato"}
                   >
                     {tag.name}
                   </button>
@@ -705,27 +884,89 @@ export function WhatsAppInbox() {
               })}
             </div>
 
-            {showTagForm && (
-              <div className="px-4 py-2 bg-[#202c33] border-b border-[#2a3942] flex flex-wrap gap-2 items-end">
-                <input
-                  value={newTagName}
-                  onChange={(e) => setNewTagName(e.target.value)}
-                  placeholder="Nome da tag"
-                  className="flex-1 min-w-[120px] rounded-lg bg-[#2a3942] px-3 py-1.5 text-sm border-0"
-                />
-                <input
-                  type="color"
-                  value={newTagColor}
-                  onChange={(e) => setNewTagColor(e.target.value)}
-                  className="h-9 w-12 rounded cursor-pointer"
-                />
-                <button
-                  type="button"
-                  onClick={() => void createTag()}
-                  className="rounded-lg bg-[#00a884] px-3 py-1.5 text-sm font-semibold text-[#111b21]"
-                >
-                  Criar
-                </button>
+            {showTagManager && (
+              <div className="px-4 py-3 bg-[#202c33] border-b border-[#2a3942] space-y-3">
+                <div className="flex flex-wrap gap-2 items-end">
+                  <input
+                    value={newTagName}
+                    onChange={(e) => setNewTagName(e.target.value)}
+                    placeholder="Nova tag"
+                    className="flex-1 min-w-[120px] rounded-lg bg-[#2a3942] px-3 py-2 text-sm border-0"
+                  />
+                  <input
+                    type="color"
+                    value={newTagColor}
+                    onChange={(e) => setNewTagColor(e.target.value)}
+                    className="h-10 w-12 rounded cursor-pointer"
+                    title="Cor da tag"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void createTag()}
+                    className="rounded-lg bg-[#00a884] px-4 py-2 text-sm font-semibold text-[#111b21]"
+                  >
+                    Criar
+                  </button>
+                </div>
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  <p className="text-[11px] text-[#8696a0] uppercase tracking-wide">Gerenciar tags</p>
+                  {tags.map((tag) =>
+                    editingTagId === tag.id ? (
+                      <div key={tag.id} className="flex flex-wrap gap-2 items-center">
+                        <input
+                          value={editTagName}
+                          onChange={(e) => setEditTagName(e.target.value)}
+                          className="flex-1 min-w-[100px] rounded-lg bg-[#2a3942] px-3 py-1.5 text-sm border-0"
+                        />
+                        <input
+                          type="color"
+                          value={editTagColor}
+                          onChange={(e) => setEditTagColor(e.target.value)}
+                          className="h-9 w-10 rounded cursor-pointer"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void updateTag(tag.id)}
+                          className="rounded-lg bg-[#00a884] px-3 py-1.5 text-xs font-semibold text-[#111b21]"
+                        >
+                          Salvar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingTagId(null)}
+                          className="rounded-lg px-3 py-1.5 text-xs text-[#8696a0] hover:bg-[#374955]"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    ) : (
+                      <div
+                        key={tag.id}
+                        className="flex items-center gap-2 rounded-lg bg-[#2a3942]/60 px-2 py-1.5"
+                      >
+                        <span
+                          className="w-3 h-3 rounded-full shrink-0"
+                          style={{ backgroundColor: tag.color }}
+                        />
+                        <span className="flex-1 text-sm truncate">{tag.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => startEditTag(tag)}
+                          className="text-xs text-[#53bdeb] hover:underline px-1"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void deleteTag(tag)}
+                          className="text-xs text-[#ea0038] hover:underline px-1"
+                        >
+                          Excluir
+                        </button>
+                      </div>
+                    )
+                  )}
+                </div>
               </div>
             )}
 

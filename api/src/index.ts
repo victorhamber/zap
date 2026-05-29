@@ -22,7 +22,7 @@ const __dirname = path.dirname(__filename);
 
 const app = Fastify({
   logger: true,
-  bodyLimit: 52 * 1024 * 1024 // uploads e webhooks com mídia em base64
+  bodyLimit: 128 * 1024 * 1024 // uploads de vídeo em base64 (~64 MB + overhead JSON)
 });
 
 app.addContentTypeParser("application/json", { parseAs: "string" }, (_req, body, done) => {

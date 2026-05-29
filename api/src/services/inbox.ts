@@ -1,15 +1,18 @@
 import * as wpp from "./whatsapp/index.js";
 import { listStoredMessages, saveInboxMessage } from "./inboxStore.js";
-import { buildWppSendTarget, sendWppApi, sendWppText } from "./wppSend.js";
+import { buildWppSendTarget, sendWppApi, sendWppText, extractWppMessageId } from "./wppSend.js";
 import { convertWebmDataUrlToOgg } from "./mediaConvert.js";
 import {
   canonicalEvolutionChatId,
   digitsOnly,
+  isGenericSelfChatName,
   isLikelyInternalLidJid,
+  isOwnerPhoneDigits,
   isValidWhatsAppPhoneDigits,
   normalizeDirectJid
 } from "./waJid.js";
 import {
+  expandChatIdVariants,
   extractEvolutionKeyFields,
   getMappedPhoneJid,
   loadWaLidMap,
@@ -18,12 +21,71 @@ import {
   flushWaLidMap
 } from "./waLidMap.js";
 import {
+  getUploadFileSize,
+  MEDIA_SEND_URL_THRESHOLD_BYTES,
   readUploadFileBase64,
   rewriteUploadUrlForWpp,
   saveUploadFromData,
   toPublicMediaUrl,
-  uploadFilenameFromUrl
+  uploadFilenameFromUrl,
+  WHATSAPP_INLINE_VIDEO_MAX_BYTES
 } from "./uploads.js";
+
+/** Suprime badge de não lidas após abrir a conversa no painel. */
+const readChatUntil = new Map<string, number>();
+
+function readChatKey(session: string, chatId: string): string {
+  return `${session.trim().toLowerCase()}|${normalizeDirectJid(chatId)}`;
+}
+
+export function markChatReadLocally(session: string, chatId: string, ttlMs = 600_000): void {
+  readChatUntil.set(readChatKey(session, chatId), Date.now() + ttlMs);
+}
+
+export function isChatReadLocally(session: string, chatId: string): boolean {
+  const until = readChatUntil.get(readChatKey(session, chatId));
+  return typeof until === "number" && until > Date.now();
+}
+
+export async function markInboxChatAsRead(chatId: string, isGroup = false): Promise<void> {
+  const { defaultWhatsAppSession } = await import("../env.js");
+  const session = defaultWhatsAppSession();
+  await loadWaLidMap(session);
+  markChatReadLocally(session, chatId);
+
+  if (!wpp.isEvolution) return;
+
+  const mapped = getMappedPhoneJid(session, chatId);
+  const resolvedId = mapped ?? normalizeDirectJid(chatId);
+  const { prisma } = await import("../prisma.js");
+  if (!prisma) return;
+
+  const variants = await expandChatIdVariants(session, resolvedId);
+  const rows = await prisma.inboxMessage.findMany({
+    where: {
+      session,
+      chatId: { in: variants },
+      fromMe: false,
+      waMessageId: { not: null }
+    },
+    orderBy: { timestamp: "desc" },
+    take: 20,
+    select: { waMessageId: true, chatId: true }
+  });
+
+  const payload = rows
+    .filter((r) => r.waMessageId)
+    .map((r) => ({
+      id: r.waMessageId!,
+      remoteJid: r.chatId,
+      fromMe: false
+    }));
+
+  if (payload.length === 0 && !isGroup) return;
+
+  const { markEvolutionChatAsRead } = await import("./whatsapp/evolution.js");
+  await markEvolutionChatAsRead(resolvedId, payload.slice(0, 8));
+}
 
 export type ChatKind = "direct" | "group" | "community";
 
@@ -198,7 +260,7 @@ function parseChatItem(item: unknown, session?: string): NormalizedChat | null {
       ? (o.lastMessage as Record<string, unknown>)
       : o;
   const lastMsgPush = String(lastMsg?.pushName ?? lastMsg?.notify ?? "").trim();
-  const name = String(
+  let name = String(
     o.pushName ??
       o.name ??
       o.formattedTitle ??
@@ -211,6 +273,11 @@ function parseChatItem(item: unknown, session?: string): NormalizedChat | null {
       lastMsgPush ??
       (kind === "direct" ? phone : resolvedId.split("@")[0])
   ).trim();
+
+  if (kind === "direct" && isGenericSelfChatName(name)) {
+    const phoneDigits = digitsOnly(phone || resolvedId);
+    name = isValidWhatsAppPhoneDigits(phoneDigits) ? phoneDigits : name;
+  }
 
   const lastBody = evolutionLastPreview(lastMsg) || String(o.msg ?? o.preview ?? "");
 
@@ -348,7 +415,11 @@ function chatDedupeKey(c: NormalizedChat, session?: string): string {
   }
   const d = digitsOnly(c.id);
   if (isValidWhatsAppPhoneDigits(d)) return `p:${d}`;
-  if (c.name && c.name !== d && c.name !== c.phone) return `n:${c.name.toLowerCase()}`;
+  const phoneDigits = digitsOnly(c.phone);
+  if (isValidWhatsAppPhoneDigits(phoneDigits)) return `p:${phoneDigits}`;
+  if (c.name && !isGenericSelfChatName(c.name) && c.name !== d && c.name !== c.phone) {
+    return `n:${c.name.toLowerCase()}`;
+  }
   return `id:${c.id}`;
 }
 
@@ -369,9 +440,41 @@ function preferChatId(a: string, b: string): string {
 function pickBetterName(a: NormalizedChat, b: NormalizedChat): string {
   const score = (c: NormalizedChat) => {
     if (!c.name || c.name === c.phone) return 0;
+    if (isGenericSelfChatName(c.name)) return 0;
+    if (/^\d{10,}$/.test(c.name.replace(/\D/g, ""))) return 1;
     return c.name.length + (/\s/.test(c.name) ? 3 : 0);
   };
   return score(a) >= score(b) ? a.name : b.name;
+}
+
+function resolveDirectChatName(
+  chat: NormalizedChat,
+  ownerDigits: string | null,
+  namesByPhone: Map<string, string>
+): NormalizedChat {
+  if (chat.isGroup || chat.kind !== "direct") return chat;
+
+  const phoneDigits = digitsOnly(chat.phone) || digitsOnly(chat.id);
+  const fromContacts =
+    phoneDigits && isValidWhatsAppPhoneDigits(phoneDigits)
+      ? namesByPhone.get(phoneDigits)
+      : undefined;
+  const isSelf = isOwnerPhoneDigits(phoneDigits, ownerDigits);
+
+  if (isSelf) {
+    const name = isGenericSelfChatName(chat.name) ? "Você" : chat.name;
+    return { ...chat, name: name || "Você" };
+  }
+
+  if (fromContacts && fromContacts.trim()) {
+    return { ...chat, name: fromContacts.trim() };
+  }
+
+  if (isGenericSelfChatName(chat.name) && isValidWhatsAppPhoneDigits(phoneDigits)) {
+    return { ...chat, name: phoneDigits };
+  }
+
+  return chat;
 }
 
 function mergeTwoChats(a: NormalizedChat, b: NormalizedChat): NormalizedChat {
@@ -439,17 +542,10 @@ export type FetchChatsResult = {
 
 function mergeContactNames(
   chats: NormalizedChat[],
-  namesByPhone: Map<string, string>
+  namesByPhone: Map<string, string>,
+  ownerDigits: string | null
 ): NormalizedChat[] {
-  return chats.map((c) => {
-    if (c.isGroup || c.kind !== "direct") return c;
-    const key = digitsOnly(c.phone) || digitsOnly(c.id);
-    const fromContacts = key ? namesByPhone.get(key) : undefined;
-    if (!fromContacts) return c;
-    const looksLikePhone = !c.name || c.name === c.phone || /^\d+$/.test(c.name);
-    if (!looksLikePhone) return c;
-    return { ...c, name: fromContacts };
-  });
+  return chats.map((c) => resolveDirectChatName(c, ownerDigits, namesByPhone));
 }
 
 async function loadEvolutionContactNames(): Promise<Map<string, string>> {
@@ -557,8 +653,12 @@ export async function fetchChats(): Promise<FetchChatsResult> {
       if (a.timestamp !== b.timestamp) return b.timestamp - a.timestamp;
       return a.name.localeCompare(b.name, "pt-BR");
     }),
-    await loadEvolutionContactNames()
-  );
+    await loadEvolutionContactNames(),
+    wpp.isEvolution ? await wpp.getConnectedOwnerDigits() : null
+  ).map((c) => ({
+    ...c,
+    unreadCount: isChatReadLocally(session, c.id) ? 0 : c.unreadCount
+  }));
   await flushWaLidMap(session);
   return { chats, sourcesOk, errors };
 }
@@ -588,6 +688,8 @@ export async function fetchMessages(
     /* webhook é o caminho principal; sync é fallback */
   }
   let { messages, captureSince } = await listStoredMessages(chatId, options.count ?? 200);
+
+  void markInboxChatAsRead(chatId, options.isGroup).catch(() => {});
 
   if (messages.length === 0 && options.chatId !== chatId) {
     const fallback = await listStoredMessages(options.chatId, options.count ?? 200);
@@ -690,24 +792,31 @@ async function prepareMediaForSend(
 async function sendFileToWpp(
   payload: Record<string, unknown>,
   media: PreparedMedia,
-  caption: string
-): Promise<void> {
+  caption: string,
+  opts?: { sendAs?: "document" | "video" | "image" | "auto" }
+): Promise<string | null> {
   const body: Record<string, unknown> = {
     ...payload,
     filename: media.filename,
-    caption
+    caption,
+    ...(opts?.sendAs ? { sendAs: opts.sendAs } : {})
   };
 
-  if (media.base64) {
+  const isVideo = /\.(mp4|webm|mov|mkv)(\?|$)/i.test(media.filename);
+  const base64Bytes = media.base64 ? Buffer.byteLength(media.base64, "base64") : 0;
+  const preferUrl = isVideo || base64Bytes > MEDIA_SEND_URL_THRESHOLD_BYTES;
+
+  if (media.base64 && !preferUrl) {
     try {
-      await sendWppApi("/send-file", { ...body, base64: media.base64 });
-      return;
+      const raw = await sendWppApi("/send-file", { ...body, base64: media.base64 });
+      return extractWppMessageId(raw);
     } catch {
       /* tenta path */
     }
   }
 
-  await sendWppApi("/send-file", { ...body, path: media.wppPath });
+  const raw = await sendWppApi("/send-file", { ...body, path: media.wppPath });
+  return extractWppMessageId(raw);
 }
 
 function base64FromDataUrl(url: string): string {
@@ -730,6 +839,8 @@ export async function sendChatMedia(
   };
   const caption = options?.caption ?? "";
   let storedMediaUrl: string | null = null;
+  let waMessageId: string | null = null;
+  const sentAt = new Date();
 
   const runMediaSend = async (lid = false) => {
     const payload = { ...base, isLid: lid || base.isLid };
@@ -752,10 +863,9 @@ export async function sendChatMedia(
         const saved = await saveUploadFromData(url, mime);
         storedMediaUrl = saved.url;
       }
-      await sendWppApi("/send-voice-base64", {
-        ...payload,
-        base64Ptt
-      });
+      waMessageId = extractWppMessageId(
+        await sendWppApi("/send-voice-base64", { ...payload, base64Ptt })
+      );
       return;
     }
 
@@ -765,27 +875,43 @@ export async function sendChatMedia(
     if (type === "image") {
       const name = options?.filename ?? media.filename ?? "image.jpg";
       try {
-        await sendFileToWpp(payload, { ...media, filename: name }, caption);
+        waMessageId = await sendFileToWpp(payload, { ...media, filename: name }, caption);
       } catch {
-        await sendWppApi("/send-image", { ...payload, path: media.wppPath, caption });
+        waMessageId = extractWppMessageId(
+          await sendWppApi("/send-image", { ...payload, path: media.wppPath, caption })
+        );
       }
       return;
     }
     if (type === "video") {
       const name = options?.filename ?? media.filename ?? "video.mp4";
-      await sendFileToWpp(payload, { ...media, filename: name }, caption);
+      const bytes =
+        (media.base64 ? Buffer.byteLength(media.base64, "base64") : null) ??
+        (await getUploadFileSize(media.publicUrl)) ??
+        0;
+      const sendAs = bytes > WHATSAPP_INLINE_VIDEO_MAX_BYTES ? "document" : "auto";
+      waMessageId = await sendFileToWpp(
+        payload,
+        { ...media, filename: name },
+        caption,
+        sendAs === "document" ? { sendAs: "document" } : undefined
+      );
       return;
     }
     if (type === "audio") {
       if (media.base64) {
-        await sendWppApi("/send-voice-base64", { ...payload, base64Ptt: media.base64 });
+        waMessageId = extractWppMessageId(
+          await sendWppApi("/send-voice-base64", { ...payload, base64Ptt: media.base64 })
+        );
       } else {
-        await sendWppApi("/send-voice", { ...payload, path: media.wppPath });
+        waMessageId = extractWppMessageId(
+          await sendWppApi("/send-voice", { ...payload, path: media.wppPath })
+        );
       }
       return;
     }
     const name = options?.filename ?? media.filename ?? "documento.pdf";
-    await sendFileToWpp(payload, { ...media, filename: name }, caption);
+    waMessageId = await sendFileToWpp(payload, { ...media, filename: name }, caption);
   };
 
   try {
@@ -807,6 +933,8 @@ export async function sendChatMedia(
     body: labels[type],
     fromMe: true,
     type,
-    mediaUrl: toPublicMediaUrl(storedMediaUrl) ?? storedMediaUrl
+    mediaUrl: toPublicMediaUrl(storedMediaUrl) ?? storedMediaUrl,
+    waMessageId,
+    timestamp: sentAt
   });
 }

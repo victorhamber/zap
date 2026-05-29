@@ -12,7 +12,7 @@ type Props = {
     url: string,
     caption?: string,
     filename?: string
-  ) => void;
+  ) => Promise<void>;
   quickReplies: QuickReply[];
   disabled?: boolean;
 };
@@ -91,6 +91,9 @@ function IconTrash() {
     </svg>
   );
 }
+
+const MAX_VIDEO_BYTES = 64 * 1024 * 1024;
+const MAX_OTHER_BYTES = 25 * 1024 * 1024;
 
 const ATTACH_ITEMS: Array<{
   id: string;
@@ -233,20 +236,33 @@ export function InboxComposer({
     e.target.value = "";
     if (!file || disabled) return;
     setAttachOpen(false);
+
+    const mime = file.type || "application/octet-stream";
+    let type = kind;
+    if (mime.startsWith("video/")) type = "video";
+    if (mime.startsWith("image/")) type = "image";
+    if (mime.startsWith("audio/")) type = "audio";
+
+    const maxBytes = type === "video" ? MAX_VIDEO_BYTES : MAX_OTHER_BYTES;
+    if (file.size > maxBytes) {
+      const mb = Math.round(maxBytes / (1024 * 1024));
+      alert(
+        type === "video"
+          ? `Vídeo muito grande. Máximo ${mb} MB no painel.`
+          : `Arquivo muito grande (máximo ${mb} MB).`
+      );
+      return;
+    }
+
     setUploading(true);
     try {
       const dataUrl = await readFileAsDataUrl(file);
-      const mime = file.type || "application/octet-stream";
-      let type = kind;
-      if (mime.startsWith("video/")) type = "video";
-      if (mime.startsWith("image/")) type = "image";
-      if (mime.startsWith("audio/")) type = "audio";
 
       if (type === "audio" && dataUrl.startsWith("data:")) {
-        onSendMedia("audio", dataUrl);
+        await onSendMedia("audio", dataUrl);
       } else {
         const url = await uploadDataUrl(dataUrl, mime);
-        onSendMedia(type, url, undefined, file.name);
+        await onSendMedia(type, url, undefined, file.name);
       }
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Erro ao enviar arquivo");
@@ -372,7 +388,9 @@ export function InboxComposer({
       />
 
       {uploading && (
-        <p className="px-3 pb-1 text-xs text-[var(--wa-text-secondary)] animate-pulse">Enviando…</p>
+        <p className="px-3 pb-1 text-xs text-[var(--wa-text-secondary)] animate-pulse">
+          Enviando… (vídeos grandes podem levar alguns minutos)
+        </p>
       )}
 
       <footer className="flex items-end gap-2">

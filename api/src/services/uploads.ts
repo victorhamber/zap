@@ -25,6 +25,14 @@ const MIME_EXT: Record<string, string> = {
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx"
 };
 
+export const UPLOAD_MAX_BYTES = 25 * 1024 * 1024;
+/** Upload de vídeo no painel (envio usa URL interna, não base64). */
+export const UPLOAD_MAX_VIDEO_BYTES = 64 * 1024 * 1024;
+/** Vídeo nativo no WhatsApp (player inline) — acima disso enviamos como documento .mp4. */
+export const WHATSAPP_INLINE_VIDEO_MAX_BYTES = 16 * 1024 * 1024;
+/** Acima disso a Evolution recebe URL interna em vez de base64. */
+export const MEDIA_SEND_URL_THRESHOLD_BYTES = 4 * 1024 * 1024;
+
 export async function ensureUploadDir(): Promise<void> {
   await fs.mkdir(UPLOAD_DIR, { recursive: true });
 }
@@ -92,6 +100,17 @@ export async function readUploadFileBase64(
   }
 }
 
+export async function getUploadFileSize(publicOrInternalUrl: string): Promise<number | null> {
+  const name = uploadFilenameFromUrl(publicOrInternalUrl);
+  if (!name) return null;
+  try {
+    const stat = await fs.stat(path.join(UPLOAD_DIR, name));
+    return stat.size;
+  } catch {
+    return null;
+  }
+}
+
 /** Salva data URL ou base64 e retorna URL pública para o WPP baixar o arquivo. */
 export async function saveUploadFromData(
   data: string,
@@ -109,9 +128,11 @@ export async function saveUploadFromData(
   }
 
   const buf = Buffer.from(base64, "base64");
-  const maxBytes = 25 * 1024 * 1024;
+  const maxBytes = (contentType.startsWith("video/") ? UPLOAD_MAX_VIDEO_BYTES : UPLOAD_MAX_BYTES);
   if (buf.length > maxBytes) {
-    throw new Error("Arquivo muito grande (máximo 25 MB)");
+    const mb = Math.round(maxBytes / (1024 * 1024));
+    const kind = contentType.startsWith("video/") ? " para vídeo" : "";
+    throw new Error(`Arquivo muito grande (máximo ${mb} MB${kind})`);
   }
   const ext = MIME_EXT[contentType] ?? "bin";
   const filename = `${randomUUID()}.${ext}`;

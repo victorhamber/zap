@@ -102,9 +102,21 @@ export async function sendWppText(
   }
 }
 
+export function extractWppMessageId(raw: unknown): string | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const key = o.key;
+  if (key && typeof key === "object") {
+    const id = String((key as Record<string, unknown>).id ?? "").trim();
+    if (id) return id.slice(0, 240);
+  }
+  const id = String(o.id ?? "").trim();
+  return id ? id.slice(0, 240) : null;
+}
+
 export async function sendWppApi(
   path: string,
   body: Record<string, unknown>
-): Promise<void> {
-  await wpp.callSessionApi(path, "POST", body);
+): Promise<unknown> {
+  return wpp.callSessionApi(path, "POST", body);
 }

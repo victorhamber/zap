@@ -1,7 +1,7 @@
 /**
  * Fachada WhatsApp: WPPConnect (legado) ou Evolution API (WHATSAPP_PROVIDER=evolution).
  */
-import { env } from "../../env.js";
+import { env, defaultWhatsAppSession } from "../../env.js";
 import * as wppconnect from "../wppconnect.js";
 import * as evolution from "./evolution.js";
 
@@ -56,6 +56,18 @@ export const closeSession = p.closeSession;
 export const logoutSession = p.logoutSession;
 export const parseWppServerSessionNames = p.parseWppServerSessionNames;
 export const listServerSessions = p.listServerSessions;
+export const getConnectedOwnerDigits = isEvolution
+  ? evolution.getConnectedOwnerDigits
+  : async (): Promise<string | null> => null;
+export const getConnectedInstanceProfile = isEvolution
+  ? evolution.getConnectedInstanceProfile
+  : async () => ({
+      instanceName: defaultWhatsAppSession(),
+      profileName: null,
+      profilePictureUrl: null,
+      phone: null,
+      connected: false
+    });
 export const purgeWppSessionFromServer = p.purgeWppSessionFromServer;
 export const purgeOrphanWppSessions = p.purgeOrphanWppSessions;
 export const runWppDiagnostics = p.runWppDiagnostics;

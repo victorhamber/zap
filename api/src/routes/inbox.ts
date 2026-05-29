@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { isGenericSelfChatName } from "../services/waJid.js";
 import { prisma } from "../prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import * as inbox from "../services/inbox.js";
@@ -11,6 +12,7 @@ import {
 } from "../services/contacts.js";
 import { startFlowRun } from "../engine/executor.js";
 import { parseGraph } from "../engine/graph.js";
+import * as wpp from "../services/whatsapp/index.js";
 
 type QuickReply = { id: string; title: string; text: string };
 
@@ -59,7 +61,10 @@ export async function inboxRoutes(app: FastifyInstance) {
           const contact = byKey.get(ch.id) ?? byKey.get(ch.phone) ?? null;
           const contactName = contact?.name?.trim();
           const looksLikePhone =
-            !ch.name || ch.name === ch.phone || /^\d{8,}$/.test(ch.name.replace(/\D/g, ""));
+            !ch.name ||
+            ch.name === ch.phone ||
+            isGenericSelfChatName(ch.name) ||
+            /^\d{8,}$/.test(ch.name.replace(/\D/g, ""));
           const name =
             contactName && contactName !== contact?.phone
               ? contactName
@@ -78,6 +83,16 @@ export async function inboxRoutes(app: FastifyInstance) {
       };
     } catch (e: any) {
       return { ok: false, message: e?.message ?? String(e), chats: [], errors: [] };
+    }
+  });
+
+  app.get("/api/inbox/session-profile", async () => {
+    try {
+      const profile = await wpp.getConnectedInstanceProfile();
+      return { ok: true, profile };
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return { ok: false, profile: null, message };
     }
   });
 
@@ -231,6 +246,25 @@ export async function inboxRoutes(app: FastifyInstance) {
       create: { name, color: body.color ?? "#25D366" }
     });
     return { ok: true, tag };
+  });
+
+  app.put("/api/tags/:id", async (req, reply) => {
+    if (!prisma) return reply.status(503).send({ error: "Banco indisponível" });
+    const id = (req.params as { id: string }).id;
+    const body = req.body as { name?: string; color?: string };
+    const name = (body.name ?? "").trim();
+    if (!name) return reply.status(400).send({ error: "Nome da tag obrigatório" });
+
+    try {
+      const tag = await prisma.tag.update({
+        where: { id },
+        data: { name, color: body.color ?? "#25D366" }
+      });
+      return { ok: true, tag };
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return reply.status(400).send({ ok: false, error: message });
+    }
   });
 
   app.delete("/api/tags/:id", async (req, reply) => {
