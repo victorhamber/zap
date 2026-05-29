@@ -70,10 +70,11 @@ export async function settingsRoutes(app: FastifyInstance) {
 
   app.post("/api/settings/wpp/start-session", async (req, reply) => {
     try {
-      const body = (req.body ?? {}) as { waitQrCode?: boolean };
-      const raw = await wpp.startSession(
-        body.waitQrCode !== undefined ? { waitQrCode: body.waitQrCode } : undefined
-      );
+      const body = (req.body ?? {}) as { waitQrCode?: boolean; force?: boolean };
+      const raw = await wpp.startSession({
+        waitQrCode: body.waitQrCode,
+        force: body.force !== false
+      });
       const state = wpp.extractSessionState(raw);
       const needsQr = wpp.sessionNeedsQr(state);
       let qrImage = wpp.extractQrImage(raw);
@@ -84,6 +85,19 @@ export async function settingsRoutes(app: FastifyInstance) {
         const qr = await wpp.getQrCode().catch(() => ({ qrImage: null, raw: null }));
         qrImage = qr.qrImage;
         qrRaw = qr.raw;
+      }
+
+      if (!qrImage && needsQr && !wpp.isWppConnectedState(state)) {
+        return reply.status(200).send({
+          ok: false,
+          state,
+          needsQr: true,
+          connected: false,
+          qrImage: null,
+          wppConfigRequired: true,
+          message: wpp.MSG_WPP_NO_QR,
+          raw: { start: raw, qrcode: qrRaw }
+        });
       }
 
       return {

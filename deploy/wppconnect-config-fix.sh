@@ -1,30 +1,31 @@
 #!/bin/sh
-# Rode DENTRO do container wppconnect (console EasyPanel), uma vez:
-#   sh /caminho/wppconnect-config-fix.sh
-# Ou copie/cole os comandos sed abaixo no config real do seu deploy.
+# Cole ESTE BLOCO INTEIRO no console EasyPanel do serviço wppconnect (aba Console / Sh).
+# Não cole createOptions:{...} linha a linha — isso não é shell.
 
 set -e
-CFG=""
-for f in /usr/src/wpp-server/src/config.ts /usr/src/wpp-server/dist/config.js /usr/src/wpp-server/config.ts; do
-  if [ -f "$f" ]; then CFG="$f"; break; fi
-done
+cd /usr/src/wpp-server || exit 1
 
-if [ -z "$CFG" ]; then
-  echo "Arquivo config não encontrado. Rode: find /usr/src/wpp-server -name 'config.*'"
-  exit 1
-fi
+echo "=== Arquivos config encontrados ==="
+find . -maxdepth 3 \( -name 'config.ts' -o -name 'config.js' \) 2>/dev/null
 
-echo "Editando: $CFG"
-cp "$CFG" "${CFG}.bak.$(date +%s)"
+patch_file() {
+  f="$1"
+  [ -f "$f" ] || return 0
+  echo "=== Patch: $f ==="
+  cp "$f" "${f}.bak.$(date +%s)"
+  sed -i 's/startAllSession: true/startAllSession: false/g' "$f" 2>/dev/null || true
+  sed -i 's/startAllSession:true/startAllSession: false/g' "$f" 2>/dev/null || true
+  sed -i 's/autoClose: 60000/autoClose: 0/g' "$f" 2>/dev/null || true
+  sed -i 's/autoClose: 60,/autoClose: 0,/g' "$f" 2>/dev/null || true
+  grep -E "startAllSession|autoClose" "$f" | head -5
+}
 
-# startAllSession: true -> false
-sed -i 's/startAllSession: true/startAllSession: false/g' "$CFG" 2>/dev/null || true
-sed -i 's/startAllSession:true/startAllSession: false/g' "$CFG" 2>/dev/null || true
+# O Node usa dist/ em produção — patch nos dois
+patch_file "./dist/config.js"
+patch_file "./src/config.ts"
 
-# autoClose: 60000 ou 60 -> 0
-sed -i 's/autoClose: 60000/autoClose: 0/g' "$CFG" 2>/dev/null || true
-sed -i 's/autoClose: 60,/autoClose: 0,/g' "$CFG" 2>/dev/null || true
-sed -i 's/autoClose: 60$/autoClose: 0/g' "$CFG" 2>/dev/null || true
-
-grep -E "startAllSession|autoClose|webhook" "$CFG" | head -15
-echo "Reinicie o serviço wppconnect no EasyPanel. No log não deve mais aparecer AggregateError ao subir."
+echo ""
+echo "=== PRONTO ==="
+echo "1) Reinicie o wppconnect no EasyPanel (Stop -> Start, 1 réplica)"
+echo "2) Log NÃO deve mostrar AggregateError em startAllSessions"
+echo "3) No Zap: Conectar / Mostrar QR (sessão autofintech)"

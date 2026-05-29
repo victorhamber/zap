@@ -216,6 +216,12 @@ export async function handleWppLifecycleWebhook(body: Record<string, unknown>): 
 export const MSG_QR_TIMEOUT =
   "O WPP fechou a sessão antes de concluir o login (autoClose ~60s). No servidor WPP, defina createOptions.autoClose: 0 no config, reinicie o WPP e escaneie o QR de novo em até 30 segundos.";
 
+export const MSG_WPP_NO_QR =
+  "O WPP não devolveu QR Code. Quase sempre é config do wppconnect: no console do container, edite dist/config.js (não cole JS no shell) — startAllSession: false, webhook.url: null, createOptions.autoClose: 0 — reinicie o wppconnect e clique em Conectar de novo. Veja deploy/wppconnect-config-fix.sh no repositório.";
+
+export const MSG_WPP_AGGREGATE_BOOT =
+  "Log do WPP com AggregateError em startAllSessions: desative startAllSession e webhook.url no dist/config.js do container wppconnect, reinicie o serviço, depois Conectar / Mostrar QR.";
+
 export function httpErrorMeansNoSession(status: number, body: unknown): boolean {
   if (status === 404) return true;
   const text = JSON.stringify(body ?? "").toLowerCase();

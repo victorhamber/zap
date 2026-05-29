@@ -252,7 +252,7 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
         message?: string;
       }>("/api/settings/wpp/start-session", {
         method: "POST",
-        body: JSON.stringify({ waitQrCode: false })
+        body: JSON.stringify({ waitQrCode: false, force: true })
       });
       if (!r.ok) {
         if (r.browserLock && r.message) {
