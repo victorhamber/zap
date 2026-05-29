@@ -210,7 +210,15 @@ export async function settingsRoutes(app: FastifyInstance) {
           data: { connectionStatus: cs }
         });
       }
-      return { ok: true, ...result, needsQr: wpp.sessionNeedsQr(result.state ?? "") };
+      const payload = {
+        ok: true,
+        ...result,
+        needsQr: wpp.sessionNeedsQr(result.state ?? "")
+      };
+      if (result.connected) {
+        void wpp.registerInboundWebhook().catch(() => {});
+      }
+      return payload;
     } catch (e: any) {
       return {
         ok: true,

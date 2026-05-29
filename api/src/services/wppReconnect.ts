@@ -82,7 +82,6 @@ export async function attemptAutoReconnect(options?: {
 
     const state = check.state ?? "";
     if (needsQrScan(state)) {
-      await markSessionRequiresQr(state);
       console.log(
         `[wpp-reconnect] Sessão "${settings.wppSession}" exige novo QR (${state}), reconexão automática pausada.`
       );

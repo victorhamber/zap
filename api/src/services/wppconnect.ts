@@ -100,19 +100,58 @@ export async function clearWppStoredAuth(connectionStatus: string): Promise<void
   });
 }
 
+/** Após escanear o QR o WPP emite browserClose ao recarregar — ignorar por um tempo. */
+let lastQrReadSuccessAt = 0;
+const PAIRING_GRACE_MS = 120_000;
+
+function touchQrReadSuccess(): void {
+  lastQrReadSuccessAt = Date.now();
+}
+
+function isInPairingGrace(): boolean {
+  return Date.now() - lastQrReadSuccessAt < PAIRING_GRACE_MS;
+}
+
+/** Estado estável com aparelho pareado (não QR / CONNECTING). */
+export function isStablePhoneConnectionState(state: string): boolean {
+  const s = state.toUpperCase();
+  if (!s || sessionNeedsQr(s)) return false;
+  if (s.includes("CONNECTING") || s.includes("QRREAD") || s === "PAIRING") return false;
+  const stable = new Set(["MAIN", "INCHAT", "CONNECTED", "SUCCESS", "NORMAL", "ISLOGGED"]);
+  return stable.has(s);
+}
+
 /**
  * Aparelho desvinculado no celular ou logout: limpa credenciais e exige novo QR.
  */
 export async function markSessionRequiresQr(reason: string): Promise<void> {
+  const reasonNorm = reason.toLowerCase();
+  if (isInPairingGrace() && /browserclose|qrreadsuccess|pairing|islogged/.test(reasonNorm)) {
+    return;
+  }
+
   const settings = await getSettings();
   if (settings.wppToken) {
     try {
-      await wppFetch("/logout-session", {
-        method: "POST",
-        body: JSON.stringify({})
-      });
-    } catch {
-      /* WPP offline ou sessão já morta */
+      const liveState = await readSessionStateSafe();
+      if (
+        liveState &&
+        (sessionNeedsQr(liveState) ||
+          liveState.includes("CONNECTING") ||
+          liveState.includes("QR"))
+      ) {
+        /* Sessão ainda abrindo QR — logout no WPP quebra o pareamento */
+      } else {
+        await wppFetch("/logout-session", {
+          method: "POST",
+          body: JSON.stringify({})
+        });
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!isWppBrokenClientError(msg)) {
+        /* WPP offline ou sessão já morta */
+      }
     }
   }
   await clearWppStoredAuth(`AWAITING_QR:${reason}`);
@@ -136,8 +175,14 @@ export async function handleWppLifecycleWebhook(body: Record<string, unknown>): 
   }
   if (ev === "status-find" || ev === "disconnected") {
     if (st === "qrreadsuccess" || st === "islogged") {
-      await persistConnectionStatus("CONNECTED:QR", body);
-      void registerInboundWebhook().catch(() => {});
+      touchQrReadSuccess();
+      await persistConnectionStatus(
+        st === "islogged" ? "CONNECTED:ISLOGGED" : "CONNECTED:PAIRING",
+        body
+      );
+      return true;
+    }
+    if (st === "browserclose" && isInPairingGrace()) {
       return true;
     }
     if (
@@ -599,8 +644,25 @@ function inboundWebhookUrlFallback(): string | null {
 export async function registerInboundWebhook(): Promise<{ url: string; ok: boolean; detail?: string }> {
   const primary = inboundWebhookUrl();
 
-  // Sessão já aberta: WPP ignora `webhook` no start-session — fecha e reabre sem QR.
   const state = await readSessionStateSafe();
+  if (!state || sessionNeedsQr(state) || state.includes("CONNECTING") || isInPairingGrace()) {
+    return { url: primary, ok: true, detail: "deferred_until_stable_session" };
+  }
+  if (!isStablePhoneConnectionState(state)) {
+    return { url: primary, ok: true, detail: "session_not_stable_yet" };
+  }
+
+  try {
+    const connection = await checkConnection();
+    if (!parseConnectionCheck(connection)) {
+      return { url: primary, ok: false, detail: "phone_not_connected" };
+    }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { url: primary, ok: false, detail: msg };
+  }
+
+  // Sessão estável: WPP ignora `webhook` no start-session — fecha e reabre sem QR.
   if (state && !isDisconnectedState(state)) {
     try {
       await wppFetch("/close-session", { method: "POST", body: JSON.stringify({}) });
@@ -685,9 +747,15 @@ async function persistConnectionStatus(label: string, payload?: unknown) {
   });
 
   if (label.startsWith("CONNECTED:")) {
+    const connState = label
+      .slice("CONNECTED:".length)
+      .split("|")[0]
+      .trim();
     const { ensureInboxCaptureStarted } = await import("./inboxStore.js");
     await ensureInboxCaptureStarted();
-    void registerInboundWebhook().catch(() => {});
+    if (isStablePhoneConnectionState(connState)) {
+      void registerInboundWebhook().catch(() => {});
+    }
   }
   if (label === "LOGOUT" || label.startsWith("LOGOUT:")) {
     const { resetInboxCapture } = await import("./inboxStore.js");

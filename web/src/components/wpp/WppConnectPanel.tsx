@@ -173,6 +173,33 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
   }, []);
 
   const pollWhileQr = useCallback(async () => {
+    try {
+      const r = await api<{
+        ok: boolean;
+        connected?: boolean;
+        connecting?: boolean;
+        needsQr?: boolean;
+        state?: string;
+        message?: string;
+        browserLock?: boolean;
+        ghostSession?: boolean;
+      }>("/api/settings/wpp/verify");
+
+      if (r.ok) {
+        if (r.connected) {
+          applyVerifyResult(r);
+          stopPolling();
+          return;
+        }
+        if (r.connecting) {
+          applyVerifyResult(r);
+          return;
+        }
+      }
+    } catch {
+      /* segue para atualizar QR */
+    }
+
     const hasQr = await refreshQr();
     if (hasQr) {
       setNoticeKind("info");
@@ -182,7 +209,7 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
       return;
     }
     await verifyConnection(false);
-  }, [refreshQr, verifyConnection]);
+  }, [applyVerifyResult, refreshQr, stopPolling, verifyConnection]);
 
   const startPolling = useCallback(() => {
     stopPolling();
