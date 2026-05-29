@@ -45,7 +45,7 @@ patch_one_file() {
 
 patched_any=0
 for f in $(find . \( -path './node_modules/*' -o -path './.git/*' \) -prune -o \
-  \( -name 'miscController.js' -o -name 'sessionController.js' \) -print 2>/dev/null); do
+  \( -name 'miscController.js' -o -name 'sessionController.js' \) ! -name '*.bak*' -print 2>/dev/null); do
   before=$(grep -c '__dirname.*tokens/' "$f" 2>/dev/null || echo 0)
   patch_one_file "$f"
   after=$(grep -c '__dirname.*tokens/' "$f" 2>/dev/null || echo 0)
@@ -57,10 +57,10 @@ for f in $(find . \( -path './node_modules/*' -o -path './.git/*' \) -prune -o \
 done
 
 echo ""
-if grep -rq '__dirname.*tokens/' ./dist/controller 2>/dev/null || \
-   grep -rq '__dirname.*tokens/' ./src/controller 2>/dev/null; then
+if grep '__dirname.*tokens/' ./dist/controller/miscController.js ./dist/controller/sessionController.js \
+     ./src/controller/miscController.ts ./src/controller/sessionController.ts 2>/dev/null | grep -q .; then
   echo "AVISO: ainda há path antigo (__dirname + tokens). Mostrando trechos:"
-  grep -rn '__dirname.*tokens/' ./dist/controller ./src/controller 2>/dev/null | head -8 || true
+  grep -n '__dirname.*tokens/' ./dist/controller/miscController.js ./dist/controller/sessionController.js 2>/dev/null | head -8 || true
   echo "Envie essas linhas ao suporte Zap ou use deploy/APAGAR-TOKENS-MANUAL.sh"
   exit 1
 fi

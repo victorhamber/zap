@@ -40,18 +40,19 @@ patch_one_file() {
 }
 
 for f in $(find . \( -path './node_modules/*' \) -prune -o \
-  \( -name 'miscController.js' -o -name 'sessionController.js' \) -print 2>/dev/null); do
+  \( -name 'miscController.js' -o -name 'sessionController.js' \) ! -name '*.bak*' -print 2>/dev/null); do
   patch_one_file "$f"
 done
 
 echo ""
-if grep -rq '__dirname.*tokens/' ./dist/controller 2>/dev/null; then
-  echo "ERRO: patch incompleto. Trechos restantes:"
-  grep -rn '__dirname.*tokens/' ./dist/controller 2>/dev/null | head -5
+# Não confundir com arquivos .bak.* (cópia de segurança do próprio script)
+if grep '__dirname.*tokens/' ./dist/controller/miscController.js ./dist/controller/sessionController.js 2>/dev/null | grep -q .; then
+  echo "ERRO: patch incompleto nos arquivos ativos:"
+  grep -n '__dirname.*tokens/' ./dist/controller/miscController.js ./dist/controller/sessionController.js 2>/dev/null | head -5
   echo "Use deploy/APAGAR-TOKENS-MANUAL.sh no GitHub Zap para limpar tokens à mão."
   exit 1
 fi
-echo "OK: patch de tokens aplicado."
+echo "OK: patch de tokens aplicado (miscController + sessionController)."
 
 echo ""
 echo "=== 3) Variáveis no EasyPanel (serviço wppconnect) ==="
