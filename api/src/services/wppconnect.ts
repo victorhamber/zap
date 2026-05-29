@@ -916,6 +916,61 @@ export async function fetchQrFromSessionStatus(): Promise<string | null> {
   }
 }
 
+/**
+ * O WPP demora alguns segundos para abrir o Chrome e expor o QR na API.
+ * start-session com waitQrCode:false retorna antes do QR existir.
+ */
+export async function waitForQrImageAfterStart(options?: {
+  maxWaitMs?: number;
+  intervalMs?: number;
+}): Promise<{ qrImage: string | null; state: string; raw: unknown }> {
+  const maxWait = options?.maxWaitMs ?? 40_000;
+  const interval = options?.intervalMs ?? 2_000;
+  const deadline = Date.now() + maxWait;
+  let lastRaw: unknown = null;
+  let state = "UNKNOWN";
+
+  while (Date.now() < deadline) {
+    try {
+      const status = await getSessionStatus({ persist: false });
+      lastRaw = status;
+      state = extractSessionState(status);
+      if (isStablePhoneConnectionState(state)) {
+        return { qrImage: null, state, raw: status };
+      }
+      const fromStatus = extractQrImage(status);
+      if (fromStatus) return { qrImage: fromStatus, state, raw: status };
+    } catch {
+      /* browser ainda abrindo */
+    }
+
+    try {
+      const qr = await getQrCode();
+      lastRaw = qr.raw;
+      if (qr.qrImage) {
+        try {
+          state = extractSessionState(await getSessionStatus({ persist: false }));
+        } catch {
+          /* */
+        }
+        return { qrImage: qr.qrImage, state, raw: qr.raw };
+      }
+    } catch {
+      /* qrcode-session ainda indisponível */
+    }
+
+    await sleepMs(interval);
+  }
+
+  try {
+    state = extractSessionState(await getSessionStatus({ persist: false }));
+  } catch {
+    /* */
+  }
+
+  return { qrImage: null, state, raw: lastRaw };
+}
+
 export async function getSessionStatus(options?: { persist?: boolean }): Promise<unknown> {
   const res = await wppFetch("/status-session", { method: "GET" });
   const body = await res.json().catch(() => ({}));

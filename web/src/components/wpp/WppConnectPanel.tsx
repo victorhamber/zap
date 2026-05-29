@@ -249,6 +249,7 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
         state?: string;
         needsQr?: boolean;
         connected?: boolean;
+        pendingQr?: boolean;
         browserLock?: boolean;
         message?: string;
       }>("/api/settings/wpp/start-session", {
@@ -279,9 +280,10 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
 
       setNoticeKind("info");
       setNoticeText(
-        r.qrImage || r.needsQr !== false
-          ? "Escaneie o QR no celular (WhatsApp → Aparelhos conectados → Conectar aparelho)."
-          : "Aguardando QR Code…"
+        r.message ??
+          (r.qrImage || r.pendingQr
+            ? "Escaneie o QR no celular (WhatsApp → Aparelhos conectados → Conectar aparelho)."
+            : "Aguardando QR Code no servidor…")
       );
       startPolling();
     } catch (e: any) {

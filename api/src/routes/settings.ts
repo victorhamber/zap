@@ -75,39 +75,51 @@ export async function settingsRoutes(app: FastifyInstance) {
         waitQrCode: body.waitQrCode,
         force: body.force !== false
       });
-      const state = wpp.extractSessionState(raw);
-      const needsQr = wpp.sessionNeedsQr(state);
+      let state = wpp.extractSessionState(raw);
+      let needsQr = wpp.sessionNeedsQr(state);
       let qrImage = wpp.extractQrImage(raw);
       let qrRaw: unknown = raw;
 
-      if (!qrImage) {
-        qrImage = await wpp.fetchQrFromSessionStatus();
+      const stable = wpp.isStablePhoneConnectionState(state);
+      if (stable) {
+        return {
+          ok: true,
+          state,
+          needsQr: false,
+          connected: true,
+          qrImage: null,
+          raw: { start: raw }
+        };
       }
-      if (!qrImage) {
-        await new Promise((r) => setTimeout(r, needsQr ? 2500 : 1500));
-        const qr = await wpp.getQrCode().catch(() => ({ qrImage: null, raw: null }));
-        qrImage = qr.qrImage;
-        qrRaw = qr.raw;
-      }
-      if (!qrImage && needsQr) {
-        await new Promise((r) => setTimeout(r, 2000));
-        qrImage = await wpp.fetchQrFromSessionStatus();
-        if (!qrImage) {
-          const qr2 = await wpp.getQrCode().catch(() => ({ qrImage: null, raw: null }));
-          qrImage = qr2.qrImage;
-          qrRaw = qr2.raw;
+
+      if (!qrImage && !stable) {
+        const waited = await wpp.waitForQrImageAfterStart();
+        qrRaw = waited.raw;
+        if (waited.state) state = waited.state;
+        needsQr = wpp.sessionNeedsQr(state);
+        if (waited.qrImage) qrImage = waited.qrImage;
+        if (wpp.isStablePhoneConnectionState(state)) {
+          return {
+            ok: true,
+            state,
+            needsQr: false,
+            connected: true,
+            qrImage: null,
+            raw: { start: raw, wait: waited.raw }
+          };
         }
       }
 
       if (!qrImage && needsQr && !wpp.isWppConnectedState(state)) {
         return reply.status(200).send({
-          ok: false,
+          ok: true,
+          pendingQr: true,
           state,
           needsQr: true,
           connected: false,
           qrImage: null,
-          wppConfigRequired: true,
-          message: wpp.MSG_WPP_NO_QR,
+          message:
+            "Sessão iniciada no WPP. O QR pode levar até ~30s para aparecer aqui — aguarde a atualização automática ou clique em Atualizar QR.",
           raw: { start: raw, qrcode: qrRaw }
         });
       }
@@ -116,7 +128,9 @@ export async function settingsRoutes(app: FastifyInstance) {
         ok: true,
         state,
         needsQr,
-        connected: !needsQr && wpp.isWppConnectedState(state),
+        connected:
+          wpp.isStablePhoneConnectionState(state) ||
+          (!needsQr && wpp.isWppConnectedState(state)),
         qrImage,
         raw: { start: raw, qrcode: qrRaw }
       };
