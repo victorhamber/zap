@@ -11,6 +11,14 @@ type Step = {
   createdAt: string;
 };
 
+type RunSummary = {
+  id: string;
+  status: string;
+  contactPhone: string;
+  triggerType: string;
+  createdAt: string;
+};
+
 type RunDetail = {
   id: string;
   status: string;
@@ -24,7 +32,7 @@ type RunDetail = {
 
 export function FlowRuns() {
   const { id: flowId } = useParams();
-  const [runs, setRuns] = useState<any[]>([]);
+  const [runs, setRuns] = useState<RunSummary[]>([]);
   const [selected, setSelected] = useState<RunDetail | null>(null);
 
   useEffect(() => {
