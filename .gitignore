@@ -6,6 +6,14 @@ node_modules
 api/dist
 web/dist
 .vite
+*.log
 
 prisma/dev.db
+api/uploads/*
+!api/uploads/.gitkeep
+
+n8n-templates/
+.DS_Store
+Thumbs.db
+.cursor/
 

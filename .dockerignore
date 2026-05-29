@@ -7,3 +7,5 @@ api/dist
 web/dist
 .vite
 *.log
+n8n-templates
+.cursor

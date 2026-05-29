@@ -1,72 +1,47 @@
-# Zap — Automação WhatsApp (WPPConnect + editor visual)
+# Zap — WhatsApp, inbox e automações (WPPConnect)
 
-Painel para criar fluxos de automação (drag-and-drop) e disparar mensagens via **WPPConnect**.
+Painel web para conectar WhatsApp via **WPPConnect**, conversar no **inbox** e criar **fluxos visuais** (Hotmart, mensagens, mídia, agendamentos).
 
-## Funcionalidades
+## O que tem no projeto
 
-- **Central WhatsApp no painel** — criar instâncias, QR Code, trocar número, ferramentas API (sem usar a UI do WPPConnect)
-- Editor visual de fluxos (React Flow)
-- Gatilhos: Hotmart, mensagem recebida, teste manual
-- Ações: texto, imagem, vídeo, áudio
-- Aguardar tempo (minutos/horas/dias) ou data/hora fixa
-- Fila BullMQ + Redis para agendamentos longos
-- Login admin único
+| Pasta | Conteúdo |
+|-------|----------|
+| `api/` | API Fastify, webhooks, WPPConnect, fila BullMQ |
+| `web/` | Interface React (inbox, fluxos, conexão QR) |
+| `prisma/` | Schema Postgres e migrations |
+| `easypanel.md` | Deploy no EasyPanel (envs, volumes, WPP) |
 
 ## Variáveis de ambiente
 
-Copie [`.env.example`](.env.example).
+Copie [`.env.example`](.env.example). Em produção use `ZAP_INTERNAL_URL` com o hostname Docker do serviço Zap (ex.: `http://zap_zap:3000`).
 
 ## Desenvolvimento local
 
 ```bash
 npm install
 cp .env.example .env
-# Configure DATABASE_URL e REDIS_URL
+# DATABASE_URL e REDIS_URL
 
 npm run db:generate
 npm run db:migrate
 npm run db:seed
 
-# Terminal 1 — API
-npm run dev:api
-
-# Terminal 2 — Worker (agendamentos)
-npm run dev:worker
-
-# Terminal 3 — Frontend
-npm run dev:web
+npm run dev:api      # terminal 1 — API :3000
+npm run dev:worker   # terminal 2 — agendamentos
+npm run dev:web      # terminal 3 — UI :5173
 ```
 
-- API: http://localhost:3000  
-- UI: http://localhost:5173  
-- Login padrão (seed): `ADMIN_EMAIL` / `ADMIN_PASSWORD` do `.env`
+Login (seed): `ADMIN_EMAIL` / `ADMIN_PASSWORD` do `.env`.
 
-## Deploy EasyPanel
+## Deploy
 
-1. **Postgres** — database `zap` dedicado  
-2. **Redis** — para BullMQ  
-3. **Serviço `zap`** — build `Dockerfile`, domínio `zap.trajettu.com`, envs do `.env.example`  
-4. **Serviço `zap-worker`** — build `Dockerfile.worker`, mesmas envs (sem servir UI)
-
-Após deploy:
-
-```bash
-npm run db:seed
-```
+Guia passo a passo: **[easypanel.md](easypanel.md)** (Postgres, Redis, `zap`, `zap-worker`, `wppconnect`, volumes).
 
 ## Webhooks
 
-- **Hotmart:** `POST https://zap.trajettu.com/api/webhooks/hotmart/{flowId}`  
-  Header opcional: `x-hotmart-hottok` ou `x-webhook-secret` = `HOTMART_WEBHOOK_SECRET`
+- **Hotmart:** `POST /api/webhooks/hotmart/{flowId}` — header `x-hotmart-hottok` = `HOTMART_WEBHOOK_SECRET`
+- **WPPConnect:** `POST /api/webhooks/wppconnect` — registrado ao conectar no painel
 
-- **WPPConnect (mensagens recebidas):** `POST https://zap.trajettu.com/api/webhooks/wppconnect`  
-  Configurado automaticamente ao conectar pelo painel (**WhatsApp → Conexão / QR**).
+## Repositório
 
-## Fluxo exemplo (Hotmart)
-
-1. Gatilho Hotmart  
-2. Enviar texto (boas-vindas)  
-3. Aguardar 2 dias  
-4. Enviar texto (follow-up)
-
-Ative o fluxo no painel e configure o webhook na Hotmart com o `flowId` exibido na lista de fluxos.
+https://github.com/victorhamber/zap

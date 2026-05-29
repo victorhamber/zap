@@ -398,13 +398,39 @@ export function isWppConnectedState(state: string): boolean {
   return false;
 }
 
-function parseConnectionCheck(data: unknown): boolean {
+/** Resposta de /check-connection-session — evita falso positivo ("Disconnected" contém "connected"). */
+export function parseConnectionCheck(data: unknown): boolean {
   if (!data || typeof data !== "object") return false;
   const o = data as Record<string, unknown>;
-  if (o.status === true || o.connected === true || o.isConnected === true) return true;
-  const msg = typeof o.message === "string" ? o.message : "";
-  if (/connected|conectad|inchats|main|normal|true/i.test(msg)) return true;
+
+  if (o.connected === true || o.isConnected === true) return true;
+  if (o.connected === false || o.isConnected === false) return false;
+
+  if (o.status === true) return true;
+  if (o.status === false) return false;
+
+  const statusStr = typeof o.status === "string" ? o.status.toLowerCase().trim() : "";
+  if (statusStr === "connected" || statusStr === "success" || statusStr === "islogged") {
+    return true;
+  }
+  if (statusStr && /disconnect|closed|qr|fail|error|not.?log|unpair/i.test(statusStr)) {
+    return false;
+  }
+
+  const msg = (typeof o.message === "string" ? o.message : "").toLowerCase().trim();
+  if (!msg) return false;
+  if (/disconnect|not.?log|closed|qr|fail|unpair|error/i.test(msg)) return false;
+  if (msg === "connected" || msg.startsWith("conectad")) return true;
+
   return false;
+}
+
+/** Sessão ainda exige escanear QR (não considerar “aparelho conectado”). */
+export function sessionNeedsQr(state: string): boolean {
+  const s = state.toUpperCase();
+  if (isDisconnectedState(s)) return true;
+  if (s.includes("QR")) return true;
+  return s === "NOTLOGGED" || s === "UNPAIRED" || s === "PHONECODE";
 }
 
 export async function verifyActiveSession() {
@@ -436,7 +462,7 @@ export async function verifyActiveSession() {
   let state = "DESCONHECIDO";
   let sessionStatus: unknown = null;
   try {
-    sessionStatus = await getSessionStatus();
+    sessionStatus = await getSessionStatus({ persist: false });
     state = extractSessionState(sessionStatus);
   } catch {
     state = "INDISPONÍVEL";
@@ -468,8 +494,9 @@ export async function verifyActiveSession() {
     !isConnecting &&
     !disconnected &&
     syncedStates.has(state);
-  const connected = !disconnected && phoneConnected;
-  const connecting = !disconnected && isConnecting && sessionAlive && !phoneConnected;
+  const needsQr = sessionNeedsQr(state);
+  const connected = !disconnected && phoneConnected && !needsQr;
+  const connecting = !disconnected && (isConnecting || needsQr) && !connected;
   const noSession = !connected && !connecting;
 
   let message: string;
@@ -674,15 +701,21 @@ export async function getQrCode(): Promise<{ qrImage: string | null; raw: unknow
   return { qrImage: extractQrImage(body), raw: body };
 }
 
-export async function getSessionStatus(): Promise<unknown> {
+export async function getSessionStatus(options?: { persist?: boolean }): Promise<unknown> {
   const res = await wppFetch("/status-session", { method: "GET" });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(`status-session falhou: ${res.status} ${JSON.stringify(body)}`);
   }
   const state = extractSessionState(body);
-  const label = isWppConnectedState(state) ? `CONNECTED:${state}` : state;
-  await persistConnectionStatus(label, body);
+  if (options?.persist !== false) {
+    const label = isWppConnectedState(state) && !sessionNeedsQr(state)
+      ? `CONNECTED:${state}`
+      : sessionNeedsQr(state)
+        ? `AWAITING_QR:${state}`
+        : state;
+    await persistConnectionStatus(label, body);
+  }
   return body;
 }
 

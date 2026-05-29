@@ -29,7 +29,7 @@ Repositório: https://github.com/victorhamber/zap
 ```env
 APP_PUBLIC_URL=https://zap.trajettu.com
 # Rede Docker: hostname do serviço Zap no EasyPanel (WPP chama webhook e baixa uploads por aqui)
-ZAP_INTERNAL_URL=http://zap:3000
+ZAP_INTERNAL_URL=http://zap_zap:3000
 NODE_ENV=production
 PORT=3000
 
@@ -42,7 +42,7 @@ ADMIN_EMAIL=admin@trajettu.com
 ADMIN_PASSWORD=sua-senha-admin
 
 # URL pública (navegador / documentação)
-WPP_BASE_URL=https://wpp.trajettu.com:21465
+WPP_BASE_URL=https://wpp.trajettu.com
 
 # OBRIGATÓRIO em produção: URL interna Docker do serviço WPP (nome do app no EasyPanel)
 WPP_INTERNAL_URL=http://NOME_DO_SERVICO_WPP:21465
@@ -129,7 +129,7 @@ Reinicie o **wppconnect** após alterar. Escaneie o QR **logo** após aparecer n
 
 O Zap usa `start-session` com `waitQrCode: false` (não bloqueia a API) e faz polling do QR/status a cada 5s.
 
-O webhook é configurado pelo Zap no `start-session` quando você conecta. Com `ZAP_INTERNAL_URL`, o WPP usa `http://zap:3000/api/webhooks/wppconnect` (rede interna) — evita falha quando o container WPP não alcança a URL pública.
+O webhook é configurado pelo Zap no `start-session` quando você conecta. Com `ZAP_INTERNAL_URL`, o WPP usa a URL interna (ex.: `http://zap_zap:3000/api/webhooks/wppconnect`) — evita falha quando o container WPP não alcança a URL pública.
 
 Teste rápido: `GET https://zap.trajettu.com/api/webhooks/wppconnect` deve retornar `{ ok: true }`. Após uma mensagem recebida, `lastWebhookAt` aparece nessa resposta.
 

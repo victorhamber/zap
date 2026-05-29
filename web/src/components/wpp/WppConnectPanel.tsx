@@ -28,21 +28,22 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
     setSettings(s);
   }, []);
 
-  const refreshQr = useCallback(async () => {
+  const refreshQr = useCallback(async (): Promise<boolean> => {
     try {
       const r = await api<{
         ok: boolean;
         qrImage?: string | null;
         state?: string;
       }>("/api/settings/wpp/qrcode");
-      if (!r.ok) return;
+      if (!r.ok) return false;
       if (r.state) setState(r.state);
-      if (r.qrImage) setQrImage(r.qrImage);
-      else if (r.state && /CONNECTED|INCHAT|MAIN|NORMAL/i.test(r.state)) {
-        setQrImage(null);
+      if (r.qrImage) {
+        setQrImage(r.qrImage);
+        return true;
       }
+      return false;
     } catch {
-      /* ignora */
+      return false;
     }
   }, []);
 
@@ -50,6 +51,7 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
     (r: {
       connected?: boolean;
       connecting?: boolean;
+      needsQr?: boolean;
       ghostSession?: boolean;
       noSession?: boolean;
       state?: string;
@@ -58,6 +60,15 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
     }) => {
       if (r.state) setState(r.state);
       const text = r.message ?? "";
+
+      if (r.needsQr && !r.connected) {
+        setNoticeKind("info");
+        setNoticeText(
+          text ||
+            'Escaneie o QR Code abaixo (WhatsApp → Aparelhos conectados → Conectar aparelho).'
+        );
+        return;
+      }
 
       if (r.ghostSession) {
         setNoticeKind("warn");
@@ -153,7 +164,14 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
   }, []);
 
   const pollWhileQr = useCallback(async () => {
-    await refreshQr();
+    const hasQr = await refreshQr();
+    if (hasQr) {
+      setNoticeKind("info");
+      setNoticeText(
+        "Escaneie o QR no celular (WhatsApp → Aparelhos conectados → Conectar aparelho)."
+      );
+      return;
+    }
     await verifyConnection(false);
   }, [refreshQr, verifyConnection]);
 
@@ -186,6 +204,8 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
         ok: boolean;
         qrImage?: string | null;
         state?: string;
+        needsQr?: boolean;
+        connected?: boolean;
         message?: string;
       }>("/api/settings/wpp/start-session", {
         method: "POST",
@@ -193,19 +213,22 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
       });
       if (!r.ok) throw new Error(r.message ?? "Falha ao iniciar sessão");
       if (r.state) setState(r.state);
-      if (r.qrImage) {
-        setQrImage(r.qrImage);
-        setNoticeKind("info");
-        setNoticeText(
-          "Escaneie o QR no celular (WhatsApp → Aparelhos conectados → Conectar aparelho)."
-        );
-        startPolling();
-      } else {
-        await refreshQr();
-        setNoticeKind("info");
-        setNoticeText("Aguardando QR Code…");
-        startPolling();
+
+      if (r.connected && !r.needsQr) {
+        await verifyConnection(false);
+        return;
       }
+
+      if (r.qrImage) setQrImage(r.qrImage);
+      else await refreshQr();
+
+      setNoticeKind("info");
+      setNoticeText(
+        r.qrImage || r.needsQr !== false
+          ? "Escaneie o QR no celular (WhatsApp → Aparelhos conectados → Conectar aparelho)."
+          : "Aguardando QR Code…"
+      );
+      startPolling();
     } catch (e: any) {
       setNoticeKind("warn");
       setNoticeText(e?.message ?? "Erro ao conectar.");
@@ -277,7 +300,7 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
         { method: "POST", body: JSON.stringify({}) }
       );
       if (r.ok) {
-        setNoticeKind("connected");
+        setNoticeKind("info");
         setNoticeText(
           `Webhook atualizado: ${r.url ?? ""}. Envie uma mensagem de teste do celular.`
         );

@@ -74,20 +74,24 @@ export async function settingsRoutes(app: FastifyInstance) {
       const raw = await wpp.startSession(
         body.waitQrCode !== undefined ? { waitQrCode: body.waitQrCode } : undefined
       );
-      let qrFromStart = wpp.extractQrImage(raw);
+      const state = wpp.extractSessionState(raw);
+      const needsQr = wpp.sessionNeedsQr(state);
+      let qrImage = wpp.extractQrImage(raw);
       let qrRaw: unknown = raw;
 
-      if (!qrFromStart) {
-        await new Promise((r) => setTimeout(r, 2000));
-        const qr = await wpp.getQrCode();
-        qrFromStart = qr.qrImage;
+      if (!qrImage) {
+        await new Promise((r) => setTimeout(r, needsQr ? 2500 : 1500));
+        const qr = await wpp.getQrCode().catch(() => ({ qrImage: null, raw: null }));
+        qrImage = qr.qrImage;
         qrRaw = qr.raw;
       }
 
       return {
         ok: true,
-        state: wpp.extractSessionState(raw),
-        qrImage: qrFromStart,
+        state,
+        needsQr,
+        connected: !needsQr && wpp.isWppConnectedState(state),
+        qrImage,
         raw: { start: raw, qrcode: qrRaw }
       };
     } catch (e: any) {
@@ -192,16 +196,17 @@ export async function settingsRoutes(app: FastifyInstance) {
     try {
       const result = await wpp.verifyActiveSession();
       if (prisma) {
+        const cs = result.connected
+          ? `CONNECTED:${result.state}`
+          : result.connecting || wpp.sessionNeedsQr(result.state ?? "")
+            ? `AWAITING_QR:${result.state}`
+            : `DISCONNECTED:${result.state}`;
         await prisma.appSettings.update({
           where: { id: "default" },
-          data: {
-            connectionStatus: result.connected
-              ? `CONNECTED:${result.state}`
-              : `DISCONNECTED:${result.state}`
-          }
+          data: { connectionStatus: cs }
         });
       }
-      return { ok: true, ...result };
+      return { ok: true, ...result, needsQr: wpp.sessionNeedsQr(result.state ?? "") };
     } catch (e: any) {
       return {
         ok: true,
