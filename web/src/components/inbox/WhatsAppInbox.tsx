@@ -92,7 +92,7 @@ const InboxMessageContent = memo(function InboxMessageContent({ message: m }: { 
   if (isMedia && (m.type === "image" || m.type === "sticker")) {
     return (
       <div className="space-y-1">
-        <img src={url} alt="" loading="lazy" className="max-w-full rounded-md max-h-72 object-contain" />
+        <img src={url} alt="" loading="lazy" decoding="async" className="max-w-full rounded-xl max-h-64 object-contain" />
         {showCaption && <p className="text-sm whitespace-pre-wrap">{m.body}</p>}
       </div>
     );
@@ -100,7 +100,7 @@ const InboxMessageContent = memo(function InboxMessageContent({ message: m }: { 
   if (isMedia && m.type === "video") {
     return (
       <div className="space-y-1">
-        <video src={url} controls preload="metadata" className="max-w-full rounded-md max-h-72" />
+        <video src={url} controls preload="metadata" className="max-w-full rounded-xl max-h-64" />
         {showCaption && <p className="text-sm whitespace-pre-wrap">{m.body}</p>}
       </div>
     );
@@ -108,7 +108,7 @@ const InboxMessageContent = memo(function InboxMessageContent({ message: m }: { 
   if (isMedia && (m.type === "audio" || m.type === "ptt")) {
     return (
       <div className="space-y-1">
-        <audio src={url} controls preload="none" className="w-full min-w-[220px]" />
+        <audio src={url} controls preload="none" className="wa-audio w-full min-w-[200px] max-w-[280px] h-9" />
         {showCaption && <p className="text-sm whitespace-pre-wrap">{m.body}</p>}
       </div>
     );
@@ -192,12 +192,10 @@ const ChatListRow = memo(function ChatListRow({
 
 const MessageRow = memo(function MessageRow({ message: m }: { message: Message }) {
   return (
-    <div className={`flex ${m.fromMe ? "justify-end" : "justify-start"}`}>
+    <div className={`flex py-0.5 ${m.fromMe ? "justify-end" : "justify-start"}`}>
       <div
-        className={`wa-bubble max-w-[min(72%,480px)] rounded-lg px-2.5 py-1 break-words ${
-          m.fromMe
-            ? "bg-[var(--wa-bg-bubble-out)] text-[var(--wa-text-primary)] rounded-tr-sm"
-            : "bg-[var(--wa-bg-bubble-in)] text-[var(--wa-text-primary)] rounded-tl-sm"
+        className={`wa-bubble max-w-[min(78%,420px)] px-3 py-1.5 break-words ${
+          m.fromMe ? "wa-bubble-out" : "wa-bubble-in"
         }`}
       >
         <InboxMessageContent message={m} />
@@ -317,14 +315,14 @@ export function WhatsAppInbox() {
 
   useEffect(() => {
     if (!pageVisible) return;
-    const t = setInterval(() => loadChats(true), 180000);
+    const t = setInterval(() => loadChats(true), 90000);
     return () => clearInterval(t);
   }, [pageVisible, loadChats]);
 
   useEffect(() => {
     if (!selected || !pageVisible) return;
     loadMessages(selected);
-    const t = setInterval(() => loadMessages(selected, true), 10000);
+    const t = setInterval(() => loadMessages(selected, true), 4000);
     return () => clearInterval(t);
   }, [selected, pageVisible, loadMessages]);
 
@@ -462,7 +460,7 @@ export function WhatsAppInbox() {
   const activeTags = selected?.contact?.tags ?? [];
 
   const visibleMessages = useMemo(() => {
-    const max = 100;
+    const max = 80;
     if (messages.length <= max) return messages;
     return messages.slice(-max);
   }, [messages]);

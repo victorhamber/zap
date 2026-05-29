@@ -226,9 +226,10 @@ export async function webhookRoutes(app: FastifyInstance) {
     touchWppWebhookReceived(event);
 
     const {
-      parseEvolutionInboundMessage,
+      parseEvolutionMessagePayload,
       parseEvolutionConnectionEvent,
       extractEvolutionQr,
+      extractEvolutionMessagePayloads,
       isEvolutionMessageEvent
     } = await import("../services/whatsapp/evolutionWebhook.js");
 
@@ -264,10 +265,17 @@ export async function webhookRoutes(app: FastifyInstance) {
       return { ok: true, skipped: "not_message", event };
     }
 
-    const parsed = parseEvolutionInboundMessage(body);
+    const payloads = extractEvolutionMessagePayloads(body);
     let saved = false;
-    if (parsed) {
-      const { ensureInboxCaptureStarted } = await import("../services/inboxStore.js");
+    let lastParsed: ReturnType<typeof parseEvolutionMessagePayload> = null;
+
+    const { ensureInboxCaptureStarted } = await import("../services/inboxStore.js");
+
+    for (const payload of payloads) {
+      const parsed = parseEvolutionMessagePayload(body, payload);
+      if (!parsed) continue;
+      lastParsed = parsed;
+
       await ensureInboxCaptureStarted();
 
       const msgType = parsed.type === "ptt" ? "audio" : parsed.type;
@@ -276,15 +284,32 @@ export async function webhookRoutes(app: FastifyInstance) {
         body: parsed.text,
         fromMe: parsed.fromMe,
         type: msgType,
-        mediaUrl: null,
+        mediaUrl: parsed.mediaUrl,
         waMessageId: parsed.waMessageId,
         timestamp: parsed.timestamp,
         sessionName: parsed.instance || activeSession
       });
       saved = true;
       touchWppWebhookSaved();
+
+      const needsMediaDownload =
+        parsed.waMessageId &&
+        isInboundMediaType(parsed.type) &&
+        !webhookMediaAlreadyInline(parsed);
+
+      if (needsMediaDownload) {
+        const waId = parsed.waMessageId;
+        void downloadInboundMedia(body, waId, parsed.rawData)
+          .then((url) => {
+            if (url) return updateInboxMessageMedia(waId!, url);
+          })
+          .catch((e) => {
+            req.log.warn({ err: e, waId }, "download evolution media async");
+          });
+      }
     }
 
+    const parsed = lastParsed;
     const from = parsed?.chatId ?? "";
     const text = parsed?.text ?? "";
 

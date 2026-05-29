@@ -40,16 +40,46 @@ body {
 }
 
 .wa-inbox .wa-bubble {
-  box-shadow: none;
+  box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13);
+}
+
+.wa-inbox .wa-bubble-in {
+  background: var(--wa-bg-bubble-in);
+  color: var(--wa-text-primary);
+  border-radius: 0 12px 12px 12px;
+}
+
+.wa-inbox .wa-bubble-out {
+  background: var(--wa-bg-bubble-out);
+  color: var(--wa-text-primary);
+  border-radius: 12px 0 12px 12px;
 }
 
 .wa-inbox .wa-chat-bg {
   background-color: var(--wa-bg-app);
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.02'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
 }
 
 .wa-inbox .wa-chat-row {
   content-visibility: auto;
   contain-intrinsic-size: auto 72px;
+}
+
+.wa-inbox .wa-composer {
+  background: linear-gradient(180deg, transparent, var(--wa-bg-composer) 24%);
+}
+
+.wa-inbox .wa-audio {
+  filter: invert(1) hue-rotate(180deg);
+  opacity: 0.92;
+}
+
+.wa-inbox .scrollbar-none {
+  scrollbar-width: none;
+}
+
+.wa-inbox .scrollbar-none::-webkit-scrollbar {
+  display: none;
 }
 
 .flow-editor-canvas {

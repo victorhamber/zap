@@ -321,7 +321,7 @@ export async function registerInboundWebhook(): Promise<{
         enabled: true,
         url,
         webhookByEvents: false,
-        webhookBase64: false,
+        webhookBase64: true,
         events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED", "SEND_MESSAGE"]
       }
     })
@@ -642,5 +642,35 @@ export async function callSessionApi(
     return { success: true };
   }
 
+  if (safe === "/download-media" && method === "POST" && body && typeof body === "object") {
+    return downloadEvolutionInboundMedia(body as Record<string, unknown>);
+  }
+
   throw new Error(`Rota Evolution não mapeada: ${method} ${safe}`);
+}
+
+function extractBase64FromEvolutionResponse(raw: unknown): { base64: string; mime: string } | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const base64 = String(o.base64 ?? o.data ?? "").replace(/\s/g, "");
+  const mime = String(o.mimetype ?? o.mimeType ?? "application/octet-stream");
+  if (!base64 || base64.length < 32) return null;
+  return { base64, mime };
+}
+
+/** Baixa mídia de mensagem recebida (webhook sem base64 inline). */
+export async function downloadEvolutionInboundMedia(
+  messagePayload: Record<string, unknown>
+): Promise<unknown> {
+  const instance = await getInstanceName();
+  const res = await evoFetch(`/chat/getBase64FromMediaMessage/${encodeURIComponent(instance)}`, {
+    method: "POST",
+    body: JSON.stringify({
+      message: messagePayload,
+      convertToMp4: true
+    })
+  });
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(formatWppError(res.status, data));
+  return data;
 }

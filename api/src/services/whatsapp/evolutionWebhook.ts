@@ -1,4 +1,6 @@
 /** Parser de webhooks Evolution API v2 (MESSAGES_UPSERT, etc.) */
+import { extractWaId } from "../inbox.js";
+import { mimeFromMessageType } from "../mediaText.js";
 
 export function getEvolutionWebhookEvent(body: Record<string, unknown>): string {
   return String(body.event ?? body.type ?? "").toLowerCase();
@@ -14,6 +16,103 @@ export function isEvolutionMessageEvent(body: Record<string, unknown>): boolean 
   );
 }
 
+function pickCanonicalChatId(candidates: string[]): string {
+  const valid = [...new Set(candidates.filter(Boolean))];
+  if (valid.length === 0) return "";
+
+  const rank = (id: string) => {
+    if (id.endsWith("@g.us") || id.includes("@newsletter")) return 5;
+    if (id.endsWith("@c.us") || id.endsWith("@s.whatsapp.net")) return 4;
+    if (id.endsWith("@lid")) return 2;
+    return 1;
+  };
+
+  valid.sort((a, b) => rank(b) - rank(a));
+  return valid[0];
+}
+
+function evolutionPeerChatId(
+  key: Record<string, unknown>,
+  payload: Record<string, unknown>,
+  fromMe: boolean
+): string {
+  const remoteJid = String(key.remoteJid ?? key.remotejid ?? "").trim();
+  const participant = String(
+    key.participant ?? payload.participant ?? payload.sender ?? ""
+  ).trim();
+
+  if (remoteJid.endsWith("@g.us")) {
+    if (fromMe) return remoteJid;
+    return pickCanonicalChatId([participant, remoteJid]);
+  }
+
+  if (fromMe) {
+    return pickCanonicalChatId([remoteJid, participant]);
+  }
+
+  return pickCanonicalChatId([remoteJid, participant]);
+}
+
+function parseMessageContent(msg: Record<string, unknown>): { text: string; type: string } {
+  if (typeof msg.conversation === "string" && msg.conversation.trim()) {
+    return { text: msg.conversation.trim(), type: "chat" };
+  }
+  if (msg.extendedTextMessage && typeof msg.extendedTextMessage === "object") {
+    const ext = msg.extendedTextMessage as Record<string, unknown>;
+    return { text: String(ext.text ?? "").trim(), type: "chat" };
+  }
+  if (msg.imageMessage) {
+    const im = msg.imageMessage as Record<string, unknown>;
+    return { text: String(im.caption ?? "").trim(), type: "image" };
+  }
+  if (msg.videoMessage) {
+    const vm = msg.videoMessage as Record<string, unknown>;
+    return { text: String(vm.caption ?? "").trim(), type: "video" };
+  }
+  if (msg.audioMessage) return { text: "", type: "audio" };
+  if (msg.pttMessage) return { text: "", type: "ptt" };
+  if (msg.documentMessage) {
+    const dm = msg.documentMessage as Record<string, unknown>;
+    return {
+      text: String(dm.caption ?? dm.fileName ?? "📎 Documento").trim(),
+      type: "document"
+    };
+  }
+  if (msg.stickerMessage) return { text: "", type: "sticker" };
+  if (msg.locationMessage) return { text: "📍 Localização", type: "location" };
+  return { text: "", type: "chat" };
+}
+
+function inlineMediaFromPayload(
+  payload: Record<string, unknown>,
+  msg: Record<string, unknown>,
+  type: string
+): string | null {
+  const mime = mimeFromMessageType(type === "ptt" ? "audio" : type);
+  const candidates = [
+    payload.base64,
+    msg.base64,
+    (payload.message as Record<string, unknown> | undefined)?.base64
+  ];
+  for (const raw of candidates) {
+    if (typeof raw !== "string" || raw.length < 32) continue;
+    const b64 = raw.replace(/\s/g, "");
+    if (b64.startsWith("data:")) return b64;
+    return `data:${mime};base64,${b64}`;
+  }
+  return null;
+}
+
+/** Um ou mais payloads `data` do webhook Evolution. */
+export function extractEvolutionMessagePayloads(body: Record<string, unknown>): Record<string, unknown>[] {
+  const data = body.data;
+  if (Array.isArray(data)) {
+    return data.filter((x): x is Record<string, unknown> => Boolean(x) && typeof x === "object");
+  }
+  if (data && typeof data === "object") return [data as Record<string, unknown>];
+  return [];
+}
+
 export function parseEvolutionInboundMessage(
   body: Record<string, unknown>
 ): {
@@ -22,61 +121,69 @@ export function parseEvolutionInboundMessage(
   text: string;
   fromMe: boolean;
   type: string;
+  mediaUrl: string | null;
   waMessageId: string | null;
   timestamp: Date;
+  /** Payload completo para download de mídia via API Evolution */
+  rawData: Record<string, unknown>;
+} | null {
+  const payloads = extractEvolutionMessagePayloads(body);
+  if (payloads.length === 0) return null;
+  return parseEvolutionMessagePayload(body, payloads[0]);
+}
+
+export function parseEvolutionMessagePayload(
+  body: Record<string, unknown>,
+  payload: Record<string, unknown>
+): {
+  instance: string;
+  chatId: string;
+  text: string;
+  fromMe: boolean;
+  type: string;
+  mediaUrl: string | null;
+  waMessageId: string | null;
+  timestamp: Date;
+  rawData: Record<string, unknown>;
 } | null {
   if (!isEvolutionMessageEvent(body)) return null;
 
   const instance = String(body.instance ?? "").trim().toLowerCase();
-  const data = body.data;
-  if (!data || typeof data !== "object") return null;
-
-  const d = data as Record<string, unknown>;
-  const key = (d.key ?? {}) as Record<string, unknown>;
+  const key = (payload.key ?? {}) as Record<string, unknown>;
   const remoteJid = String(key.remoteJid ?? key.remotejid ?? "").trim();
   if (!remoteJid || remoteJid.includes("status@broadcast")) return null;
 
   const fromMe = key.fromMe === true || key.fromMe === "true";
-  const msg = (d.message ?? {}) as Record<string, unknown>;
+  const chatId = extractWaId(evolutionPeerChatId(key, payload, fromMe)) || evolutionPeerChatId(key, payload, fromMe);
+  if (!chatId) return null;
 
-  let text = "";
-  let type = "chat";
-  if (typeof msg.conversation === "string") text = msg.conversation;
-  else if (msg.extendedTextMessage && typeof msg.extendedTextMessage === "object") {
-    const ext = msg.extendedTextMessage as Record<string, unknown>;
-    text = String(ext.text ?? "");
-    type = "chat";
-  } else if (msg.imageMessage) {
-    type = "image";
-    text = String((msg.imageMessage as Record<string, unknown>).caption ?? "");
-  } else if (msg.videoMessage) {
-    type = "video";
-    text = String((msg.videoMessage as Record<string, unknown>).caption ?? "");
-  } else if (msg.audioMessage || msg.pttMessage) {
-    type = "audio";
-  } else if (msg.documentMessage) {
-    type = "document";
-    text = String((msg.documentMessage as Record<string, unknown>).caption ?? "📎 Documento");
-  } else if (msg.stickerMessage) {
-    type = "sticker";
-  }
+  const msg = (payload.message ?? {}) as Record<string, unknown>;
+  const { text, type } = parseMessageContent(msg);
 
-  const waMessageId = String(key.id ?? d.id ?? "").trim() || null;
+  const mediaTypes = new Set(["image", "video", "audio", "ptt", "sticker", "document"]);
+  if (type === "chat" && !text.trim()) return null;
+  if (!text.trim() && !mediaTypes.has(type)) return null;
+
+  const waMessageId = String(key.id ?? payload.id ?? "").trim() || null;
 
   let ts = Date.now();
-  const rawTs = d.messageTimestamp ?? d.timestamp;
+  const rawTs = payload.messageTimestamp ?? payload.timestamp ?? key.timestamp;
   if (typeof rawTs === "number") {
     ts = rawTs > 1e12 ? rawTs : rawTs * 1000;
   }
 
+  const mediaUrl = inlineMediaFromPayload(payload, msg, type);
+
   return {
     instance,
-    chatId: remoteJid,
+    chatId,
     text,
     fromMe,
     type,
+    mediaUrl,
     waMessageId,
-    timestamp: new Date(ts)
+    timestamp: new Date(ts),
+    rawData: payload
   };
 }
 

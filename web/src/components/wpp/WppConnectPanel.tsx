@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../api/client";
 
 type WppSettings = {
+  provider?: "evolution" | "wppconnect";
   wppBaseUrl: string;
   wppSession: string;
   hasToken: boolean;
@@ -545,13 +546,13 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
 
       {!compact && (
         <p className="mt-4 text-xs text-zinc-500 leading-relaxed">
-          Mensagens recebidas: o WPP envia POST para{" "}
-          <code className="text-zinc-400">ZAP_INTERNAL_URL/api/webhooks/wppconnect</code>. No
-          serviço <strong className="text-zinc-400">zap</strong>, use o hostname Docker (ex.{" "}
-          <code className="text-zinc-400">http://zap_zap:3000</code>). Após o QR, clique em{" "}
-          <strong className="text-zinc-400">Atualizar webhook</strong> e teste do celular.
+          Mensagens recebidas: a Evolution envia POST para{" "}
+          <code className="text-zinc-400">ZAP_INTERNAL_URL/api/webhooks/evolution</code> (hostname
+          Docker do <strong className="text-zinc-400">zap</strong>, ex.{" "}
+          <code className="text-zinc-400">http://zap_zap:3000</code>). Após conectar, clique em{" "}
+          <strong className="text-zinc-400">Atualizar webhook</strong> e envie um teste do celular.
           Teste:{" "}
-          <code className="text-zinc-400 break-all">/api/webhooks/wppconnect</code> deve retornar{" "}
+          <code className="text-zinc-400 break-all">/api/webhooks/evolution</code> →{" "}
           <code className="text-zinc-400">{`{ "ok": true }`}</code>.
         </p>
       )}
