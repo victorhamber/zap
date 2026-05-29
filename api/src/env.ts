@@ -81,6 +81,11 @@ export function defaultWhatsAppSession(): string {
   return (env.WHATSAPP_SESSION ?? env.WPP_SESSION).trim().toLowerCase();
 }
 
+/** Chave WPPConnect — só usada quando WHATSAPP_PROVIDER=wppconnect */
+export function wppSecretKey(): string {
+  return env.WPP_SECRET_KEY?.trim() || "dev-secret-key";
+}
+
 export const flags = {
   isProd,
   hasDatabase: Boolean(env.DATABASE_URL),

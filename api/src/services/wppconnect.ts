@@ -1,4 +1,4 @@
-import { env } from "../env.js";
+import { env, wppSecretKey } from "../env.js";
 import { prisma } from "../prisma.js";
 import { wppHumanDelay } from "./wppHumanize.js";
 
@@ -311,7 +311,7 @@ export async function refreshWppToken(sessionOverride?: string): Promise<string>
   const settings = await getSettings();
   const base = wppBaseUrl(settings);
   const session = normalizeSessionName(sessionOverride ?? settings.wppSession);
-  const secret = env.WPP_SECRET_KEY;
+  const secret = wppSecretKey();
 
   const url = `${base}/api/${encodeURIComponent(session)}/${encodeURIComponent(secret)}/generate-token`;
   let res: Response;
@@ -1147,7 +1147,7 @@ export function parseWppServerSessionNames(serverPayload: unknown): string[] {
 export async function listServerSessions(): Promise<unknown> {
   const settings = await getSettings();
   const base = wppBaseUrl(settings);
-  const secret = env.WPP_SECRET_KEY;
+  const secret = wppSecretKey();
   const url = `${base}/api/${encodeURIComponent(secret)}/show-all-sessions`;
   let res: Response;
   try {
@@ -1184,7 +1184,7 @@ async function fetchSessionStateOnServer(sessionName: string): Promise<string | 
   const name = sessionName.trim().toLowerCase();
   const settings = await getSettings();
   const base = wppBaseUrl(settings);
-  const secret = env.WPP_SECRET_KEY;
+  const secret = wppSecretKey();
   const tokenUrl = `${base}/api/${encodeURIComponent(name)}/${encodeURIComponent(secret)}/generate-token`;
   let tokenRes: Response;
   try {
@@ -1215,7 +1215,7 @@ async function closeWppSessionOnServer(sessionName: string): Promise<void> {
   const name = sessionName.trim().toLowerCase();
   const settings = await getSettings();
   const base = wppBaseUrl(settings);
-  const secret = env.WPP_SECRET_KEY;
+  const secret = wppSecretKey();
   const tokenUrl = `${base}/api/${encodeURIComponent(name)}/${encodeURIComponent(secret)}/generate-token`;
   let tokenRes: Response;
   try {
@@ -1260,7 +1260,7 @@ async function zapForceClearSessionOnServer(
   base: string,
   sessionName: string
 ): Promise<{ ok: boolean; notFound?: boolean; detail?: string }> {
-  const url = `${base}/api/${encodeURIComponent(sessionName)}/${encodeURIComponent(env.WPP_SECRET_KEY)}/zap-force-clear-session`;
+  const url = `${base}/api/${encodeURIComponent(sessionName)}/${encodeURIComponent(wppSecretKey())}/zap-force-clear-session`;
   try {
     const res = await fetch(url, { method: "POST", headers: { accept: "application/json" } });
     const body = await readWppJson(res);
@@ -1278,7 +1278,7 @@ async function zapForceClearSessionOnServer(
 }
 
 async function postClearSessionData(base: string, sessionName: string): Promise<{ ok: boolean; detail?: string }> {
-  const url = `${base}/api/${encodeURIComponent(sessionName)}/${encodeURIComponent(env.WPP_SECRET_KEY)}/clear-session-data`;
+  const url = `${base}/api/${encodeURIComponent(sessionName)}/${encodeURIComponent(wppSecretKey())}/clear-session-data`;
   try {
     const res = await fetch(url, { method: "POST", headers: { accept: "application/json" } });
     const body = await readWppJson(res);
