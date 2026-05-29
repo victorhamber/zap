@@ -139,13 +139,18 @@ export function isStablePhoneConnectionState(state: string): boolean {
 
 function isSessionOpeningState(state: string): boolean {
   const s = state.toUpperCase();
+  if (s === "CLOSED" || s === "LOGOUT" || s === "PAUSED" || s === "NOSESSION") {
+    return false;
+  }
   return (
-    sessionNeedsQr(s) ||
     s.includes("CONNECTING") ||
     s.includes("SYNCING") ||
     s.includes("OPENING") ||
     s === "PAIRING" ||
-    s === "INITIALIZING"
+    s === "INITIALIZING" ||
+    s === "QRCODE" ||
+    s === "QR" ||
+    s.includes("QRREAD")
   );
 }
 
@@ -217,7 +222,7 @@ export const MSG_QR_TIMEOUT =
   "O WPP fechou a sessão antes de concluir o login (autoClose ~60s). No servidor WPP, defina createOptions.autoClose: 0 no config, reinicie o WPP e escaneie o QR de novo em até 30 segundos.";
 
 export const MSG_WPP_NO_QR =
-  "O WPP não devolveu QR Code. Quase sempre é config do wppconnect: no console do container, edite dist/config.js (não cole JS no shell) — startAllSession: false, webhook.url: null, createOptions.autoClose: 0 — reinicie o wppconnect e clique em Conectar de novo. Veja deploy/wppconnect-config-fix.sh no repositório.";
+  "O WPP não devolveu QR Code. Confira: (1) wppconnect com WPP_START_ALL_SESSION=false e reiniciado; (2) clique Conectar / Mostrar QR e aguarde ~5s; (3) log do WPP com [sua-sessão] Waiting for QRCode Scan. Se o log mostrar AggregateError, a env do wppconnect não foi aplicada — Salvar + Implantar.";
 
 export const MSG_WPP_AGGREGATE_BOOT =
   "Log do WPP com AggregateError em startAllSessions: desative startAllSession e webhook.url no dist/config.js do container wppconnect, reinicie o serviço, depois Conectar / Mostrar QR.";
@@ -856,11 +861,35 @@ export async function startSession(options?: {
 
 export async function getQrCode(): Promise<{ qrImage: string | null; raw: unknown }> {
   const res = await wppFetch("/qrcode-session", { method: "GET" });
+  const contentType = res.headers.get("content-type") ?? "";
+
+  if (contentType.includes("image/")) {
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (!res.ok) {
+      throw new Error(`qrcode-session: HTTP ${res.status}`);
+    }
+    const mime = contentType.split(";")[0].trim() || "image/png";
+    return {
+      qrImage: `data:${mime};base64,${buf.toString("base64")}`,
+      raw: { contentType, bytes: buf.length }
+    };
+  }
+
   const body = await readWppJson(res);
   if (!res.ok) {
     throw new Error(`qrcode-session: ${formatWppError(res.status, body)}`);
   }
   return { qrImage: extractQrImage(body), raw: body };
+}
+
+/** Algumas versões do WPP devolvem o QR no JSON de status-session (campo qrcode). */
+export async function fetchQrFromSessionStatus(): Promise<string | null> {
+  try {
+    const status = await getSessionStatus({ persist: false });
+    return extractQrImage(status);
+  } catch {
+    return null;
+  }
 }
 
 export async function getSessionStatus(options?: { persist?: boolean }): Promise<unknown> {

@@ -81,10 +81,22 @@ export async function settingsRoutes(app: FastifyInstance) {
       let qrRaw: unknown = raw;
 
       if (!qrImage) {
+        qrImage = await wpp.fetchQrFromSessionStatus();
+      }
+      if (!qrImage) {
         await new Promise((r) => setTimeout(r, needsQr ? 2500 : 1500));
         const qr = await wpp.getQrCode().catch(() => ({ qrImage: null, raw: null }));
         qrImage = qr.qrImage;
         qrRaw = qr.raw;
+      }
+      if (!qrImage && needsQr) {
+        await new Promise((r) => setTimeout(r, 2000));
+        qrImage = await wpp.fetchQrFromSessionStatus();
+        if (!qrImage) {
+          const qr2 = await wpp.getQrCode().catch(() => ({ qrImage: null, raw: null }));
+          qrImage = qr2.qrImage;
+          qrRaw = qr2.raw;
+        }
       }
 
       if (!qrImage && needsQr && !wpp.isWppConnectedState(state)) {
