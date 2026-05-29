@@ -52,6 +52,7 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
       connected?: boolean;
       connecting?: boolean;
       needsQr?: boolean;
+      browserLock?: boolean;
       ghostSession?: boolean;
       noSession?: boolean;
       state?: string;
@@ -60,6 +61,13 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
     }) => {
       if (r.state) setState(r.state);
       const text = r.message ?? "";
+
+      if (r.browserLock) {
+        setNoticeKind("warn");
+        setNoticeText(r.message ?? "Perfil Chrome travado no servidor WPP — veja easypanel.md (SingletonLock).");
+        setQrImage(null);
+        return;
+      }
 
       if (r.needsQr && !r.connected) {
         setNoticeKind("info");
@@ -133,6 +141,7 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
           state?: string;
           message?: string;
           wppReachable?: boolean;
+          browserLock?: boolean;
           error?: string;
         }>("/api/settings/wpp/verify");
 
@@ -206,12 +215,21 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
         state?: string;
         needsQr?: boolean;
         connected?: boolean;
+        browserLock?: boolean;
         message?: string;
       }>("/api/settings/wpp/start-session", {
         method: "POST",
         body: JSON.stringify({ waitQrCode: false })
       });
-      if (!r.ok) throw new Error(r.message ?? "Falha ao iniciar sessão");
+      if (!r.ok) {
+        if (r.browserLock && r.message) {
+          setNoticeKind("warn");
+          setNoticeText(r.message);
+          setQrImage(null);
+          return;
+        }
+        throw new Error(r.message ?? "Falha ao iniciar sessão");
+      }
       if (r.state) setState(r.state);
 
       if (r.connected && !r.needsQr) {

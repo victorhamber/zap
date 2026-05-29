@@ -23,6 +23,36 @@ export function isWppNetworkError(message: string): boolean {
   );
 }
 
+/** Chrome/Puppeteer no WPP não abre — perfil travado no volume (SingletonLock). */
+export const MSG_BROWSER_PROFILE_LOCK =
+  "O navegador do WPP não abriu: perfil Chrome travado (SingletonLock). " +
+  "Pare o serviço wppconnect no EasyPanel, no volume apague em userDataDir/<sessão> os arquivos " +
+  "SingletonLock, SingletonSocket e SingletonCookie (ou a pasta inteira da sessão), " +
+  "suba o WPP de novo e use só 1 réplica. Depois: Conectar / Mostrar QR no painel.";
+
+export function isWppBrowserLockError(message: string): boolean {
+  return /profile appears to be in use|process_singleton|singletonlock|singletonsocket|failed to launch the browser|code:\s*21|error no open browser/i.test(
+    message
+  );
+}
+
+export function isWppBrokenClientError(message: string): boolean {
+  return /req\.client\.[a-z]+ is not a function|client\.(close|logout) is not a function/i.test(
+    message
+  );
+}
+
+export function mapWppErrorMessage(message: string): string {
+  if (isWppBrowserLockError(message)) return MSG_BROWSER_PROFILE_LOCK;
+  if (isWppBrokenClientError(message)) {
+    return (
+      "A sessão no WPP está corrompida (browser não iniciou). " +
+      MSG_BROWSER_PROFILE_LOCK
+    );
+  }
+  return message;
+}
+
 export function isDisconnectedState(state: string): boolean {
   const s = state.toUpperCase();
   return (
@@ -461,11 +491,32 @@ export async function verifyActiveSession() {
 
   let state = "DESCONHECIDO";
   let sessionStatus: unknown = null;
+  let statusError = "";
   try {
     sessionStatus = await getSessionStatus({ persist: false });
     state = extractSessionState(sessionStatus);
-  } catch {
+  } catch (e: any) {
+    statusError = e?.message ?? String(e);
     state = "INDISPONÍVEL";
+  }
+
+  if (statusError && isWppBrowserLockError(statusError)) {
+    return {
+      connected: false,
+      connecting: false,
+      ghostSession: false,
+      browserLock: true,
+      noSession: true,
+      state: "BROWSER_LOCK",
+      session: sessionName,
+      wppUrlUsed,
+      wppReachable: true,
+      message: mapWppErrorMessage(statusError),
+      phoneConnected: false,
+      sessionAlive: false,
+      sessionStatus: null,
+      connection: null
+    };
   }
 
   let connection: unknown = null;
@@ -681,7 +732,7 @@ export async function startSession(options?: { waitQrCode?: boolean }): Promise<
   }
 
   if (!res.ok) {
-    throw new Error(`start-session: ${formatWppError(res.status, body)}`);
+    throw new Error(`start-session: ${mapWppErrorMessage(formatWppError(res.status, body))}`);
   }
   const state = extractSessionState(body);
   if (isWppConnectedState(state)) {
@@ -738,11 +789,12 @@ export async function closeSession(): Promise<{ raw?: unknown; noSession: boolea
   const res = await wppFetch("/close-session", { method: "POST", body: JSON.stringify({}) });
   const body = await readWppJson(res);
   if (!res.ok) {
-    if (httpErrorMeansNoSession(res.status, body)) {
+    const errText = formatWppError(res.status, body);
+    if (httpErrorMeansNoSession(res.status, body) || isWppBrokenClientError(errText)) {
       await persistConnectionStatus("PAUSED:CLOSED");
       return { noSession: true };
     }
-    throw new Error(`close-session: ${formatWppError(res.status, body)}`);
+    throw new Error(`close-session: ${mapWppErrorMessage(errText)}`);
   }
   await persistConnectionStatus("PAUSED:CLOSED", body);
   return { noSession: false, raw: body };
@@ -758,11 +810,12 @@ export async function logoutSession(): Promise<{ raw?: unknown; noSession: boole
   const res = await wppFetch("/logout-session", { method: "POST", body: JSON.stringify({}) });
   const body = await readWppJson(res);
   if (!res.ok) {
-    if (httpErrorMeansNoSession(res.status, body)) {
+    const errText = formatWppError(res.status, body);
+    if (httpErrorMeansNoSession(res.status, body) || isWppBrokenClientError(errText)) {
       await markSessionRequiresQr("LOGOUT");
       return { noSession: true };
     }
-    throw new Error(`logout-session: ${formatWppError(res.status, body)}`);
+    throw new Error(`logout-session: ${mapWppErrorMessage(errText)}`);
   }
   await persistConnectionStatus("LOGOUT", body);
   return { noSession: false, raw: body };
@@ -820,7 +873,15 @@ export async function runWppDiagnostics() {
       detail: extractSessionState(st)
     });
   } catch (e: any) {
-    steps.push({ step: "Status da sessão", ok: false, detail: e.message });
+    const detail = mapWppErrorMessage(e?.message ?? String(e));
+    steps.push({ step: "Status da sessão", ok: false, detail });
+    if (isWppBrowserLockError(detail)) {
+      steps.push({
+        step: "Chrome travado (SingletonLock)",
+        ok: false,
+        detail: MSG_BROWSER_PROFILE_LOCK
+      });
+    }
   }
 
   const { getLastWppWebhookAt } = await import("./wppWebhook.js");

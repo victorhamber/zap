@@ -92,6 +92,28 @@ WPP_HUMANIZE=true
 - Prefira o **mesmo IP** do servidor e volume persistente no WPPConnect.
 - Não existe “modo invisível” 100%: automação sempre tem risco. O painel imita o Web, mas o WhatsApp pode detectar API não oficial.
 
+## Chrome travado: `profile appears to be in use` / Code 21
+
+Se o log do **wppconnect** mostra `Failed to launch the browser process: Code: 21` ou `The profile appears to be in use by another Chromium process`, o perfil no volume ficou **bloqueado** (arquivo `SingletonLock` de um container antigo). O Zap **não consegue** abrir QR até isso ser corrigido no WPP.
+
+**Passo a passo (EasyPanel):**
+
+1. **Pare** o serviço `wppconnect` (scale 0 ou Stop — não só redeploy).
+2. Abra o **volume** montado em `/usr/src/wpp-server/userDataDir` (ou o caminho da sua imagem).
+3. Para cada sessão com problema (`autofintech`, `eatrend`, etc.):
+   - **Opção A:** apague só `SingletonLock`, `SingletonSocket`, `SingletonCookie` dentro da pasta da sessão.
+   - **Opção B:** apague a pasta inteira da sessão (ex.: `userDataDir/autofintech`) — vai precisar escanear QR de novo.
+4. (Opcional) No volume `tokens`, apague `autofintech.data.json` se existir e a sessão estiver inconsistente.
+5. Confirme **apenas 1 réplica** do serviço wppconnect (duas réplicas = dois Chromes no mesmo volume = lock de novo).
+6. **Suba** o wppconnect de novo.
+7. No Zap: **Desconectar** → **Conectar / Mostrar QR**.
+
+Env no WPP (sem espaço após vírgula):
+
+```env
+PUPPETEER_ARGS=--no-sandbox,--disable-setuid-sandbox
+```
+
 ## WPPConnect — erros no log (AggregateError / startAllSessions)
 
 Se o log do WPP mostra `AggregateError` ao subir, é falha ao chamar **webhook** ou ao auto-iniciar sessões antigas.

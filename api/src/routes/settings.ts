@@ -96,7 +96,11 @@ export async function settingsRoutes(app: FastifyInstance) {
       };
     } catch (e: any) {
       const msg = e?.message ?? String(e);
-      return reply.status(200).send({ ok: false, message: msg });
+      return reply.status(200).send({
+        ok: false,
+        message: wpp.mapWppErrorMessage(msg),
+        browserLock: wpp.isWppBrowserLockError(msg)
+      });
     }
   });
 
