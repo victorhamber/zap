@@ -11,6 +11,7 @@ import {
   isValidWhatsAppPhoneDigits,
   normalizeDirectJid
 } from "../waJid.js";
+import { rewriteUploadUrlForWpp } from "../uploads.js";
 
 export const MSG_NO_DEVICE =
   "Nenhum WhatsApp conectado na Evolution. Crie/conecte a instância e escaneie o QR.";
@@ -272,6 +273,42 @@ export async function sendAudio(phone: string, url: string) {
     })
   });
   if (!res.ok) throw new Error(`sendMedia audio: ${formatWppError(res.status, await readJson(res))}`);
+}
+
+export async function sendDocument(
+  phone: string,
+  url: string,
+  caption?: string,
+  fileName?: string
+) {
+  const instance = await getInstanceName();
+  const number = await resolveEvolutionSendNumber(phone);
+  const res = await evoFetch(`/message/sendMedia/${encodeURIComponent(instance)}`, {
+    method: "POST",
+    body: JSON.stringify({
+      number,
+      mediatype: "document",
+      media: url,
+      caption: caption ?? "",
+      fileName: fileName ?? "documento"
+    })
+  });
+  if (!res.ok) throw new Error(`sendMedia document: ${formatWppError(res.status, await readJson(res))}`);
+}
+
+function phoneFromCallBody(b: Record<string, unknown>): string {
+  return String(b.phone ?? b.chatId ?? "");
+}
+
+function mediaUrlFromCallBody(b: Record<string, unknown>): string {
+  const path = String(b.path ?? "").trim();
+  const base64 = String(b.base64Ptt ?? b.base64 ?? "").trim();
+  if (base64) {
+    if (base64.startsWith("data:")) return base64;
+    return `data:audio/ogg;base64,${base64.replace(/\s/g, "")}`;
+  }
+  if (path) return rewriteUploadUrlForWpp(path);
+  throw new Error("Mídia sem path ou base64");
 }
 
 export async function checkConnection(): Promise<unknown> {
@@ -675,9 +712,46 @@ export async function callSessionApi(
 
   if (safe === "/send-message" && method === "POST" && body && typeof body === "object") {
     const b = body as Record<string, unknown>;
-    const phone = String(b.phone ?? "");
+    const phone = phoneFromCallBody(b);
     const message = String(b.message ?? "");
     await sendText(phone, message);
+    return { success: true };
+  }
+
+  if (
+    (safe === "/send-voice" || safe === "/send-voice-base64") &&
+    method === "POST" &&
+    body &&
+    typeof body === "object"
+  ) {
+    const b = body as Record<string, unknown>;
+    await sendAudio(phoneFromCallBody(b), mediaUrlFromCallBody(b));
+    return { success: true };
+  }
+
+  if (safe === "/send-image" && method === "POST" && body && typeof body === "object") {
+    const b = body as Record<string, unknown>;
+    await sendImage(
+      phoneFromCallBody(b),
+      mediaUrlFromCallBody(b),
+      String(b.caption ?? "")
+    );
+    return { success: true };
+  }
+
+  if (safe === "/send-file" && method === "POST" && body && typeof body === "object") {
+    const b = body as Record<string, unknown>;
+    const phone = phoneFromCallBody(b);
+    const media = mediaUrlFromCallBody(b);
+    const filename = String(b.filename ?? "arquivo").toLowerCase();
+    const caption = String(b.caption ?? "");
+    if (/\.(mp4|webm|mov|mkv)(\?|$)/.test(filename)) {
+      await sendVideo(phone, media, caption);
+    } else if (/\.(jpe?g|png|gif|webp)(\?|$)/.test(filename)) {
+      await sendImage(phone, media, caption);
+    } else {
+      await sendDocument(phone, media, caption, String(b.filename ?? "documento"));
+    }
     return { success: true };
   }
 
