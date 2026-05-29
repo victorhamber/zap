@@ -18,7 +18,11 @@ const MIME_EXT: Record<string, string> = {
   "audio/ogg": "ogg",
   "audio/mpeg": "mp3",
   "audio/mp4": "m4a",
-  "application/pdf": "pdf"
+  "application/pdf": "pdf",
+  "application/msword": "doc",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+  "application/vnd.ms-excel": "xls",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx"
 };
 
 export async function ensureUploadDir(): Promise<void> {
@@ -105,6 +109,10 @@ export async function saveUploadFromData(
   }
 
   const buf = Buffer.from(base64, "base64");
+  const maxBytes = 25 * 1024 * 1024;
+  if (buf.length > maxBytes) {
+    throw new Error("Arquivo muito grande (máximo 25 MB)");
+  }
   const ext = MIME_EXT[contentType] ?? "bin";
   const filename = `${randomUUID()}.${ext}`;
   await fs.writeFile(path.join(UPLOAD_DIR, filename), buf);

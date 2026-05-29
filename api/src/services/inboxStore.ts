@@ -166,10 +166,21 @@ export async function updateInboxMessageMedia(
 ): Promise<void> {
   if (!prisma || !waMessageId) return;
   const session = await getSessionName();
+  const publicUrl = toPublicMediaUrl(mediaUrl) ?? mediaUrl;
   await prisma.inboxMessage.updateMany({
     where: { session, waMessageId: waMessageId.slice(0, 240) },
-    data: { mediaUrl }
+    data: { mediaUrl: publicUrl }
   });
+}
+
+/** Mídia já veio no webhook (base64/data URI) — não precisa baixar de novo. */
+export function webhookMediaAlreadyInline(
+  parsed: { mediaUrl: string | null; text: string; type: string }
+): boolean {
+  if (isPersistedUploadUrl(parsed.mediaUrl)) return true;
+  if (parsed.mediaUrl?.startsWith("data:")) return true;
+  if (isLikelyBase64Payload(parsed.text)) return true;
+  return false;
 }
 
 export async function listStoredMessages(

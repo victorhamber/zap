@@ -19,7 +19,10 @@ import { UPLOAD_DIR, ensureUploadDir } from "./services/uploads.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const app = Fastify({ logger: true });
+const app = Fastify({
+  logger: true,
+  bodyLimit: 52 * 1024 * 1024 // uploads e webhooks com mídia em base64
+});
 
 app.addContentTypeParser("application/json", { parseAs: "string" }, (_req, body, done) => {
   try {

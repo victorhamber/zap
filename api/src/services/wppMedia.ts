@@ -29,6 +29,17 @@ function extractBase64FromWppResponse(raw: unknown): { base64: string; mime: str
   return { base64: base64.replace(/\s/g, ""), mime };
 }
 
+function serializedMessageId(body: Record<string, unknown>): string | null {
+  const idField = body.id;
+  if (typeof idField === "string" && idField.includes("@")) return idField;
+  if (idField && typeof idField === "object") {
+    const o = idField as Record<string, unknown>;
+    const s = String(o._serialized ?? o.id ?? "");
+    if (s.includes("@")) return s;
+  }
+  return null;
+}
+
 /** Baixa mídia criptografada via WPP (mensagens recebidas sem base64 no webhook). */
 export async function downloadInboundMedia(
   webhookBody: Record<string, unknown>,
@@ -38,23 +49,17 @@ export async function downloadInboundMedia(
   const type = String(normalized.type ?? "").toLowerCase();
   if (!isInboundMediaType(type)) return null;
 
-  const hasMediaFlag =
-    normalized.isMedia === true ||
-    normalized.isMMS === true ||
-    Boolean(normalized.mimetype ?? normalized.mimeType);
+  const serializedId = waMessageId ?? serializedMessageId(normalized);
+  if (!serializedId) return null;
 
-  if (!hasMediaFlag && !waMessageId) return null;
+  const hasFullMessage =
+    Boolean(normalized.from || normalized.chatId) &&
+    (normalized.isMedia === true ||
+      normalized.isMMS === true ||
+      Boolean(normalized.mimetype ?? normalized.mimeType));
 
   try {
-    const messageId =
-      hasMediaFlag && (normalized.from || normalized.chatId)
-        ? normalized
-        : waMessageId
-          ? { id: waMessageId }
-          : null;
-
-    if (!messageId) return null;
-
+    const messageId = hasFullMessage ? normalized : serializedId;
     const raw = await wpp.callSessionApi("/download-media", "POST", { messageId });
     const parsed = extractBase64FromWppResponse(raw);
     if (!parsed) return null;
@@ -69,9 +74,8 @@ export async function downloadInboundMedia(
       mime
     );
   } catch {
-    if (!waMessageId) return null;
     try {
-      const encoded = encodeURIComponent(waMessageId);
+      const encoded = encodeURIComponent(serializedId);
       const raw = await wpp.callSessionApi(`/get-media-by-message/${encoded}`, "GET");
       const parsed = extractBase64FromWppResponse(raw);
       if (!parsed) return null;

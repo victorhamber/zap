@@ -113,8 +113,23 @@ const InboxMessageContent = memo(function InboxMessageContent({ message: m }: { 
   if (isMedia && (m.type === "audio" || m.type === "ptt")) {
     return (
       <div className="space-y-1">
-        <audio src={url} controls className="w-full min-w-[220px]" />
+        <audio src={url} controls preload="none" className="w-full min-w-[220px]" />
         {showCaption && <p className="text-sm whitespace-pre-wrap">{m.body}</p>}
+      </div>
+    );
+  }
+  if (url && m.type === "document") {
+    return (
+      <div className="space-y-1">
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-2 text-sm text-[#53bdeb] hover:underline"
+        >
+          <span aria-hidden>📎</span>
+          {m.body && !m.body.startsWith("📎") ? m.body : "Abrir documento"}
+        </a>
       </div>
     );
   }
@@ -235,14 +250,14 @@ export function WhatsAppInbox() {
 
   useEffect(() => {
     if (!pageVisible) return;
-    const t = setInterval(() => loadChats(true), 60000);
+    const t = setInterval(() => loadChats(true), 120000);
     return () => clearInterval(t);
   }, [pageVisible, loadChats]);
 
   useEffect(() => {
     if (!selected || !pageVisible) return;
     loadMessages(selected);
-    const t = setInterval(() => loadMessages(selected, true), 20000);
+    const t = setInterval(() => loadMessages(selected, true), 15000);
     return () => clearInterval(t);
   }, [selected, pageVisible, loadMessages]);
 
@@ -637,8 +652,8 @@ export function WhatsAppInbox() {
                   <div
                     className={`wa-bubble max-w-[min(65%,520px)] rounded-lg px-3 py-1.5 break-words ${
                       m.fromMe
-                        ? "wa-bubble-out bg-[var(--wa-bg-bubble-out)] text-[var(--wa-text-primary)] rounded-tr-none"
-                        : "wa-bubble-in bg-[var(--wa-bg-bubble-in)] text-[var(--wa-text-primary)] rounded-tl-none"
+                        ? "bg-[var(--wa-bg-bubble-out)] text-[var(--wa-text-primary)] rounded-tr-sm"
+                        : "bg-[var(--wa-bg-bubble-in)] text-[var(--wa-text-primary)] rounded-tl-sm"
                     }`}
                   >
                     <InboxMessageContent message={m} />

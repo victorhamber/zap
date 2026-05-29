@@ -610,6 +610,6 @@ export async function sendChatMedia(
     body: labels[type],
     fromMe: true,
     type,
-    mediaUrl: storedMediaUrl
+    mediaUrl: toPublicMediaUrl(storedMediaUrl) ?? storedMediaUrl
   });
 }

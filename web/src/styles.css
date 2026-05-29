@@ -43,34 +43,11 @@ body {
 }
 
 .wa-inbox .wa-bubble {
-  position: relative;
   box-shadow: 0 1px 0.5px rgba(0, 0, 0, 0.13);
-}
-
-.wa-inbox .wa-bubble-out::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  right: -8px;
-  width: 8px;
-  height: 13px;
-  background: linear-gradient(225deg, var(--wa-bg-bubble-out) 50%, transparent 50%);
-}
-
-.wa-inbox .wa-bubble-in::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: -8px;
-  width: 8px;
-  height: 13px;
-  background: linear-gradient(135deg, var(--wa-bg-bubble-in) 50%, transparent 50%);
 }
 
 .wa-inbox .wa-chat-bg {
   background-color: var(--wa-bg-app);
-  background-image: url("data:image/svg+xml,%3Csvg width='412' height='412' viewBox='0 0 412 412' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff' fill-opacity='0.035'%3E%3Cpath d='M0 0h412v412H0z' fill='none'/%3E%3Cpath d='M68 52c8-4 18-2 24 6 6 8 4 20-4 26-10 8-26 4-32-8-6-12 2-26 12-24zm120 80c6-10 20-14 30-8 10 6 14 20 8 30-6 10-20 14-30 8-10-6-14-20-8-30zm-40 120c10-6 24-2 30 8 6 10 2 24-8 30-10 6-24 2-30-8-6-10-2-24 8-30zm160-40c8-12 24-16 36-8 12 8 16 24 8 36-8 12-24 16-36 8-12-8-16-24-8-36z'/%3E%3C/g%3E%3C/svg%3E");
-  background-size: 412px 412px;
 }
 
 .flow-editor-canvas {

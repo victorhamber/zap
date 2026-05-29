@@ -12,11 +12,11 @@ import { asString } from "../utils/jsonPathLite.js";
 import { normalizePhone } from "../utils/phone.js";
 import { getContactTagNames } from "../services/contacts.js";
 import { downloadInboundMedia, isInboundMediaType } from "../services/wppMedia.js";
-import { isPersistedUploadUrl } from "../services/uploads.js";
 import {
   parseWppWebhookMessage,
   saveInboxMessage,
-  updateInboxMessageMedia
+  updateInboxMessageMedia,
+  webhookMediaAlreadyInline
 } from "../services/inboxStore.js";
 import {
   getWppWebhookEvent,
@@ -72,7 +72,7 @@ export async function webhookRoutes(app: FastifyInstance) {
     const body = normalizeWppWebhookBody(raw);
     touchWppWebhookReceived(getWppWebhookEvent(body));
 
-    if (!isWppMessageWebhook(raw)) {
+    if (!isWppMessageWebhook(body)) {
       return { ok: true, skipped: "not_message" };
     }
 
@@ -93,7 +93,7 @@ export async function webhookRoutes(app: FastifyInstance) {
       const needsMediaDownload =
         parsed.waMessageId &&
         isInboundMediaType(parsed.type) &&
-        !isPersistedUploadUrl(parsed.mediaUrl);
+        !webhookMediaAlreadyInline(parsed);
 
       if (needsMediaDownload) {
         const waId = parsed.waMessageId;

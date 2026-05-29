@@ -319,6 +319,10 @@ export function InboxComposer({
         }}
       />
 
+      {uploading && (
+        <p className="px-3 pb-1 text-xs text-[#8696a0]">Enviando arquivo…</p>
+      )}
+
       <footer className="flex items-end gap-1 px-2 py-2 pb-3">
         <button
           type="button"
