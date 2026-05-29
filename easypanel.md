@@ -92,7 +92,8 @@ Imagens `wppconnect-server` 2.x (incl. `ibsddev/wppconnect-server:latest`) têm 
 
 **Correção (uma vez no servidor WPP):**
 
-1. Console EasyPanel do **wppconnect** → cole o script `deploy/wppconnect-config-fix.sh` do repo (inclui patch de tokens).
+1. No GitHub abra `deploy/COLE-NO-CONSOLE-WPPCONNECT.sh`, **copie o arquivo inteiro** e **cole** no console EasyPanel do **wppconnect** (aba Sh).  
+   **Não** digite `deploy/wppconnect-config-fix.sh` — esse caminho **não existe** dentro do container.
 2. **OU** build com `deploy/Dockerfile.wppconnect` (mesma base `ibsddev/wppconnect-server:latest` + patch automático).
 3. Reinicie o wppconnect → no Zap use **Limpar órfãs** ou **Remover** de novo.
 

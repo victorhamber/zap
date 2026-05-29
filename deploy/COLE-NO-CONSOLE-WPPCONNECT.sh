@@ -1,0 +1,43 @@
+#!/bin/sh
+# =============================================================================
+# COLE ESTE ARQUIVO INTEIRO no console EasyPanel do serviço wppconnect (aba Sh).
+# NÃO digite: deploy/wppconnect-config-fix.sh  (esse caminho não existe no container)
+# Selecione tudo abaixo, copie e cole no terminal; Enter no final.
+# =============================================================================
+
+cd /usr/src/wpp-server || { echo "Pasta /usr/src/wpp-server não encontrada"; exit 1; }
+
+echo "=== 1) Patch config (startAllSession + autoClose) ==="
+for f in ./dist/config.js ./src/config.ts; do
+  [ -f "$f" ] || continue
+  echo "  -> $f"
+  cp "$f" "${f}.bak.$(date +%s)"
+  sed -i 's/startAllSession: true/startAllSession: false/g' "$f" 2>/dev/null || true
+  sed -i 's/startAllSession:true/startAllSession: false/g' "$f" 2>/dev/null || true
+  sed -i 's/autoClose: 60000/autoClose: 0/g' "$f" 2>/dev/null || true
+  sed -i 's/autoClose: 60,/autoClose: 0,/g' "$f" 2>/dev/null || true
+done
+
+echo ""
+echo "=== 2) Patch token path (excluir sessão no painel Zap) ==="
+found=0
+find . \( -name 'miscController.js' -o -name 'sessionController.js' \) 2>/dev/null | while read -r f; do
+  [ -f "$f" ] || continue
+  grep -q '__dirname.*tokens/' "$f" 2>/dev/null || continue
+  echo "  -> $f"
+  cp "$f" "${f}.bak.zap.$(date +%s)"
+  sed -i 's|__dirname + `../../../tokens/${session}.data.json`|require("path").join(process.cwd(), "tokens", `${session}.data.json`)|g' "$f"
+  sed -i 's|__dirname + `../../../tokens/${req.session}.data.json`|require("path").join(process.cwd(), "tokens", `${req.session}.data.json`)|g' "$f"
+  sed -i 's|__dirname + `../../../tokens/${req.params.session}.data.json`|require("path").join(process.cwd(), "tokens", `${req.params.session}.data.json`)|g' "$f"
+  found=1
+done
+
+echo ""
+echo "=== 3) Variáveis no EasyPanel (serviço wppconnect) ==="
+echo "  WPP_START_ALL_SESSION=false"
+echo "  WPP_AUTO_CLOSE=0"
+echo ""
+echo "=== PRONTO ==="
+echo "1) Reinicie o wppconnect (Stop -> Start, 1 réplica)"
+echo "2) No Zap: Limpar órfãs no WPP"
+echo "3) Depois use só a sessão 123 (ou a que precisar)"
