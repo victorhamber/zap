@@ -8,6 +8,7 @@ import { FlowEditor } from "./pages/FlowEditor";
 import { FlowRuns } from "./pages/FlowRuns";
 import { Settings } from "./pages/Settings";
 import { WhatsApp } from "./pages/WhatsApp";
+import { MediaLibrary } from "./pages/MediaLibrary";
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   if (!getToken()) return <Navigate to="/login" replace />;
@@ -38,6 +39,7 @@ export function App() {
           <Route path="/flows" element={<FlowsList />} />
           <Route path="/flows/:id/runs" element={<FlowRuns />} />
           <Route path="/whatsapp" element={<WhatsApp />} />
+          <Route path="/media" element={<MediaLibrary />} />
           <Route path="/settings" element={<Settings />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

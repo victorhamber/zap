@@ -1,7 +1,8 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/client";
-import { InboxComposer, type QuickReply } from "./InboxComposer";
+import { InboxComposer } from "./InboxComposer";
+import type { QuickReply, QuickReplyKind } from "../../types/quickReply";
 import { WaAudioPlayer } from "./WaAudioPlayer";
 import { WaMediaViewer } from "./WaMediaViewer";
 import { WhatsAppAvatar } from "./WhatsAppAvatar";
@@ -319,6 +320,22 @@ export function WhatsAppInbox() {
   const [flowMenuOpen, setFlowMenuOpen] = useState(false);
   const [flowNotice, setFlowNotice] = useState("");
   const flowMenuRef = useRef<HTMLDivElement>(null);
+  const [showQuickReplyManager, setShowQuickReplyManager] = useState(false);
+  const [newQrTitle, setNewQrTitle] = useState("");
+  const [newQrColor, setNewQrColor] = useState("#53bdeb");
+  const [newQrKind, setNewQrKind] = useState<QuickReplyKind>("text");
+  const [newQrText, setNewQrText] = useState("");
+  const [newQrMediaUrl, setNewQrMediaUrl] = useState("");
+  const [newQrFilename, setNewQrFilename] = useState("");
+  const [editingQrId, setEditingQrId] = useState<string | null>(null);
+  const [editQrTitle, setEditQrTitle] = useState("");
+  const [editQrColor, setEditQrColor] = useState("#53bdeb");
+  const [editQrKind, setEditQrKind] = useState<QuickReplyKind>("text");
+  const [editQrText, setEditQrText] = useState("");
+  const [editQrMediaUrl, setEditQrMediaUrl] = useState("");
+  const [editQrFilename, setEditQrFilename] = useState("");
+  const [qrUploading, setQrUploading] = useState(false);
+  const qrFileRef = useRef<HTMLInputElement>(null);
   const [msgHint, setMsgHint] = useState("");
   const [sendError, setSendError] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -633,6 +650,155 @@ export function WhatsAppInbox() {
     }
   }
 
+  function resetNewQuickReplyForm() {
+    setNewQrTitle("");
+    setNewQrColor("#53bdeb");
+    setNewQrKind("text");
+    setNewQrText("");
+    setNewQrMediaUrl("");
+    setNewQrFilename("");
+  }
+
+  async function persistQuickReplies(replies: QuickReply[]) {
+    const r = await api<{ ok: boolean; replies: QuickReply[] }>("/api/inbox/quick-replies", {
+      method: "PUT",
+      body: JSON.stringify({ replies })
+    });
+    setQuickReplies(r.replies ?? replies);
+  }
+
+  async function uploadQuickReplyFile(file: File): Promise<{ url: string; filename: string }> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        void (async () => {
+          try {
+            const r = await api<{ ok: boolean; url?: string; message?: string }>("/api/inbox/upload", {
+              method: "POST",
+              body: JSON.stringify({ data: reader.result as string, mime: file.type })
+            });
+            if (!r.ok || !r.url) throw new Error(r.message ?? "Falha no upload");
+            resolve({ url: r.url, filename: file.name });
+          } catch (e) {
+            reject(e);
+          }
+        })();
+      };
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function createQuickReply() {
+    const title = newQrTitle.trim();
+    if (!title) return;
+    if (newQrKind === "text" && !newQrText.trim()) return;
+    if (newQrKind !== "text" && !newQrMediaUrl) return;
+
+    const item: QuickReply = {
+      id: `qr-${Date.now()}`,
+      title,
+      color: newQrColor,
+      kind: newQrKind,
+      text: newQrText.trim(),
+      mediaUrl: newQrMediaUrl,
+      filename: newQrFilename,
+      useCount: 0,
+      lastUsedAt: 0
+    };
+    await persistQuickReplies([...quickReplies, item]);
+    resetNewQuickReplyForm();
+  }
+
+  function startEditQuickReply(q: QuickReply) {
+    setEditingQrId(q.id);
+    setEditQrTitle(q.title);
+    setEditQrColor(q.color);
+    setEditQrKind(q.kind);
+    setEditQrText(q.text);
+    setEditQrMediaUrl(q.mediaUrl);
+    setEditQrFilename(q.filename);
+    setShowQuickReplyManager(true);
+  }
+
+  async function updateQuickReply(id: string) {
+    const title = editQrTitle.trim();
+    if (!title) return;
+    const next = quickReplies.map((q) =>
+      q.id === id
+        ? {
+            ...q,
+            title,
+            color: editQrColor,
+            kind: editQrKind,
+            text: editQrText.trim(),
+            mediaUrl: editQrMediaUrl,
+            filename: editQrFilename
+          }
+        : q
+    );
+    await persistQuickReplies(next);
+    setEditingQrId(null);
+  }
+
+  async function deleteQuickReply(q: QuickReply) {
+    if (!window.confirm(`Excluir resposta rápida "${q.title}"?`)) return;
+    await persistQuickReplies(quickReplies.filter((r) => r.id !== q.id));
+    if (editingQrId === q.id) setEditingQrId(null);
+  }
+
+  async function applyQuickReply(reply: QuickReply) {
+    try {
+      const r = await api<{ ok: boolean; replies: QuickReply[] }>(
+        `/api/inbox/quick-replies/${encodeURIComponent(reply.id)}/use`,
+        { method: "POST" }
+      );
+      if (r.replies) setQuickReplies(r.replies);
+    } catch {
+      /* continua mesmo se falhar contador */
+    }
+
+    if (reply.kind === "text" || !reply.mediaUrl) {
+      setDraft(reply.text);
+      return;
+    }
+    await sendMedia(
+      reply.kind,
+      reply.mediaUrl,
+      reply.text || undefined,
+      reply.filename || undefined
+    );
+  }
+
+  async function handleQuickReplyFilePick(e: React.ChangeEvent<HTMLInputElement>, editing: boolean) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setQrUploading(true);
+    try {
+      const { url, filename } = await uploadQuickReplyFile(file);
+      const mime = file.type || "";
+      let kind: QuickReplyKind = "document";
+      if (mime.startsWith("image/")) kind = "image";
+      else if (mime.startsWith("video/")) kind = "video";
+      else if (mime.startsWith("audio/")) kind = "audio";
+
+      if (editing) {
+        setEditQrMediaUrl(url);
+        setEditQrFilename(filename);
+        setEditQrKind(kind);
+      } else {
+        setNewQrMediaUrl(url);
+        setNewQrFilename(filename);
+        setNewQrKind(kind);
+      }
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Erro ao enviar arquivo");
+    } finally {
+      setQrUploading(false);
+    }
+  }
+
   function toggleTag(tagId: string) {
     if (!selected) return;
     const current = selected.contact?.tags.map((t) => t.id) ?? [];
@@ -847,7 +1013,21 @@ export function WhatsAppInbox() {
               </div>
               <button
                 type="button"
-                onClick={() => setShowTagManager((v) => !v)}
+                onClick={() => {
+                  setShowQuickReplyManager((v) => !v);
+                  setShowTagManager(false);
+                }}
+                className="rounded-lg bg-[#2a3942] px-3 py-2 text-xs hover:bg-[#374955] shrink-0"
+                title="Criar e gerenciar respostas rápidas"
+              >
+                Respostas
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowTagManager((v) => !v);
+                  setShowQuickReplyManager(false);
+                }}
                 className="rounded-lg bg-[#2a3942] px-3 py-2 text-xs hover:bg-[#374955] shrink-0"
               >
                 Tags
@@ -970,6 +1150,152 @@ export function WhatsAppInbox() {
               </div>
             )}
 
+            {showQuickReplyManager && (
+              <div className="px-4 py-3 bg-[#202c33] border-b border-[#2a3942] space-y-3">
+                <p className="text-[11px] text-[#8696a0] uppercase tracking-wide">
+                  Respostas rápidas — clique no badge abaixo da mensagem para usar
+                </p>
+                <input ref={qrFileRef} type="file" className="hidden" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt" onChange={(e) => void handleQuickReplyFilePick(e, false)} />
+                <div className="flex flex-wrap gap-2 items-end">
+                  <input
+                    value={newQrTitle}
+                    onChange={(e) => setNewQrTitle(e.target.value)}
+                    placeholder="Nome (ex.: Teste, Link compra)"
+                    className="min-w-[140px] flex-1 rounded-lg bg-[#2a3942] px-3 py-2 text-sm border-0"
+                  />
+                  <select
+                    value={newQrKind}
+                    onChange={(e) => setNewQrKind(e.target.value as QuickReplyKind)}
+                    className="rounded-lg bg-[#2a3942] px-3 py-2 text-sm border-0"
+                  >
+                    <option value="text">Texto</option>
+                    <option value="image">Imagem</option>
+                    <option value="video">Vídeo</option>
+                    <option value="audio">Áudio</option>
+                    <option value="document">Documento</option>
+                  </select>
+                  <input
+                    type="color"
+                    value={newQrColor}
+                    onChange={(e) => setNewQrColor(e.target.value)}
+                    className="h-10 w-12 rounded cursor-pointer"
+                    title="Cor do badge"
+                  />
+                </div>
+                {newQrKind === "text" ? (
+                  <textarea
+                    value={newQrText}
+                    onChange={(e) => setNewQrText(e.target.value)}
+                    placeholder="Texto da resposta pronta"
+                    rows={2}
+                    className="w-full rounded-lg bg-[#2a3942] px-3 py-2 text-sm border-0 resize-none"
+                  />
+                ) : (
+                  <div className="flex flex-wrap gap-2 items-center">
+                    <button
+                      type="button"
+                      disabled={qrUploading}
+                      onClick={() => qrFileRef.current?.click()}
+                      className="rounded-lg bg-[#374955] px-3 py-2 text-xs hover:bg-[#455a64]"
+                    >
+                      {qrUploading ? "Enviando…" : "Anexar arquivo"}
+                    </button>
+                    {newQrMediaUrl && (
+                      <span className="text-xs text-[#8696a0] truncate max-w-[200px]">
+                        {newQrFilename || "Arquivo anexado"}
+                      </span>
+                    )}
+                    <input
+                      value={newQrText}
+                      onChange={(e) => setNewQrText(e.target.value)}
+                      placeholder="Legenda (opcional)"
+                      className="flex-1 min-w-[120px] rounded-lg bg-[#2a3942] px-3 py-2 text-sm border-0"
+                    />
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => void createQuickReply()}
+                  className="rounded-lg bg-[#00a884] px-4 py-2 text-sm font-semibold text-[#111b21]"
+                >
+                  Salvar resposta
+                </button>
+                <div className="space-y-2 max-h-44 overflow-y-auto">
+                  {quickReplies.map((q) =>
+                    editingQrId === q.id ? (
+                      <div key={q.id} className="rounded-lg bg-[#2a3942]/60 p-2 space-y-2">
+                        <div className="flex flex-wrap gap-2">
+                          <input
+                            value={editQrTitle}
+                            onChange={(e) => setEditQrTitle(e.target.value)}
+                            className="flex-1 min-w-[100px] rounded-lg bg-[#2a3942] px-3 py-1.5 text-sm border-0"
+                          />
+                          <input
+                            type="color"
+                            value={editQrColor}
+                            onChange={(e) => setEditQrColor(e.target.value)}
+                            className="h-9 w-10 rounded cursor-pointer"
+                          />
+                        </div>
+                        {editQrKind === "text" ? (
+                          <textarea
+                            value={editQrText}
+                            onChange={(e) => setEditQrText(e.target.value)}
+                            rows={2}
+                            className="w-full rounded-lg bg-[#2a3942] px-3 py-1.5 text-sm border-0"
+                          />
+                        ) : (
+                          <p className="text-xs text-[#8696a0]">{editQrFilename || "Mídia anexada"}</p>
+                        )}
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void updateQuickReply(q.id)}
+                            className="rounded-lg bg-[#00a884] px-3 py-1.5 text-xs font-semibold text-[#111b21]"
+                          >
+                            Salvar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingQrId(null)}
+                            className="rounded-lg px-3 py-1.5 text-xs text-[#8696a0]"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        key={q.id}
+                        className="flex items-center gap-2 rounded-lg bg-[#2a3942]/60 px-2 py-1.5"
+                      >
+                        <span
+                          className="w-3 h-3 rounded-full shrink-0"
+                          style={{ backgroundColor: q.color }}
+                        />
+                        <span className="flex-1 text-sm truncate">{q.title}</span>
+                        <span className="text-[10px] text-[#8696a0]">{q.useCount}x</span>
+                        <button
+                          type="button"
+                          onClick={() => startEditQuickReply(q)}
+                          className="text-xs text-[#53bdeb] hover:underline px-1"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void deleteQuickReply(q)}
+                          className="text-xs text-[#ea0038] hover:underline px-1"
+                        >
+                          Excluir
+                        </button>
+                      </div>
+                    )
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="wa-chat-bg flex-1 min-h-0 overflow-y-auto overscroll-contain px-2 sm:px-6 md:px-10 py-3 space-y-0.5 border-l border-[var(--wa-border)]/30">
               {loadingMsgs && messages.length === 0 && (
                 <p className="text-center text-sm text-[#8696a0]">Carregando mensagens…</p>
@@ -1004,6 +1330,7 @@ export function WhatsAppInbox() {
                 void sendMedia(type, url, caption, filename)
               }
               quickReplies={quickReplies}
+              onUseQuickReply={(reply) => applyQuickReply(reply)}
             />
           </div>
         )}

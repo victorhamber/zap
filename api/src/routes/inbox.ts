@@ -14,24 +14,88 @@ import { startFlowRun } from "../engine/executor.js";
 import { parseGraph } from "../engine/graph.js";
 import * as wpp from "../services/whatsapp/index.js";
 
-type QuickReply = { id: string; title: string; text: string };
+type QuickReplyKind = "text" | "image" | "video" | "audio" | "document";
+
+type QuickReply = {
+  id: string;
+  title: string;
+  color: string;
+  kind: QuickReplyKind;
+  text: string;
+  mediaUrl: string;
+  filename: string;
+  useCount: number;
+  lastUsedAt: number;
+};
+
+function sortQuickReplies(list: QuickReply[]): QuickReply[] {
+  return [...list].sort((a, b) => {
+    if (b.useCount !== a.useCount) return b.useCount - a.useCount;
+    return b.lastUsedAt - a.lastUsedAt;
+  });
+}
+
+function normalizeQuickReply(raw: Record<string, unknown>): QuickReply | null {
+  const title = String(raw.title ?? "").trim();
+  if (!title) return null;
+
+  const id = String(raw.id ?? title).trim() || title;
+  const color = String(raw.color ?? "#25D366").trim() || "#25D366";
+  const text = String(raw.text ?? "").trim();
+  const mediaUrl = String(raw.mediaUrl ?? "").trim();
+  const filename = String(raw.filename ?? "").trim();
+  let kind = String(raw.kind ?? "").trim() as QuickReplyKind;
+
+  if (!kind || kind === "text") {
+    if (mediaUrl) {
+      const fn = filename.toLowerCase();
+      if (/\.(mp4|webm|mov|mkv)/.test(fn)) kind = "video";
+      else if (/\.(jpe?g|png|gif|webp)/.test(fn)) kind = "image";
+      else if (/\.(ogg|mp3|m4a|wav|webm)/.test(fn)) kind = "audio";
+      else kind = "document";
+    } else {
+      kind = "text";
+    }
+  }
+
+  return {
+    id,
+    title,
+    color,
+    kind,
+    text,
+    mediaUrl,
+    filename,
+    useCount: Math.max(0, Number(raw.useCount) || 0),
+    lastUsedAt: Math.max(0, Number(raw.lastUsedAt) || 0)
+  };
+}
 
 function parseQuickReplies(raw: unknown): QuickReply[] {
   if (!Array.isArray(raw)) return [];
-  return raw
-    .map((item) => {
-      if (!item || typeof item !== "object") return null;
-      const o = item as Record<string, unknown>;
-      const title = String(o.title ?? "").trim();
-      const text = String(o.text ?? "").trim();
-      if (!title || !text) return null;
-      return {
-        id: String(o.id ?? title),
-        title,
-        text
-      };
-    })
-    .filter((x): x is QuickReply => Boolean(x));
+  const out: QuickReply[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const normalized = normalizeQuickReply(item as Record<string, unknown>);
+    if (normalized) out.push(normalized);
+  }
+  return sortQuickReplies(out);
+}
+
+function sanitizeQuickRepliesForSave(list: QuickReply[]): QuickReply[] {
+  return list
+    .map((r) => ({
+      id: r.id.trim(),
+      title: r.title.trim(),
+      color: r.color.trim() || "#25D366",
+      kind: r.kind,
+      text: r.text.trim(),
+      mediaUrl: r.mediaUrl.trim(),
+      filename: r.filename.trim(),
+      useCount: Math.max(0, r.useCount || 0),
+      lastUsedAt: Math.max(0, r.lastUsedAt || 0)
+    }))
+    .filter((r) => r.id && r.title);
 }
 
 export async function inboxRoutes(app: FastifyInstance) {
@@ -216,16 +280,32 @@ export async function inboxRoutes(app: FastifyInstance) {
   app.put("/api/inbox/quick-replies", async (req, reply) => {
     if (!prisma) return reply.status(503).send({ error: "Banco indisponível" });
     const body = req.body as { replies?: QuickReply[] };
-    const replies = (body.replies ?? []).map((r) => ({
-      id: r.id || r.title,
-      title: r.title.trim(),
-      text: r.text.trim()
-    }));
+    const replies = sanitizeQuickRepliesForSave(body.replies ?? []);
     await prisma.appSettings.update({
       where: { id: "default" },
       data: { quickReplies: replies }
     });
-    return { ok: true, replies };
+    return { ok: true, replies: sortQuickReplies(replies) };
+  });
+
+  app.post("/api/inbox/quick-replies/:id/use", async (req, reply) => {
+    if (!prisma) return reply.status(503).send({ error: "Banco indisponível" });
+    const id = (req.params as { id: string }).id;
+    const s = await prisma.appSettings.findUnique({ where: { id: "default" } });
+    const replies = parseQuickReplies(s?.quickReplies);
+    const now = Date.now();
+    let found = false;
+    const updated = replies.map((r) => {
+      if (r.id !== id) return r;
+      found = true;
+      return { ...r, useCount: r.useCount + 1, lastUsedAt: now };
+    });
+    if (!found) return reply.status(404).send({ ok: false, message: "Resposta não encontrada" });
+    await prisma.appSettings.update({
+      where: { id: "default" },
+      data: { quickReplies: updated }
+    });
+    return { ok: true, replies: sortQuickReplies(updated) };
   });
 
   app.get("/api/tags", async () => {

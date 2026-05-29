@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/client";
+import type { QuickReply } from "../../types/quickReply";
 
-export type QuickReply = { id: string; title: string; text: string };
+export type { QuickReply };
 
 type Props = {
   draft: string;
@@ -14,6 +15,7 @@ type Props = {
     filename?: string
   ) => Promise<void>;
   quickReplies: QuickReply[];
+  onUseQuickReply: (reply: QuickReply) => void | Promise<void>;
   disabled?: boolean;
 };
 
@@ -121,6 +123,7 @@ export function InboxComposer({
   onSendText,
   onSendMedia,
   quickReplies,
+  onUseQuickReply,
   disabled
 }: Props) {
   const [attachOpen, setAttachOpen] = useState(false);
@@ -320,22 +323,6 @@ export function InboxComposer({
 
   return (
     <div className="wa-composer shrink-0 relative px-2 pb-2 pt-1" ref={attachRef}>
-      {quickReplies.length > 0 && (
-        <div className="flex gap-2 px-1 pb-2 overflow-x-auto scrollbar-none">
-          {quickReplies.map((q) => (
-            <button
-              key={q.id}
-              type="button"
-              disabled={disabled}
-              onClick={() => onDraftChange(q.text)}
-              className="shrink-0 rounded-full border border-[#3b4a54]/80 px-3 py-1 text-xs text-[var(--wa-text-secondary)] hover:bg-[var(--wa-bg-input)] hover:text-[var(--wa-text-primary)] transition-colors"
-            >
-              {q.title}
-            </button>
-          ))}
-        </div>
-      )}
-
       {attachOpen && (
         <div className="absolute bottom-full left-2 mb-2 w-52 rounded-2xl bg-[#233138] shadow-2xl border border-[#3b4a54]/60 py-1.5 z-20 overflow-hidden">
           {ATTACH_ITEMS.map((item) => (
@@ -458,6 +445,39 @@ export function InboxComposer({
           </button>
         )}
       </footer>
+
+      {quickReplies.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 px-1 pt-2 max-h-[88px] overflow-y-auto">
+          {quickReplies.map((q) => (
+            <button
+              key={q.id}
+              type="button"
+              disabled={disabled || uploading}
+              onClick={() => void onUseQuickReply(q)}
+              className="shrink-0 rounded-full px-3 py-1.5 text-xs font-medium text-white border border-white/10 hover:brightness-110 transition"
+              style={{ backgroundColor: q.color || "#25D366" }}
+              title={
+                q.kind === "text"
+                  ? q.text.slice(0, 120)
+                  : `${q.kind}${q.text ? `: ${q.text}` : ""}`
+              }
+            >
+              {q.title}
+              {q.kind !== "text" && (
+                <span className="ml-1 opacity-80">
+                  {q.kind === "image"
+                    ? "📷"
+                    : q.kind === "video"
+                      ? "🎬"
+                      : q.kind === "audio"
+                        ? "🎤"
+                        : "📎"}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

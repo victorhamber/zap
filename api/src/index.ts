@@ -14,6 +14,7 @@ import { runRoutes } from "./routes/runs.js";
 import { settingsRoutes } from "./routes/settings.js";
 import { wppRoutes } from "./routes/wpp.js";
 import { inboxRoutes } from "./routes/inbox.js";
+import { mediaRoutes } from "./routes/media.js";
 import { bootstrapDatabase } from "./bootstrap.js";
 import { UPLOAD_DIR, ensureUploadDir } from "./services/uploads.js";
 
@@ -53,6 +54,7 @@ await app.register(runRoutes);
 await app.register(settingsRoutes);
 await app.register(wppRoutes);
 await app.register(inboxRoutes);
+await app.register(mediaRoutes);
 
 await ensureUploadDir();
 
