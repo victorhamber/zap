@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/client";
 import { InboxComposer, type QuickReply } from "./InboxComposer";
+import { WhatsAppAvatar } from "./WhatsAppAvatar";
 
 type Tag = { id: string; name: string; color: string };
 type ChatKind = "direct" | "group" | "community";
@@ -54,12 +55,6 @@ function usePageVisible() {
     return () => document.removeEventListener("visibilitychange", fn);
   }, []);
   return visible;
-}
-
-function initials(name: string): string {
-  const p = name.trim().split(/\s+/);
-  if (p.length >= 2) return (p[0][0] + p[1][0]).toUpperCase();
-  return name.slice(0, 2).toUpperCase();
 }
 
 function isBase64Blob(text: string): boolean {
@@ -145,6 +140,78 @@ function formatTime(ts: number): string {
   }
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
+
+const ChatListRow = memo(function ChatListRow({
+  chat,
+  active,
+  onSelect
+}: {
+  chat: Chat;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`wa-chat-row w-full flex gap-3 px-3 py-2.5 text-left hover:bg-[#202c33] border-b border-[#2a3942]/40 ${
+        active ? "bg-[#2a3942]" : ""
+      }`}
+    >
+      <WhatsAppAvatar chatId={chat.id} isGroup={chat.isGroup} name={chat.name} size={49} />
+      <div className="flex-1 min-w-0">
+        <div className="flex justify-between gap-2">
+          <span className="font-medium text-[#e9edef] truncate text-[15px]">{chat.name}</span>
+          <span className="text-[11px] text-[#8696a0] shrink-0">{formatTime(chat.timestamp)}</span>
+        </div>
+        <div className="flex justify-between gap-2 mt-0.5">
+          <span className="text-[13px] text-[#8696a0] truncate">{chat.lastMessage}</span>
+          {chat.unreadCount > 0 && (
+            <span className="shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-[#00a884] text-[10px] font-semibold text-[#111b21] flex items-center justify-center">
+              {chat.unreadCount}
+            </span>
+          )}
+        </div>
+        {chat.contact?.tags && chat.contact.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-1">
+            {chat.contact.tags.slice(0, 2).map((t) => (
+              <span
+                key={t.id}
+                className="text-[10px] px-1.5 py-0.5 rounded text-white font-medium"
+                style={{ backgroundColor: t.color }}
+              >
+                {t.name}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    </button>
+  );
+});
+
+const MessageRow = memo(function MessageRow({ message: m }: { message: Message }) {
+  return (
+    <div className={`flex ${m.fromMe ? "justify-end" : "justify-start"}`}>
+      <div
+        className={`wa-bubble max-w-[min(72%,480px)] rounded-lg px-2.5 py-1 break-words ${
+          m.fromMe
+            ? "bg-[var(--wa-bg-bubble-out)] text-[var(--wa-text-primary)] rounded-tr-sm"
+            : "bg-[var(--wa-bg-bubble-in)] text-[var(--wa-text-primary)] rounded-tl-sm"
+        }`}
+      >
+        <InboxMessageContent message={m} />
+        <div
+          className={`text-[10px] mt-0.5 text-right ${
+            m.fromMe ? "text-[#99beb7]" : "text-[#8696a0]"
+          }`}
+        >
+          {formatTime(m.timestamp)}
+        </div>
+      </div>
+    </div>
+  );
+});
 
 export function WhatsAppInbox() {
   const pageVisible = usePageVisible();
@@ -250,14 +317,14 @@ export function WhatsAppInbox() {
 
   useEffect(() => {
     if (!pageVisible) return;
-    const t = setInterval(() => loadChats(true), 120000);
+    const t = setInterval(() => loadChats(true), 180000);
     return () => clearInterval(t);
   }, [pageVisible, loadChats]);
 
   useEffect(() => {
     if (!selected || !pageVisible) return;
     loadMessages(selected);
-    const t = setInterval(() => loadMessages(selected, true), 15000);
+    const t = setInterval(() => loadMessages(selected, true), 10000);
     return () => clearInterval(t);
   }, [selected, pageVisible, loadMessages]);
 
@@ -394,6 +461,12 @@ export function WhatsAppInbox() {
 
   const activeTags = selected?.contact?.tags ?? [];
 
+  const visibleMessages = useMemo(() => {
+    const max = 100;
+    if (messages.length <= max) return messages;
+    return messages.slice(-max);
+  }, [messages]);
+
   return (
     <div className="wa-inbox flex flex-1 min-h-0 w-full bg-[var(--wa-bg-app)] text-[var(--wa-text-primary)] overflow-hidden">
       <aside className="flex w-[393px] max-w-[38vw] min-w-[260px] shrink-0 flex-col border-r border-[#2a3942] bg-[#111b21] min-h-0">
@@ -474,50 +547,15 @@ export function WhatsAppInbox() {
             </div>
           )}
           {filtered.map((chat) => (
-            <button
+            <ChatListRow
               key={chat.id}
-              type="button"
-              onClick={() => {
+              chat={chat}
+              active={selected?.id === chat.id}
+              onSelect={() => {
                 setSelected(chat);
                 setSendError("");
               }}
-              className={`w-full flex gap-3 px-3 py-3 text-left hover:bg-[#202c33] transition border-b border-[#2a3942]/50 ${
-                selected?.id === chat.id ? "bg-[#2a3942]" : ""
-              }`}
-            >
-              <div className="h-12 w-12 shrink-0 rounded-full bg-[#6b7c85] flex items-center justify-center text-sm font-semibold text-white">
-                {initials(chat.name)}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex justify-between gap-2">
-                  <span className="font-medium text-[#e9edef] truncate">{chat.name}</span>
-                  <span className="text-xs text-[#8696a0] shrink-0">
-                    {formatTime(chat.timestamp)}
-                  </span>
-                </div>
-                <div className="flex justify-between gap-2 mt-0.5">
-                  <span className="text-sm text-[#8696a0] truncate">{chat.lastMessage}</span>
-                  {chat.unreadCount > 0 && (
-                    <span className="shrink-0 min-w-[20px] h-5 px-1 rounded-full bg-[#00a884] text-[11px] font-semibold text-[#111b21] flex items-center justify-center">
-                      {chat.unreadCount}
-                    </span>
-                  )}
-                </div>
-                {chat.contact?.tags && chat.contact.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {chat.contact.tags.map((t) => (
-                      <span
-                        key={t.id}
-                        className="text-[10px] px-1.5 py-0.5 rounded text-white font-medium"
-                        style={{ backgroundColor: t.color }}
-                      >
-                        {t.name}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </button>
+            />
           ))}
         </div>
       </aside>
@@ -545,10 +583,13 @@ export function WhatsAppInbox() {
           </div>
         ) : (
           <div className="flex flex-1 flex-col min-h-0 min-w-0">
-            <header className="h-[59px] px-4 flex items-center gap-3 bg-[#202c33] shrink-0 border-l border-[#2a3942]">
-              <div className="h-10 w-10 rounded-full bg-[#6b7c85] flex items-center justify-center text-sm font-semibold">
-                {initials(selected.name)}
-              </div>
+            <header className="h-[52px] px-3 flex items-center gap-3 bg-[#202c33] shrink-0 border-l border-[#2a3942]">
+              <WhatsAppAvatar
+                chatId={selected.id}
+                isGroup={selected.isGroup}
+                name={selected.name}
+                size={40}
+              />
               <div className="flex-1 min-w-0">
                 <div className="font-medium truncate">{selected.name}</div>
                 <div className="text-xs text-[#8696a0] truncate">
@@ -590,8 +631,8 @@ export function WhatsAppInbox() {
               </button>
             </header>
 
-            <div className="px-4 py-2 bg-[#111b21] border-b border-[#2a3942] flex flex-wrap gap-2 items-center">
-              <span className="text-xs text-[#8696a0]">Etiquetas:</span>
+            <div className="px-3 py-1.5 bg-[#111b21] border-b border-[#2a3942]/60 flex flex-wrap gap-1.5 items-center max-h-[72px] overflow-y-auto">
+              <span className="text-[11px] text-[#8696a0]">Tags:</span>
               {tags.map((tag) => {
                 const on = activeTags.some((t) => t.id === tag.id);
                 return (
@@ -634,38 +675,23 @@ export function WhatsAppInbox() {
               </div>
             )}
 
-            <div className="wa-chat-bg flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-8 md:px-12 lg:px-20 py-4 space-y-1 border-l border-[var(--wa-border)]/50">
-              {loadingMsgs && (
+            <div className="wa-chat-bg flex-1 min-h-0 overflow-y-auto overscroll-contain px-2 sm:px-6 md:px-10 py-3 space-y-0.5 border-l border-[var(--wa-border)]/30">
+              {loadingMsgs && messages.length === 0 && (
                 <p className="text-center text-sm text-[#8696a0]">Carregando mensagens…</p>
               )}
-              {!loadingMsgs && messages.length === 0 && (
+              {!loadingMsgs && visibleMessages.length === 0 && (
                 <p className="text-center text-sm text-[#8696a0] py-8 max-w-md mx-auto leading-relaxed">
                   {msgHint ||
                     "Sem mensagens desde a conexão. O Zap não importa histórico antigo — novas mensagens (recebidas e enviadas) aparecem aqui."}
                 </p>
               )}
-              {messages.map((m) => (
-                <div
-                  key={m.id}
-                  className={`flex ${m.fromMe ? "justify-end" : "justify-start"}`}
-                >
-                  <div
-                    className={`wa-bubble max-w-[min(65%,520px)] rounded-lg px-3 py-1.5 break-words ${
-                      m.fromMe
-                        ? "bg-[var(--wa-bg-bubble-out)] text-[var(--wa-text-primary)] rounded-tr-sm"
-                        : "bg-[var(--wa-bg-bubble-in)] text-[var(--wa-text-primary)] rounded-tl-sm"
-                    }`}
-                  >
-                    <InboxMessageContent message={m} />
-                    <div
-                      className={`text-[10px] mt-0.5 text-right ${
-                        m.fromMe ? "text-[#99beb7]" : "text-[#8696a0]"
-                      }`}
-                    >
-                      {formatTime(m.timestamp)}
-                    </div>
-                  </div>
-                </div>
+              {messages.length > visibleMessages.length && (
+                <p className="text-center text-[11px] text-[#8696a0] py-1">
+                  Exibindo as {visibleMessages.length} mensagens mais recentes
+                </p>
+              )}
+              {visibleMessages.map((m) => (
+                <MessageRow key={m.id} message={m} />
               ))}
               <div ref={messagesEndRef} />
             </div>

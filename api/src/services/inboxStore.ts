@@ -31,7 +31,9 @@ function chatIdVariants(chatId: string): string[] {
   } else {
     add(`${digits}@c.us`);
     add(`${digits}@lid`);
+    add(`${digits}@s.whatsapp.net`);
   }
+  if (raw.includes("@") && !out.includes(raw)) add(raw);
   return out;
 }
 
@@ -151,42 +153,68 @@ const SKIP_INBOUND_TYPES = new Set([
   "ciphertext"
 ]);
 
+function pickWaId(value: unknown): string {
+  const id = extractWaId(value);
+  if (!id || id.includes("status@broadcast")) return "";
+  return id;
+}
+
+/** Prefere @c.us / @g.us em vez de @lid opaco (mensagens não batiam com a lista de chats). */
+function pickCanonicalChatId(candidates: string[]): string {
+  const valid = [...new Set(candidates.filter(Boolean))];
+  if (valid.length === 0) return "";
+
+  const rank = (id: string) => {
+    if (id.endsWith("@g.us") || id.includes("@newsletter")) return 5;
+    if (id.endsWith("@c.us") || id.endsWith("@s.whatsapp.net")) return 4;
+    if (id.endsWith("@lid")) return 2;
+    return 1;
+  };
+
+  valid.sort((a, b) => rank(b) - rank(a));
+  return valid[0];
+}
+
 function peerChatIdFromWebhook(
   body: Record<string, unknown>,
   fromMe: boolean
 ): string {
-  const pick = (value: unknown): string => {
-    const id = extractWaId(value);
-    if (!id || id.includes("status@broadcast")) return "";
-    return id;
-  };
-
   const sender = body.sender as Record<string, unknown> | undefined;
   const chat = body.chat as Record<string, unknown> | undefined;
 
+  const ids: string[] = [
+    pickWaId(body.chatId),
+    pickWaId(chat?.id),
+    pickWaId(body.remoteJid),
+    pickWaId(body.from),
+    pickWaId(body.to),
+    pickWaId(body.author),
+    pickWaId(sender?.id)
+  ];
+
   if (fromMe) {
-    return (
-      pick(body.to) ||
-      pick(body.chatId) ||
-      pick(chat?.id) ||
-      pick(body.from) ||
-      pick(body.author) ||
-      pick(body.remoteJid) ||
-      pick(sender?.id) ||
-      ""
-    );
+    return pickCanonicalChatId([
+      pickWaId(body.to),
+      pickWaId(body.chatId),
+      pickWaId(chat?.id),
+      pickWaId(body.from),
+      pickWaId(body.author),
+      pickWaId(body.remoteJid),
+      pickWaId(sender?.id),
+      ...ids
+    ]);
   }
 
-  return (
-    pick(body.from) ||
-    pick(body.author) ||
-    pick(body.chatId) ||
-    pick(chat?.id) ||
-    pick(body.remoteJid) ||
-    pick(sender?.id) ||
-    pick(body.to) ||
-    ""
-  );
+  return pickCanonicalChatId([
+    pickWaId(body.chatId),
+    pickWaId(chat?.id),
+    pickWaId(body.from),
+    pickWaId(body.author),
+    pickWaId(body.remoteJid),
+    pickWaId(sender?.id),
+    pickWaId(body.to),
+    ...ids
+  ]);
 }
 
 export async function saveInboxMessage(params: {

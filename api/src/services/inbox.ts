@@ -424,6 +424,12 @@ export async function fetchMessages(
   options: FetchMessagesOptions
 ): Promise<{ messages: NormalizedMessage[]; hint?: string; captureSince?: string | null }> {
   const chatId = resolveChatId(options.chatId, options.isGroup);
+  try {
+    const { syncRecentMessagesFromWpp } = await import("./inboxSync.js");
+    await syncRecentMessagesFromWpp(chatId, options.isGroup, 40);
+  } catch {
+    /* webhook é o caminho principal; sync é fallback */
+  }
   const { messages, captureSince } = await listStoredMessages(chatId, options.count ?? 200);
 
   if (messages.length === 0) {

@@ -109,10 +109,8 @@ export async function webhookRoutes(app: FastifyInstance) {
       const msgType = parsed.type === "ptt" ? "audio" : parsed.type;
       const sessionName = webhookSession || activeSession;
 
-      if (!parsed.fromMe) {
-        const { ensureInboxCaptureStarted } = await import("../services/inboxStore.js");
-        await ensureInboxCaptureStarted();
-      }
+      const { ensureInboxCaptureStarted } = await import("../services/inboxStore.js");
+      await ensureInboxCaptureStarted();
 
       await saveInboxMessage({
         chatId: parsed.chatId,

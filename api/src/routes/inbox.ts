@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { prisma } from "../prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import * as inbox from "../services/inbox.js";
+import { getContactAvatarUrl } from "../services/contactAvatar.js";
 import { saveUploadFromData } from "../services/uploads.js";
 import {
   contactToJson,
@@ -64,6 +65,19 @@ export async function inboxRoutes(app: FastifyInstance) {
       };
     } catch (e: any) {
       return { ok: false, message: e?.message ?? String(e), chats: [], errors: [] };
+    }
+  });
+
+  app.get("/api/inbox/avatar", async (req, reply) => {
+    const q = req.query as { chatId?: string; isGroup?: string };
+    const chatId = (q.chatId ?? "").trim();
+    if (!chatId) return reply.status(400).send({ ok: false, url: null });
+    const isGroup = q.isGroup === "1" || q.isGroup === "true" || chatId.includes("@g.us");
+    try {
+      const url = await getContactAvatarUrl(chatId, isGroup);
+      return { ok: true, url };
+    } catch {
+      return { ok: true, url: null };
     }
   });
 
