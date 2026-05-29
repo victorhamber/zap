@@ -123,6 +123,55 @@ async function resolveStoredMedia(
   return { body, mediaUrl: toPublicMediaUrl(url) ?? url };
 }
 
+const SKIP_INBOUND_TYPES = new Set([
+  "e2e_notification",
+  "notification",
+  "notification_template",
+  "protocol",
+  "gp2",
+  "call_log",
+  "revoked",
+  "ciphertext"
+]);
+
+function peerChatIdFromWebhook(
+  body: Record<string, unknown>,
+  fromMe: boolean
+): string {
+  const pick = (value: unknown): string => {
+    const id = extractWaId(value);
+    if (!id || id.includes("status@broadcast")) return "";
+    return id;
+  };
+
+  const sender = body.sender as Record<string, unknown> | undefined;
+  const chat = body.chat as Record<string, unknown> | undefined;
+
+  if (fromMe) {
+    return (
+      pick(body.to) ||
+      pick(body.chatId) ||
+      pick(chat?.id) ||
+      pick(body.from) ||
+      pick(body.author) ||
+      pick(body.remoteJid) ||
+      pick(sender?.id) ||
+      ""
+    );
+  }
+
+  return (
+    pick(body.from) ||
+    pick(body.author) ||
+    pick(body.chatId) ||
+    pick(chat?.id) ||
+    pick(body.remoteJid) ||
+    pick(sender?.id) ||
+    pick(body.to) ||
+    ""
+  );
+}
+
 export async function saveInboxMessage(params: {
   chatId: string;
   body: string;
@@ -131,10 +180,11 @@ export async function saveInboxMessage(params: {
   mediaUrl?: string | null;
   waMessageId?: string | null;
   timestamp?: Date;
+  sessionName?: string;
 }): Promise<void> {
   if (!prisma) return;
 
-  const session = await getSessionName();
+  const session = (params.sessionName ?? (await getSessionName())).trim().toLowerCase();
   const chatId = extractWaId(params.chatId) || params.chatId.trim();
   if (!chatId || chatId.includes("status@broadcast")) return;
 
@@ -255,29 +305,20 @@ export function parseWppWebhookMessage(body: Record<string, unknown>): {
   }
 
   const fromMe = body.fromMe === true || body.fromMe === "true";
-  const type = String(body.type ?? "chat");
+  const type = String(body.type ?? "chat").toLowerCase();
 
-  let chatId =
-    extractWaId(body.chatId) ||
-    extractWaId((body.chat as Record<string, unknown> | undefined)?.id);
-
-  if (!chatId || !chatId.includes("@g.us")) {
-    if (fromMe) {
-      chatId =
-        extractWaId(body.to) ||
-        extractWaId(body.chatId) ||
-        extractWaId(body.from) ||
-        chatId;
-    } else {
-      chatId =
-        extractWaId(body.chatId) ||
-        extractWaId(body.from) ||
-        extractWaId(body.to) ||
-        chatId;
-    }
+  if (SKIP_INBOUND_TYPES.has(type)) {
+    const hasText =
+      body.body !== undefined ||
+      body.content !== undefined ||
+      body.caption !== undefined ||
+      body.isMedia === true ||
+      body.isMMS === true;
+    if (!hasText) return null;
   }
 
-  if (!chatId || chatId.includes("status@broadcast")) return null;
+  const chatId = peerChatIdFromWebhook(body, fromMe);
+  if (!chatId) return null;
 
   const text = String(
     body.body ?? body.content ?? body.caption ?? body.text ?? ""

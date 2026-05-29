@@ -22,8 +22,11 @@ import {
   getWppWebhookEvent,
   isWppMessageWebhook,
   normalizeWppWebhookBody,
-  touchWppWebhookReceived
+  touchWppWebhookReceived,
+  touchWppWebhookSaved,
+  touchWppWebhookSkipped
 } from "../services/wppWebhook.js";
+import { getActiveWppSessionName } from "../services/wppconnect.js";
 
 export async function webhookRoutes(app: FastifyInstance) {
   app.post("/api/webhooks/hotmart/:flowId", async (req, reply) => {
@@ -55,13 +58,20 @@ export async function webhookRoutes(app: FastifyInstance) {
   });
 
   app.get("/api/webhooks/wppconnect", async () => {
-    const { getLastWppWebhookAt, getLastWppWebhookEvent } = await import(
-      "../services/wppWebhook.js"
-    );
+    const {
+      getLastWppWebhookAt,
+      getLastWppWebhookEvent,
+      getLastWppWebhookSavedAt,
+      getLastWppWebhookSkipReason
+    } = await import("../services/wppWebhook.js");
+    const activeSession = await getActiveWppSessionName();
     return {
       ok: true,
+      activeSession,
       lastWebhookAt: getLastWppWebhookAt(),
-      lastWebhookEvent: getLastWppWebhookEvent()
+      lastWebhookEvent: getLastWppWebhookEvent(),
+      lastWebhookSavedAt: getLastWppWebhookSavedAt(),
+      lastWebhookSkipReason: getLastWppWebhookSkipReason()
     };
   });
 
@@ -70,21 +80,39 @@ export async function webhookRoutes(app: FastifyInstance) {
 
     const raw = (req.body ?? {}) as Record<string, unknown>;
     const body = normalizeWppWebhookBody(raw);
-    touchWppWebhookReceived(getWppWebhookEvent(body));
+    const event = getWppWebhookEvent(body);
+    touchWppWebhookReceived(event);
+
+    const webhookSession = String(body.session ?? "").trim().toLowerCase();
+    const activeSession = await getActiveWppSessionName();
+    const isMessage = isWppMessageWebhook(body);
+
+    if (webhookSession && webhookSession !== activeSession) {
+      const skipped = isMessage ? "other_session_message" : "other_session_lifecycle";
+      touchWppWebhookSkipped(skipped);
+      return { ok: true, skipped, event, webhookSession, activeSession };
+    }
 
     const { handleWppLifecycleWebhook } = await import("../services/wppconnect.js");
     if (await handleWppLifecycleWebhook(body)) {
-      return { ok: true, lifecycle: true, event: getWppWebhookEvent(body) };
+      return { ok: true, lifecycle: true, event };
     }
 
-    if (!isWppMessageWebhook(body)) {
-      return { ok: true, skipped: "not_message" };
+    if (!isMessage) {
+      touchWppWebhookSkipped("not_message");
+      return { ok: true, skipped: "not_message", event };
     }
 
     const parsed = parseWppWebhookMessage(body);
     let saved = false;
     if (parsed) {
       const msgType = parsed.type === "ptt" ? "audio" : parsed.type;
+      const sessionName = webhookSession || activeSession;
+
+      if (!parsed.fromMe) {
+        const { ensureInboxCaptureStarted } = await import("../services/inboxStore.js");
+        await ensureInboxCaptureStarted();
+      }
 
       await saveInboxMessage({
         chatId: parsed.chatId,
@@ -93,9 +121,11 @@ export async function webhookRoutes(app: FastifyInstance) {
         type: msgType,
         mediaUrl: parsed.mediaUrl,
         waMessageId: parsed.waMessageId,
-        timestamp: parsed.timestamp
+        timestamp: parsed.timestamp,
+        sessionName
       });
       saved = true;
+      touchWppWebhookSaved();
 
       const needsMediaDownload =
         parsed.waMessageId &&
@@ -129,7 +159,13 @@ export async function webhookRoutes(app: FastifyInstance) {
       "";
 
     if (!from) {
-      return { ok: true, skipped: "no_from", event: getWppWebhookEvent(body), saved };
+      touchWppWebhookSkipped(saved ? "no_from_flow" : "no_from_unparsed");
+      return {
+        ok: true,
+        skipped: saved ? "no_from_flow" : "no_from_unparsed",
+        event,
+        saved
+      };
     }
 
     const phone = normalizePhone(from.replace(/@.*/, ""));
@@ -158,6 +194,10 @@ export async function webhookRoutes(app: FastifyInstance) {
       if (result && "runId" in result) started.push(result.runId as string);
     }
 
-    return { ok: true, started, saved, event: getWppWebhookEvent(body) };
+    if (!saved) {
+      touchWppWebhookSkipped("message_unparsed");
+    }
+
+    return { ok: true, started, saved, event };
   });
 }

@@ -181,13 +181,6 @@ export async function handleWppLifecycleWebhook(body: Record<string, unknown>): 
   const status = String(body.status ?? body.state ?? "").trim();
   const st = normalizeStatusFind(status);
 
-  const webhookSession = String(body.session ?? "").trim().toLowerCase();
-  const settings = await getSettings();
-  const activeSession = settings.wppSession.trim().toLowerCase();
-  if (webhookSession && webhookSession !== activeSession) {
-    return true;
-  }
-
   if (ev === "logoutsession") {
     if (!isPairingQuiet()) await markSessionRequiresQr("LOGOUT");
     return true;
@@ -264,6 +257,11 @@ type TokenResponse = {
   token: string;
   full: string;
 };
+
+export async function getActiveWppSessionName(): Promise<string> {
+  const s = await getSettings();
+  return s.wppSession.trim().toLowerCase();
+}
 
 async function getSettings() {
   if (!prisma) {

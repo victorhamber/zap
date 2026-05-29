@@ -2,10 +2,29 @@
 
 let lastWppWebhookAt: string | null = null;
 let lastWppWebhookEvent: string | null = null;
+let lastWppWebhookSavedAt: string | null = null;
+let lastWppWebhookSkipReason: string | null = null;
 
 export function touchWppWebhookReceived(event?: string): void {
   lastWppWebhookAt = new Date().toISOString();
   if (event) lastWppWebhookEvent = event;
+}
+
+export function touchWppWebhookSaved(): void {
+  lastWppWebhookSavedAt = new Date().toISOString();
+  lastWppWebhookSkipReason = null;
+}
+
+export function touchWppWebhookSkipped(reason: string): void {
+  lastWppWebhookSkipReason = reason;
+}
+
+export function getLastWppWebhookSavedAt(): string | null {
+  return lastWppWebhookSavedAt;
+}
+
+export function getLastWppWebhookSkipReason(): string | null {
+  return lastWppWebhookSkipReason;
 }
 
 export function getLastWppWebhookAt(): string | null {
@@ -127,7 +146,11 @@ export function isWppMessageWebhook(body: Record<string, unknown>): boolean {
 
   if (normalized.message && typeof normalized.message === "object") return true;
 
-  const from = normalized.from ?? normalized.chatId;
+  const from =
+    normalized.from ??
+    normalized.chatId ??
+    normalized.author ??
+    (normalized.sender as Record<string, unknown> | undefined)?.id;
   if (!from) return false;
 
   if (
