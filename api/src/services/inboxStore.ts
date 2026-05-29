@@ -416,11 +416,21 @@ export async function listStoredMessages(
     take: limit
   });
 
+  const sortedRows = [...rows].sort((a, b) => {
+    if (a.waMessageId && !b.waMessageId) return -1;
+    if (!a.waMessageId && b.waMessageId) return 1;
+    return a.timestamp.getTime() - b.timestamp.getTime();
+  });
+
   const seen = new Set<string>();
-  const dedupedRows = rows.filter((r) => {
+  const seenContent = new Set<string>();
+  const dedupedRows = sortedRows.filter((r) => {
     const key = inboxMessageDedupeKey(r);
-    if (seen.has(key)) return false;
+    const sec = Math.floor(r.timestamp.getTime() / 1000);
+    const contentKey = `${r.fromMe ? 1 : 0}|${r.body}|${sec}`;
+    if (seen.has(key) || seenContent.has(contentKey)) return false;
     seen.add(key);
+    seenContent.add(contentKey);
     return true;
   });
 

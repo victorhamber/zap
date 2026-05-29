@@ -11,7 +11,7 @@ import {
   isValidWhatsAppPhoneDigits,
   normalizeDirectJid
 } from "../waJid.js";
-import { rewriteUploadUrlForWpp } from "../uploads.js";
+import { readUploadFileBase64, rewriteUploadUrlForWpp } from "../uploads.js";
 
 export const MSG_NO_DEVICE =
   "Nenhum WhatsApp conectado na Evolution. Crie/conecte a instância e escaneie o QR.";
@@ -262,15 +262,77 @@ export async function sendText(phone: string, message: string): Promise<string |
   return extractEvolutionSentMessageId(data);
 }
 
-export async function sendImage(phone: string, url: string, caption?: string): Promise<string | null> {
+function inferMimeType(fileName?: string, mimeHint?: string): string {
+  const mime = String(mimeHint ?? "").trim();
+  if (mime) return mime;
+  const fn = String(fileName ?? "").toLowerCase();
+  if (/\.jpe?g(\?|$)/.test(fn)) return "image/jpeg";
+  if (/\.png(\?|$)/.test(fn)) return "image/png";
+  if (/\.webp(\?|$)/.test(fn)) return "image/webp";
+  if (/\.gif(\?|$)/.test(fn)) return "image/gif";
+  if (/\.mp4(\?|$)/.test(fn)) return "video/mp4";
+  if (/\.webm(\?|$)/.test(fn)) return "video/webm";
+  if (/\.mov(\?|$)/.test(fn)) return "video/quicktime";
+  if (/\.pdf(\?|$)/.test(fn)) return "application/pdf";
+  return "application/octet-stream";
+}
+
+async function resolveEvolutionMediaInput(
+  media: string,
+  mimeHint?: string,
+  fileNameHint?: string
+): Promise<{ media: string; mimeType: string; fileName: string }> {
+  const fileName = String(fileNameHint ?? "").trim() || "arquivo";
+  let mimeType = inferMimeType(fileName, mimeHint);
+
+  if (media.startsWith("data:")) {
+    const match = media.match(/^data:([^;]+);base64,(.+)$/s);
+    if (match) {
+      return {
+        media: match[2].replace(/\s/g, ""),
+        mimeType: match[1],
+        fileName
+      };
+    }
+  }
+
+  if (media.startsWith("http://") || media.startsWith("https://")) {
+    const local = await readUploadFileBase64(media);
+    if (local?.base64) {
+      return {
+        media: local.base64,
+        mimeType: inferMimeType(local.filename, mimeHint),
+        fileName: fileNameHint?.trim() || local.filename
+      };
+    }
+    return { media: rewriteUploadUrlForWpp(media), mimeType, fileName };
+  }
+
+  const stripped = media.replace(/\s/g, "");
+  if (stripped.length > 64 && !stripped.includes("/")) {
+    return { media: stripped, mimeType, fileName };
+  }
+
+  return { media, mimeType, fileName };
+}
+
+export async function sendImage(
+  phone: string,
+  url: string,
+  caption?: string,
+  opts?: { mimeType?: string; fileName?: string }
+): Promise<string | null> {
   const instance = await getInstanceName();
   const number = await resolveEvolutionSendNumber(phone);
+  const resolved = await resolveEvolutionMediaInput(url, opts?.mimeType, opts?.fileName);
   const res = await evoFetch(`/message/sendMedia/${encodeURIComponent(instance)}`, {
     method: "POST",
     body: JSON.stringify({
       number,
       mediatype: "image",
-      media: url,
+      media: resolved.media,
+      mimetype: resolved.mimeType,
+      fileName: resolved.fileName,
       caption: caption ?? ""
     })
   });
@@ -279,15 +341,23 @@ export async function sendImage(phone: string, url: string, caption?: string): P
   return extractEvolutionSentMessageId(data);
 }
 
-export async function sendVideo(phone: string, url: string, caption?: string): Promise<string | null> {
+export async function sendVideo(
+  phone: string,
+  url: string,
+  caption?: string,
+  opts?: { mimeType?: string; fileName?: string }
+): Promise<string | null> {
   const instance = await getInstanceName();
   const number = await resolveEvolutionSendNumber(phone);
+  const resolved = await resolveEvolutionMediaInput(url, opts?.mimeType, opts?.fileName);
   const res = await evoFetch(`/message/sendMedia/${encodeURIComponent(instance)}`, {
     method: "POST",
     body: JSON.stringify({
       number,
       mediatype: "video",
-      media: url,
+      media: resolved.media,
+      mimetype: resolved.mimeType,
+      fileName: resolved.fileName,
       caption: caption ?? ""
     })
   });
@@ -330,27 +400,66 @@ export async function sendDocument(
   phone: string,
   url: string,
   caption?: string,
-  fileName?: string
-) {
+  fileName?: string,
+  opts?: { mimeType?: string }
+): Promise<string | null> {
   const instance = await getInstanceName();
   const number = await resolveEvolutionSendNumber(phone);
+  const name = fileName ?? "documento";
+  const resolved = await resolveEvolutionMediaInput(url, opts?.mimeType, name);
   const res = await evoFetch(`/message/sendMedia/${encodeURIComponent(instance)}`, {
     method: "POST",
     body: JSON.stringify({
       number,
       mediatype: "document",
-      media: url,
+      media: resolved.media,
+      mimetype: resolved.mimeType,
       caption: caption ?? "",
-      fileName: fileName ?? "documento"
+      fileName: resolved.fileName
     })
   });
-  if (!res.ok) throw new Error(`sendMedia document: ${formatWppError(res.status, await readJson(res))}`);
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(`sendMedia document: ${formatWppError(res.status, data)}`);
+  return extractEvolutionSentMessageId(data);
 }
 
 function phoneFromCallBody(b: Record<string, unknown>): string {
   return String(b.phone ?? b.chatId ?? "");
 }
 
+function mediaFromCallBody(b: Record<string, unknown>): {
+  media: string;
+  mimeType: string;
+  fileName: string;
+} {
+  const path = String(b.path ?? "").trim();
+  const base64 = String(b.base64Ptt ?? b.base64 ?? "").trim();
+  const fileName = String(b.filename ?? b.fileName ?? "arquivo").trim() || "arquivo";
+  const mimeType = inferMimeType(
+    fileName,
+    String(b.mimetype ?? b.mimeType ?? b.mime ?? "")
+  );
+
+  if (base64) {
+    if (base64.startsWith("data:")) {
+      const match = base64.match(/^data:([^;]+);base64,(.+)$/s);
+      if (match) {
+        return {
+          media: match[2].replace(/\s/g, ""),
+          mimeType: match[1],
+          fileName
+        };
+      }
+    }
+    return { media: base64.replace(/\s/g, ""), mimeType, fileName };
+  }
+  if (path) {
+    return { media: rewriteUploadUrlForWpp(path), mimeType, fileName };
+  }
+  throw new Error("Mídia sem path ou base64");
+}
+
+/** Áudio PTT — mantém data URI quando necessário. */
 function mediaUrlFromCallBody(b: Record<string, unknown>): string {
   const path = String(b.path ?? "").trim();
   const base64 = String(b.base64Ptt ?? b.base64 ?? "").trim();
@@ -796,28 +905,30 @@ export async function callSessionApi(
 
   if (safe === "/send-image" && method === "POST" && body && typeof body === "object") {
     const b = body as Record<string, unknown>;
-    await sendImage(
-      phoneFromCallBody(b),
-      mediaUrlFromCallBody(b),
-      String(b.caption ?? "")
-    );
-    return { success: true };
+    const { media, mimeType, fileName } = mediaFromCallBody(b);
+    const waMessageId = await sendImage(phoneFromCallBody(b), media, String(b.caption ?? ""), {
+      mimeType,
+      fileName
+    });
+    return { success: true, id: waMessageId, key: waMessageId ? { id: waMessageId } : undefined };
   }
 
   if (safe === "/send-file" && method === "POST" && body && typeof body === "object") {
     const b = body as Record<string, unknown>;
     const phone = phoneFromCallBody(b);
-    const media = mediaUrlFromCallBody(b);
-    const filename = String(b.filename ?? "arquivo").toLowerCase();
+    const { media, mimeType, fileName } = mediaFromCallBody(b);
+    const filename = fileName.toLowerCase();
     const caption = String(b.caption ?? "");
+    const opts = { mimeType, fileName };
+    let waMessageId: string | null = null;
     if (/\.(mp4|webm|mov|mkv)(\?|$)/.test(filename)) {
-      await sendVideo(phone, media, caption);
+      waMessageId = await sendVideo(phone, media, caption, opts);
     } else if (/\.(jpe?g|png|gif|webp)(\?|$)/.test(filename)) {
-      await sendImage(phone, media, caption);
+      waMessageId = await sendImage(phone, media, caption, opts);
     } else {
-      await sendDocument(phone, media, caption, String(b.filename ?? "documento"));
+      waMessageId = await sendDocument(phone, media, caption, fileName, opts);
     }
-    return { success: true };
+    return { success: true, id: waMessageId, key: waMessageId ? { id: waMessageId } : undefined };
   }
 
   if (safe === "/download-media" && method === "POST" && body && typeof body === "object") {
