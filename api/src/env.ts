@@ -23,7 +23,8 @@ const EnvSchema = z.object({
   WPP_SESSION: z.string().default("autofintech"),
   /** Nome da instância WhatsApp (Evolution ou WPPConnect). Preferir em vez de WPP_SESSION. */
   WHATSAPP_SESSION: z.string().optional(),
-  WPP_SECRET_KEY: isProd ? z.string().min(8) : z.string().default("dev-secret-key"),
+  /** Só obrigatório com WHATSAPP_PROVIDER=wppconnect */
+  WPP_SECRET_KEY: z.string().optional(),
   /** false desliga reconexão automática em background */
   WPP_AUTO_RECONNECT: z
     .string()
@@ -52,6 +53,25 @@ const EnvSchema = z.object({
   ADMIN_PASSWORD: z.string().min(6).default("admin123"),
 
   CORS_ORIGIN: z.string().default("*")
+}).superRefine((data, ctx) => {
+  if (!isProd) return;
+  if (data.WHATSAPP_PROVIDER === "wppconnect") {
+    const key = data.WPP_SECRET_KEY?.trim() ?? "";
+    if (key.length < 8) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["WPP_SECRET_KEY"],
+        message: "Obrigatório (mín. 8 caracteres) quando WHATSAPP_PROVIDER=wppconnect"
+      });
+    }
+  }
+  if (data.WHATSAPP_PROVIDER === "evolution" && !data.EVOLUTION_API_KEY?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["EVOLUTION_API_KEY"],
+      message: "Obrigatório quando WHATSAPP_PROVIDER=evolution"
+    });
+  }
 });
 
 export const env = EnvSchema.parse(process.env);
