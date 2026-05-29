@@ -8,6 +8,7 @@ USER root
 
 COPY deploy/patch-wpp-token-path.sh /patch-wpp-token-path.sh
 COPY deploy/patch-wpp-token-node.js /patch-wpp-token-node.js
+COPY deploy/patch-wpp-zap-force-route.js /patch-wpp-zap-force-route.js
 COPY deploy/docker-wpp-entrypoint.sh /docker-wpp-entrypoint.sh
 RUN chmod +x /patch-wpp-token-path.sh /docker-wpp-entrypoint.sh
 

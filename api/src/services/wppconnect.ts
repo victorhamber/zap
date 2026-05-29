@@ -1169,11 +1169,9 @@ function sleepMs(ms: number): Promise<void> {
 }
 
 const WPP_TOKEN_PATH_BUG_HINT =
-  "O WPP ainda lista esta sessão (tokens/<sessão>.data.json não sumiu). " +
-  "1) Console wppconnect: deploy/COLE-PATCH-TOKENS-IBSDDEV.sh (patch Node). " +
-  "2) REINICIE o wppconnect (Stop→Start) — sem isso o patch no disco não vale. " +
-  "3) Emergência: deploy/COLE-DIAGNOSTICO-E-LIMPAR.sh (apaga .data.json à mão). " +
-  "Build permanente: deploy/Dockerfile.wppconnect.";
+  "O WPP ainda lista esta sessão após a limpeza. No console wppconnect cole " +
+  "deploy/COLE-PATCH-WPP-COMPLETO.sh (GitHub victorhamber/zap), reinicie o WPP e tente de novo. " +
+  "Emergência: deploy/COLE-DIAGNOSTICO-E-LIMPAR.sh.";
 
 /** Sessão com browser aberto no WPP (não só arquivo em tokens/). */
 function isSessionBrowserOpenState(state: string): boolean {
@@ -1257,8 +1255,44 @@ async function sessionStillOnServer(
   }
 }
 
+/** Apaga tokens + userDataDir no WPP (rota zap-force-clear-session, patch Zap). */
+async function zapForceClearSessionOnServer(
+  base: string,
+  sessionName: string
+): Promise<{ ok: boolean; notFound?: boolean; detail?: string }> {
+  const url = `${base}/api/${encodeURIComponent(sessionName)}/${encodeURIComponent(env.WPP_SECRET_KEY)}/zap-force-clear-session`;
+  try {
+    const res = await fetch(url, { method: "POST", headers: { accept: "application/json" } });
+    const body = await readWppJson(res);
+    if (res.status === 404) {
+      return { ok: false, notFound: true, detail: "zap-force-clear-session não instalada no WPP" };
+    }
+    if (!res.ok) {
+      return { ok: false, detail: formatWppError(res.status, body) };
+    }
+    return { ok: true };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, detail: msg };
+  }
+}
+
+async function postClearSessionData(base: string, sessionName: string): Promise<{ ok: boolean; detail?: string }> {
+  const url = `${base}/api/${encodeURIComponent(sessionName)}/${encodeURIComponent(env.WPP_SECRET_KEY)}/clear-session-data`;
+  try {
+    const res = await fetch(url, { method: "POST", headers: { accept: "application/json" } });
+    const body = await readWppJson(res);
+    if (!res.ok) return { ok: false, detail: formatWppError(res.status, body) };
+    return { ok: true };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, detail: msg };
+  }
+}
+
 /**
- * Remove tokens, userDataDir e referências da sessão no WPPConnect (clear-session-data).
+ * Remove tokens, userDataDir e referências da sessão no WPPConnect.
+ * Usa zap-force-clear-session (equivalente à limpeza manual) + clear-session-data.
  */
 export async function purgeWppSessionFromServer(
   sessionName: string
@@ -1287,19 +1321,22 @@ export async function purgeWppSessionFromServer(
   }
 
   const base = wppBaseUrl(settings);
-  const url = `${base}/api/${encodeURIComponent(name)}/${encodeURIComponent(env.WPP_SECRET_KEY)}/clear-session-data`;
 
   try {
-    const res = await fetch(url, { method: "POST", headers: { accept: "application/json" } });
-    const body = await readWppJson(res);
-    if (!res.ok) {
-      return { ok: false, detail: formatWppError(res.status, body) };
+    const force1 = await zapForceClearSessionOnServer(base, name);
+    const clear1 = await postClearSessionData(base, name);
+    if (!clear1.ok && !force1.ok) {
+      return {
+        ok: false,
+        detail: clear1.detail ?? force1.detail ?? "Falha ao limpar sessão no WPP"
+      };
     }
-    await sleepMs(500);
+    await sleepMs(600);
 
     let check = await sessionStillOnServer(name);
     if (check.still && !check.listError) {
-      await fetch(url, { method: "POST", headers: { accept: "application/json" } }).catch(() => {});
+      await zapForceClearSessionOnServer(base, name);
+      await postClearSessionData(base, name);
       await sleepMs(800);
       check = await sessionStillOnServer(name);
     }
