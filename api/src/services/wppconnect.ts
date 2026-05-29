@@ -1151,7 +1151,7 @@ export async function listServerSessions(): Promise<unknown> {
   return body;
 }
 
-const PURGE_GAP_MS = 400;
+const PURGE_GAP_MS = 600;
 
 function sleepMs(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -1161,6 +1161,43 @@ const WPP_TOKEN_PATH_BUG_HINT =
   "Bug conhecido do WPPConnect 2.x: o token em tokens/<sessão>.data.json não foi apagado. " +
   "No console do wppconnect (EasyPanel), rode o script deploy/wppconnect-config-fix.sh do repo Zap " +
   "ou use deploy/Dockerfile.wppconnect, reinicie o WPP e tente Remover de novo.";
+
+/** Sessão com browser aberto no WPP (não só arquivo em tokens/). */
+function isSessionBrowserOpenState(state: string): boolean {
+  const s = state.toUpperCase();
+  if (!s || s === "CLOSED" || s === "NOSESSION" || s === "UNKNOWN") return false;
+  return !isDisconnectedState(s);
+}
+
+async function fetchSessionStateOnServer(sessionName: string): Promise<string | null> {
+  const name = sessionName.trim().toLowerCase();
+  const settings = await getSettings();
+  const base = wppBaseUrl(settings);
+  const secret = env.WPP_SECRET_KEY;
+  const tokenUrl = `${base}/api/${encodeURIComponent(name)}/${encodeURIComponent(secret)}/generate-token`;
+  let tokenRes: Response;
+  try {
+    tokenRes = await fetch(tokenUrl, { method: "POST", headers: { accept: "application/json" } });
+  } catch {
+    return null;
+  }
+  const tokenBody = await readWppJson(tokenRes);
+  if (!tokenRes.ok) return null;
+  const token = (tokenBody as TokenResponse).token;
+  if (!token) return null;
+
+  try {
+    const res = await fetch(`${base}/api/${encodeURIComponent(name)}/status-session`, {
+      method: "GET",
+      headers: { accept: "application/json", authorization: `Bearer ${token}` }
+    });
+    const body = await readWppJson(res);
+    if (!res.ok) return null;
+    return extractSessionState(body);
+  } catch {
+    return null;
+  }
+}
 
 /** Fecha o browser de uma sessão específica sem trocar a instância ativa no Postgres. */
 async function closeWppSessionOnServer(sessionName: string): Promise<void> {
@@ -1190,40 +1227,6 @@ async function closeWppSessionOnServer(sessionName: string): Promise<void> {
       },
       body: "{}"
     });
-  } catch {
-    /* ignora */
-  }
-}
-
-/** Logout + apaga dados no WPP (mesmo bug de path no token se imagem não estiver patcheada). */
-async function logoutWppSessionOnServer(sessionName: string): Promise<void> {
-  const name = sessionName.trim().toLowerCase();
-  const settings = await getSettings();
-  const base = wppBaseUrl(settings);
-  const secret = env.WPP_SECRET_KEY;
-  const tokenUrl = `${base}/api/${encodeURIComponent(name)}/${encodeURIComponent(secret)}/generate-token`;
-  let tokenRes: Response;
-  try {
-    tokenRes = await fetch(tokenUrl, { method: "POST", headers: { accept: "application/json" } });
-  } catch {
-    return;
-  }
-  const tokenBody = await readWppJson(tokenRes);
-  if (!tokenRes.ok) return;
-  const token = (tokenBody as TokenResponse).token;
-  if (!token) return;
-
-  try {
-    await fetch(`${base}/api/${encodeURIComponent(name)}/logout-session`, {
-      method: "POST",
-      headers: {
-        accept: "application/json",
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json"
-      },
-      body: "{}"
-    });
-    await sleepMs(800);
   } catch {
     /* ignora */
   }
@@ -1261,30 +1264,23 @@ export async function purgeWppSessionFromServer(
     }
     await clearWppStoredAuth("REMOVED");
   } else {
-    await closeWppSessionOnServer(name);
-    await sleepMs(300);
+    const remoteState = await fetchSessionStateOnServer(name);
+    if (remoteState && isSessionBrowserOpenState(remoteState)) {
+      await closeWppSessionOnServer(name);
+      await sleepMs(300);
+    }
   }
-
-  await logoutWppSessionOnServer(name);
-  await sleepMs(400);
 
   const base = wppBaseUrl(settings);
   const url = `${base}/api/${encodeURIComponent(name)}/${encodeURIComponent(env.WPP_SECRET_KEY)}/clear-session-data`;
 
   try {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const res = await fetch(url, { method: "POST", headers: { accept: "application/json" } });
-      const body = await readWppJson(res);
-      if (!res.ok) {
-        return { ok: false, detail: formatWppError(res.status, body) };
-      }
-      await sleepMs(attempt === 0 ? 600 : 400);
-      if (!(await sessionStillOnServer(name))) break;
-      if (attempt === 0) {
-        await logoutWppSessionOnServer(name);
-        await sleepMs(500);
-      }
+    const res = await fetch(url, { method: "POST", headers: { accept: "application/json" } });
+    const body = await readWppJson(res);
+    if (!res.ok) {
+      return { ok: false, detail: formatWppError(res.status, body) };
     }
+    await sleepMs(500);
 
     const still = await sessionStillOnServer(name);
     if (still) {
