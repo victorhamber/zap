@@ -27,6 +27,11 @@ const EnvSchema = z.object({
     .transform((v) => v !== "false"),
   WPP_RECONNECT_INTERVAL_SEC: z.coerce.number().int().positive().default(120),
   WPP_RECONNECT_COOLDOWN_SEC: z.coerce.number().int().positive().default(180),
+  /** true = start-session HTTP bloqueia até escanear (padrão WPP 60s autoClose). false = retorna rápido e o painel faz polling do QR. */
+  WPP_START_WAIT_QR: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
 
   HOTMART_WEBHOOK_SECRET: z.string().optional(),
   ADMIN_EMAIL: z.string().email().default("admin@trajettu.com"),

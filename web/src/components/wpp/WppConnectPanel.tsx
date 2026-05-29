@@ -38,6 +38,9 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
       if (!r.ok) return;
       if (r.state) setState(r.state);
       if (r.qrImage) setQrImage(r.qrImage);
+      else if (r.state && /CONNECTED|INCHAT|MAIN|NORMAL/i.test(r.state)) {
+        setQrImage(null);
+      }
     } catch {
       /* ignora */
     }
@@ -46,6 +49,8 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
   const applyVerifyResult = useCallback(
     (r: {
       connected?: boolean;
+      connecting?: boolean;
+      ghostSession?: boolean;
       noSession?: boolean;
       state?: string;
       message?: string;
@@ -53,6 +58,36 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
     }) => {
       if (r.state) setState(r.state);
       const text = r.message ?? "";
+
+      if (r.ghostSession) {
+        setNoticeKind("warn");
+        setNoticeText(
+          text ||
+            'O WhatsApp foi removido no celular. Clique em "Desconectar" e depois "Conectar / Mostrar QR".'
+        );
+        setQrImage(null);
+        return;
+      }
+
+      if (
+        r.state &&
+        /AUTOCLOSE|QRREADFAIL|BROWSERCLOSE|CLOSED/i.test(r.state) &&
+        !r.connected
+      ) {
+        setNoticeKind("warn");
+        setNoticeText(
+          text ||
+            "O servidor WPP encerrou a sessão antes de concluir o login (timeout ~60s). No serviço wppconnect, configure createOptions.autoClose: 0, reinicie o WPP e escaneie o QR em até 30 segundos."
+        );
+        setQrImage(null);
+        return;
+      }
+
+      if (r.connecting) {
+        setNoticeKind("checking");
+        setNoticeText(text || "Conectando…");
+        return;
+      }
 
       if (r.connected) {
         setNoticeKind("connected");
@@ -117,10 +152,16 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
     }
   }, []);
 
+  const pollWhileQr = useCallback(async () => {
+    await refreshQr();
+    await verifyConnection(false);
+  }, [refreshQr, verifyConnection]);
+
   const startPolling = useCallback(() => {
     stopPolling();
-    pollRef.current = setInterval(() => refreshQr(), 8000);
-  }, [stopPolling, refreshQr]);
+    void pollWhileQr();
+    pollRef.current = setInterval(() => void pollWhileQr(), 5000);
+  }, [stopPolling, pollWhileQr]);
 
   useEffect(() => {
     loadSettings();
@@ -148,7 +189,7 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
         message?: string;
       }>("/api/settings/wpp/start-session", {
         method: "POST",
-        body: JSON.stringify({})
+        body: JSON.stringify({ waitQrCode: false })
       });
       if (!r.ok) throw new Error(r.message ?? "Falha ao iniciar sessão");
       if (r.state) setState(r.state);

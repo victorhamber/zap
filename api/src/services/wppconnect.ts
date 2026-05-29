@@ -39,6 +39,102 @@ export function isDisconnectedState(state: string): boolean {
   );
 }
 
+/** Status enviados pelo WPP em `status-find` quando o aparelho foi removido no celular. */
+export function isPhoneUnlinkedStatus(status: string): boolean {
+  const s = status.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (!s) return false;
+  return (
+    (s.includes("disconnect") && s.includes("mobile")) ||
+    s === "notlogged" ||
+    s === "unpaired" ||
+    s === "browserclose" ||
+    s === "qrreadfail" ||
+    s === "autoclosecalled" ||
+    s.includes("deletetoken") ||
+    s === "logout" ||
+    s === "logoutsession" ||
+    s.includes("phoneunlink")
+  );
+}
+
+/** Remove token JWT salvo no Postgres — sem isso o watchdog reabre sessão “fantasma”. */
+export async function clearWppStoredAuth(connectionStatus: string): Promise<void> {
+  if (!prisma) return;
+  await prisma.appSettings.update({
+    where: { id: "default" },
+    data: {
+      wppToken: null,
+      wppTokenFull: null,
+      connectionStatus
+    }
+  });
+}
+
+/**
+ * Aparelho desvinculado no celular ou logout: limpa credenciais e exige novo QR.
+ */
+export async function markSessionRequiresQr(reason: string): Promise<void> {
+  const settings = await getSettings();
+  if (settings.wppToken) {
+    try {
+      await wppFetch("/logout-session", {
+        method: "POST",
+        body: JSON.stringify({})
+      });
+    } catch {
+      /* WPP offline ou sessão já morta */
+    }
+  }
+  await clearWppStoredAuth(`AWAITING_QR:${reason}`);
+  const { resetInboxCapture } = await import("./inboxStore.js");
+  await resetInboxCapture(true);
+}
+
+function normalizeStatusFind(status: string): string {
+  return status.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/** Webhook WPP: logout, desconexão do celular, QR, etc. */
+export async function handleWppLifecycleWebhook(body: Record<string, unknown>): Promise<boolean> {
+  const ev = String(body.event ?? "").toLowerCase();
+  const status = String(body.status ?? body.state ?? "").trim();
+  const st = normalizeStatusFind(status);
+
+  if (ev === "logoutsession") {
+    await markSessionRequiresQr("LOGOUT");
+    return true;
+  }
+  if (ev === "status-find" || ev === "disconnected") {
+    if (st === "qrreadsuccess" || st === "islogged") {
+      await persistConnectionStatus("CONNECTED:QR", body);
+      void registerInboundWebhook().catch(() => {});
+      return true;
+    }
+    if (
+      st === "qrreadfail" ||
+      st === "autoclosecalled" ||
+      st === "browserclose" ||
+      isPhoneUnlinkedStatus(status)
+    ) {
+      await markSessionRequiresQr(status || st || ev);
+      return true;
+    }
+  }
+  if (ev === "qrcode" || ev === "qr") {
+    if (prisma) {
+      await prisma.appSettings.update({
+        where: { id: "default" },
+        data: { connectionStatus: "AWAITING_QR:QRCODE" }
+      });
+    }
+    return true;
+  }
+  return false;
+}
+
+export const MSG_QR_TIMEOUT =
+  "O WPP fechou a sessão antes de concluir o login (autoClose ~60s). No servidor WPP, defina createOptions.autoClose: 0 no config, reinicie o WPP e escaneie o QR de novo em até 30 segundos.";
+
 export function httpErrorMeansNoSession(status: number, body: unknown): boolean {
   if (status === 404) return true;
   const text = JSON.stringify(body ?? "").toLowerCase();
@@ -172,7 +268,10 @@ async function wppFetch(path: string, init: RequestInit, retry = true): Promise<
   }
 
   const controller = new AbortController();
-  const timeoutMs = method === "GET" ? 25_000 : 60_000;
+  let timeoutMs = method === "GET" ? 25_000 : 60_000;
+  if (path === "/start-session" && method === "POST") {
+    timeoutMs = env.WPP_START_WAIT_QR ? 180_000 : 45_000;
+  }
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   let res: Response;
@@ -354,12 +453,34 @@ export async function verifyActiveSession() {
 
   const sessionAlive = isWppConnectedState(state);
   const disconnected = isDisconnectedState(state);
-  const connected = !disconnected && (phoneConnected || sessionAlive);
-  const noSession = !connected;
+  const pairingStates = new Set(["OPENING", "PAIRING", "SYNCING", "INITIALIZING"]);
+  const isPairing = pairingStates.has(state);
+  const isConnecting =
+    isPairing ||
+    state.includes("CONNECTING") ||
+    state === "QRCODE" ||
+    state === "QR";
+  /** Browser aberto no WPP mas aparelho já removido em “Aparelhos conectados”. */
+  const syncedStates = new Set(["MAIN", "INCHAT", "CONNECTED", "SUCCESS", "NORMAL"]);
+  const ghostSession =
+    sessionAlive &&
+    !phoneConnected &&
+    !isConnecting &&
+    !disconnected &&
+    syncedStates.has(state);
+  const connected = !disconnected && phoneConnected;
+  const connecting = !disconnected && isConnecting && sessionAlive && !phoneConnected;
+  const noSession = !connected && !connecting;
 
   let message: string;
   if (connected) {
     message = `Aparelho conectado na instância "${sessionName}". Pronto para enviar mensagens e automações.`;
+  } else if (ghostSession) {
+    message =
+      `O WhatsApp foi removido no celular, mas o servidor ainda tentava usar a sessão antiga. ` +
+      `Use "Desconectar" ou "Conectar / Mostrar QR" para vincular de novo.`;
+  } else if (connecting) {
+    message = `Conectando instância "${sessionName}" (${state})…`;
   } else if (disconnected || state === "INDISPONÍVEL" || state === "DESCONHECIDO") {
     message = MSG_NO_DEVICE;
   } else {
@@ -368,6 +489,8 @@ export async function verifyActiveSession() {
 
   return {
     connected,
+    connecting,
+    ghostSession,
     noSession,
     state,
     session: sessionName,
@@ -491,6 +614,11 @@ async function persistConnectionStatus(label: string, payload?: unknown) {
   if (label === "LOGOUT" || label.startsWith("LOGOUT:")) {
     const { resetInboxCapture } = await import("./inboxStore.js");
     await resetInboxCapture(true);
+    await clearWppStoredAuth(label);
+  }
+  if (label.startsWith("AWAITING_QR:")) {
+    const { resetInboxCapture } = await import("./inboxStore.js");
+    await resetInboxCapture(true);
   }
 }
 
@@ -509,7 +637,8 @@ async function postStartSession(
 }
 
 export async function startSession(options?: { waitQrCode?: boolean }): Promise<unknown> {
-  const waitQr = options?.waitQrCode !== false;
+  const waitQr =
+    options?.waitQrCode !== undefined ? options.waitQrCode : env.WPP_START_WAIT_QR;
   const urls = [inboundWebhookUrl()];
   const fallback = inboundWebhookUrlFallback();
   if (fallback && !urls.includes(fallback)) urls.push(fallback);
@@ -589,7 +718,7 @@ export async function closeSession(): Promise<{ raw?: unknown; noSession: boolea
 export async function logoutSession(): Promise<{ raw?: unknown; noSession: boolean }> {
   const state = await readSessionStateSafe();
   if (state && isDisconnectedState(state)) {
-    await persistConnectionStatus(`DISCONNECTED:${state}`);
+    await markSessionRequiresQr(state);
     return { noSession: true };
   }
 
@@ -597,7 +726,7 @@ export async function logoutSession(): Promise<{ raw?: unknown; noSession: boole
   const body = await readWppJson(res);
   if (!res.ok) {
     if (httpErrorMeansNoSession(res.status, body)) {
-      await persistConnectionStatus("LOGOUT");
+      await markSessionRequiresQr("LOGOUT");
       return { noSession: true };
     }
     throw new Error(`logout-session: ${formatWppError(res.status, body)}`);

@@ -72,6 +72,11 @@ export async function webhookRoutes(app: FastifyInstance) {
     const body = normalizeWppWebhookBody(raw);
     touchWppWebhookReceived(getWppWebhookEvent(body));
 
+    const { handleWppLifecycleWebhook } = await import("../services/wppconnect.js");
+    if (await handleWppLifecycleWebhook(body)) {
+      return { ok: true, lifecycle: true, event: getWppWebhookEvent(body) };
+    }
+
     if (!isWppMessageWebhook(body)) {
       return { ok: true, skipped: "not_message" };
     }

@@ -108,6 +108,27 @@ webhook: {
 
 Depois reinicie o WPP. Conecte pelo **Zap → WhatsApp → Conexão / QR**.
 
+### QR expira / `Auto Close Called` / `qrReadError` no log
+
+Por padrão o WPPConnect fecha o Chrome **60 segundos** após abrir o QR (`autoClose: 60000`). Se você demorar para escanear, o celular pode parecer conectado mas o Zap mostra “sem conexão”.
+
+No **config do serviço wppconnect** (arquivo `config.ts` ou variável da imagem), dentro de `createOptions`:
+
+```js
+createOptions: {
+  autoClose: 0, // 0 = desliga timeout; ou 300000 para 5 minutos
+  browserArgs: [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    // ... demais args da sua imagem
+  ],
+},
+```
+
+Reinicie o **wppconnect** após alterar. Escaneie o QR **logo** após aparecer no painel.
+
+O Zap usa `start-session` com `waitQrCode: false` (não bloqueia a API) e faz polling do QR/status a cada 5s.
+
 O webhook é configurado pelo Zap no `start-session` quando você conecta. Com `ZAP_INTERNAL_URL`, o WPP usa `http://zap:3000/api/webhooks/wppconnect` (rede interna) — evita falha quando o container WPP não alcança a URL pública.
 
 Teste rápido: `GET https://zap.trajettu.com/api/webhooks/wppconnect` deve retornar `{ ok: true }`. Após uma mensagem recebida, `lastWebhookAt` aparece nessa resposta.

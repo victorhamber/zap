@@ -1,7 +1,9 @@
 import { prisma } from "../prisma.js";
 import { env } from "../env.js";
 import {
+  isDisconnectedState,
   isWppNetworkError,
+  markSessionRequiresQr,
   refreshWppToken,
   startSession,
   verifyActiveSession
@@ -16,25 +18,28 @@ const INTERVAL_MS = env.WPP_RECONNECT_INTERVAL_SEC * 1000;
 function shouldWatchReconnect(connectionStatus: string | null | undefined): boolean {
   const cs = connectionStatus ?? "";
   if (!cs) return false;
-  if (cs.startsWith("LOGOUT") || cs.startsWith("PAUSED") || cs.startsWith("AWAITING_QR")) {
+  if (
+    cs.startsWith("LOGOUT") ||
+    cs.startsWith("PAUSED") ||
+    cs.startsWith("AWAITING_QR") ||
+    cs.startsWith("DISCONNECTED:")
+  ) {
     return false;
   }
-  return (
-    cs.startsWith("CONNECTED:") ||
-    cs.startsWith("DISCONNECTED:") ||
-    cs.includes("CLOSED") ||
-    cs === "start_session" ||
-    cs === "token_ok"
-  );
+  return cs.startsWith("CONNECTED:") || cs === "token_ok";
 }
 
 function needsQrScan(state: string): boolean {
   const s = state.toUpperCase();
   return (
+    isDisconnectedState(state) ||
     s.includes("QR") ||
     s === "NOTLOGGED" ||
     s === "UNPAIRED" ||
-    s === "QRCODE"
+    s === "QRCODE" ||
+    s.includes("UNPAIR") ||
+    s.includes("DISCONNECTEDMOBILE") ||
+    s.includes("DESCONNECTED")
   );
 }
 
@@ -62,6 +67,14 @@ export async function attemptAutoReconnect(options?: {
     const check = await verifyActiveSession();
     if (check.connected) return true;
 
+    if (check.ghostSession) {
+      await markSessionRequiresQr("PHONE_REMOVED");
+      console.log(
+        `[wpp-reconnect] Aparelho removido no celular — token limpo, aguardando novo QR (${reason}).`
+      );
+      return false;
+    }
+
     if (!check.wppReachable) {
       console.warn(`[wpp-reconnect] WPP inacessível (${reason}), aguardando próxima tentativa.`);
       return false;
@@ -69,10 +82,7 @@ export async function attemptAutoReconnect(options?: {
 
     const state = check.state ?? "";
     if (needsQrScan(state)) {
-      await prisma.appSettings.update({
-        where: { id: "default" },
-        data: { connectionStatus: `AWAITING_QR:${state}` }
-      });
+      await markSessionRequiresQr(state);
       console.log(
         `[wpp-reconnect] Sessão "${settings.wppSession}" exige novo QR (${state}), reconexão automática pausada.`
       );
@@ -94,11 +104,12 @@ export async function attemptAutoReconnect(options?: {
     }
 
     const afterState = after.state ?? "";
-    if (needsQrScan(afterState)) {
-      await prisma.appSettings.update({
-        where: { id: "default" },
-        data: { connectionStatus: `AWAITING_QR:${afterState}` }
-      });
+    if (after.ghostSession || needsQrScan(afterState)) {
+      await markSessionRequiresQr(after.ghostSession ? "PHONE_REMOVED" : afterState);
+      console.log(
+        `[wpp-reconnect] Após tentativa: exige novo QR (${afterState}), token removido.`
+      );
+      return false;
     }
 
     console.warn(`[wpp-reconnect] Tentativa não restabeleceu o aparelho (status: ${afterState}).`);

@@ -68,9 +68,12 @@ export async function settingsRoutes(app: FastifyInstance) {
     }
   });
 
-  app.post("/api/settings/wpp/start-session", async (_req, reply) => {
+  app.post("/api/settings/wpp/start-session", async (req, reply) => {
     try {
-      const raw = await wpp.startSession();
+      const body = (req.body ?? {}) as { waitQrCode?: boolean };
+      const raw = await wpp.startSession(
+        body.waitQrCode !== undefined ? { waitQrCode: body.waitQrCode } : undefined
+      );
       let qrFromStart = wpp.extractQrImage(raw);
       let qrRaw: unknown = raw;
 
