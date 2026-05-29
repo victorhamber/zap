@@ -132,19 +132,29 @@ PUPPETEER_ARGS=--no-sandbox,--disable-setuid-sandbox
 
 ## WPPConnect — erros no log (AggregateError / startAllSessions)
 
-Se o log do WPP mostra `AggregateError` ao subir, é falha ao chamar **webhook** ou ao auto-iniciar sessões antigas.
+Se o log mostra `AggregateError` em `startAllSessions` ao subir, o **`startAllSession` ainda está `true`** e o WPP tenta abrir todas as sessões + webhook ao iniciar — **o QR não aparece direito** até corrigir isso.
 
-No `config` do WPPConnect, ajuste:
+**No console do container** (não cole JavaScript solto no shell):
+
+```sh
+find /usr/src/wpp-server -name "config.ts" -o -name "config.js" 2>/dev/null | head -5
+```
+
+Edite o arquivo encontrado (`vi` ou `nano`) e garanta:
 
 ```js
 startAllSession: false,
-webhook: {
-  url: null,
-  // ...
-},
+webhook: { url: null, /* ... */ },
+createOptions: { autoClose: 0, browserArgs: [ /* ... */ ] },
 ```
 
-Depois reinicie o WPP. Conecte pelo **Zap → WhatsApp → Conexão / QR**.
+Ou use o script em `deploy/wppconnect-config-fix.sh` (copie para o container e rode com `sh`).
+
+Depois **reinicie só o wppconnect** (1 réplica). O aviso `punycode` é inofensivo.
+
+Erros `getAllGroups` / `listChats` com `req.client` undefined = Inbox ou **Ferramentas WPP** chamadas **sem** QR conectado — não use até conectar.
+
+Depois reinicie o WPP. Conecte pelo **Zap → WhatsApp → Conexão / QR** (não abra Inbox antes).
 
 ### Várias sessões no log (`[84]`, `[12122]`, `[123]` ao mesmo tempo)
 

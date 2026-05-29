@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../../api/client";
 
 const QUICK_ACTIONS = [
@@ -17,12 +17,27 @@ export function WppToolsPanel() {
   const [loading, setLoading] = useState(false);
   const [groupId, setGroupId] = useState("");
   const [groupMsg, setGroupMsg] = useState("");
+  const [wppConnected, setWppConnected] = useState(false);
+
+  useEffect(() => {
+    api<{ ok: boolean; connected?: boolean }>("/api/settings/wpp/verify")
+      .then((r) => setWppConnected(Boolean(r.ok && r.connected)))
+      .catch(() => setWppConnected(false));
+  }, []);
 
   async function call(
     path: string,
     method: "GET" | "POST",
     payload?: unknown
   ) {
+    const offlineOk = path === "/check-connection-session";
+    if (!offlineOk && !wppConnected) {
+      setResult(
+        "WhatsApp não conectado. Vá em Conexão / QR, escaneie o código e só então use as ferramentas."
+      );
+      return;
+    }
+
     setLoading(true);
     setResult("Carregando…");
     try {
@@ -66,7 +81,7 @@ export function WppToolsPanel() {
           <button
             key={a.id}
             type="button"
-            disabled={loading}
+            disabled={loading || (!wppConnected && a.id !== "connection")}
             onClick={() =>
               call(a.path, a.method, "body" in a ? (a as { body: object }).body : undefined)
             }

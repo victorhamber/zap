@@ -356,6 +356,19 @@ export type FetchChatsResult = {
 };
 
 export async function fetchChats(): Promise<FetchChatsResult> {
+  const { verifyActiveSession } = await import("./wppconnect.js");
+  const check = await verifyActiveSession();
+  if (!check.connected) {
+    return {
+      chats: [],
+      sourcesOk: [],
+      errors: [
+        check.message ??
+          "WhatsApp não conectado. Use Conexão / QR e escaneie o código antes de abrir o Inbox."
+      ]
+    };
+  }
+
   const map = new Map<string, NormalizedChat>();
   const sourcesOk: string[] = [];
   const errors: string[] = [];
