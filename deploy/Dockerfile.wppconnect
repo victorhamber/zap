@@ -1,0 +1,19 @@
+# WPPConnect com patch para apagar tokens ao excluir sessão (clear-session-data).
+# No EasyPanel: serviço wppconnect → Build → Dockerfile = deploy/Dockerfile.wppconnect
+#
+# Base: sua imagem atual ou oficial
+FROM ibsddev/wppconnect-server:latest
+
+USER root
+
+COPY deploy/patch-wpp-token-path.sh /patch-wpp-token-path.sh
+COPY deploy/docker-wpp-entrypoint.sh /docker-wpp-entrypoint.sh
+RUN chmod +x /patch-wpp-token-path.sh /docker-wpp-entrypoint.sh
+
+# Patch na build (persiste na imagem)
+RUN sh /patch-wpp-token-path.sh /usr/src/wpp-server 2>/dev/null || \
+    sh /patch-wpp-token-path.sh /app 2>/dev/null || true
+
+ENTRYPOINT ["/docker-wpp-entrypoint.sh"]
+# CMD padrão da imagem base (geralmente node dist/server.js)
+CMD ["node", "dist/server.js"]

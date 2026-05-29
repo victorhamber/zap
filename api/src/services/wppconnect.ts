@@ -1157,6 +1157,11 @@ function sleepMs(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const WPP_TOKEN_PATH_BUG_HINT =
+  "Bug conhecido do WPPConnect 2.x: o token em tokens/<sessão>.data.json não foi apagado. " +
+  "No console do wppconnect (EasyPanel), rode o script deploy/wppconnect-config-fix.sh do repo Zap " +
+  "ou use deploy/Dockerfile.wppconnect, reinicie o WPP e tente Remover de novo.";
+
 /** Fecha o browser de uma sessão específica sem trocar a instância ativa no Postgres. */
 async function closeWppSessionOnServer(sessionName: string): Promise<void> {
   const name = sessionName.trim().toLowerCase();
@@ -1185,6 +1190,40 @@ async function closeWppSessionOnServer(sessionName: string): Promise<void> {
       },
       body: "{}"
     });
+  } catch {
+    /* ignora */
+  }
+}
+
+/** Logout + apaga dados no WPP (mesmo bug de path no token se imagem não estiver patcheada). */
+async function logoutWppSessionOnServer(sessionName: string): Promise<void> {
+  const name = sessionName.trim().toLowerCase();
+  const settings = await getSettings();
+  const base = wppBaseUrl(settings);
+  const secret = env.WPP_SECRET_KEY;
+  const tokenUrl = `${base}/api/${encodeURIComponent(name)}/${encodeURIComponent(secret)}/generate-token`;
+  let tokenRes: Response;
+  try {
+    tokenRes = await fetch(tokenUrl, { method: "POST", headers: { accept: "application/json" } });
+  } catch {
+    return;
+  }
+  const tokenBody = await readWppJson(tokenRes);
+  if (!tokenRes.ok) return;
+  const token = (tokenBody as TokenResponse).token;
+  if (!token) return;
+
+  try {
+    await fetch(`${base}/api/${encodeURIComponent(name)}/logout-session`, {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json"
+      },
+      body: "{}"
+    });
+    await sleepMs(800);
   } catch {
     /* ignora */
   }
@@ -1226,29 +1265,33 @@ export async function purgeWppSessionFromServer(
     await sleepMs(300);
   }
 
+  await logoutWppSessionOnServer(name);
+  await sleepMs(400);
+
   const base = wppBaseUrl(settings);
   const url = `${base}/api/${encodeURIComponent(name)}/${encodeURIComponent(env.WPP_SECRET_KEY)}/clear-session-data`;
 
   try {
-    const res = await fetch(url, { method: "POST", headers: { accept: "application/json" } });
-    const body = await readWppJson(res);
-    if (!res.ok) {
-      return { ok: false, detail: formatWppError(res.status, body) };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const res = await fetch(url, { method: "POST", headers: { accept: "application/json" } });
+      const body = await readWppJson(res);
+      if (!res.ok) {
+        return { ok: false, detail: formatWppError(res.status, body) };
+      }
+      await sleepMs(attempt === 0 ? 600 : 400);
+      if (!(await sessionStillOnServer(name))) break;
+      if (attempt === 0) {
+        await logoutWppSessionOnServer(name);
+        await sleepMs(500);
+      }
     }
 
-    await sleepMs(500);
     const still = await sessionStillOnServer(name);
     if (still) {
       return {
         ok: false,
         stillOnServer: true,
-        detail:
-          "O WPP respondeu OK, mas a sessão ainda aparece em show-all-sessions. " +
-          "Pare o wppconnect, apague manualmente userDataDir/" +
-          name +
-          " e tokens/" +
-          name +
-          ".data.json no volume, e confira WPP_SECRET_KEY igual no zap e wppconnect."
+        detail: WPP_TOKEN_PATH_BUG_HINT
       };
     }
 

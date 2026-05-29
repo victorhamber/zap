@@ -25,6 +25,23 @@ patch_file "./dist/config.js"
 patch_file "./src/config.ts"
 
 echo ""
+if [ -f ./deploy/patch-wpp-token-path.sh ]; then
+  sh ./deploy/patch-wpp-token-path.sh .
+elif [ -f /patch-wpp-token-path.sh ]; then
+  sh /patch-wpp-token-path.sh .
+else
+  echo "=== Patch token path (inline) ==="
+  find . \( -name 'miscController.js' -o -name 'sessionController.js' \) 2>/dev/null | while read -r f; do
+    [ -f "$f" ] || continue
+    grep -q '__dirname.*tokens/' "$f" 2>/dev/null || continue
+    echo "  -> $f"
+    cp "$f" "${f}.bak.zap.$(date +%s)"
+    sed -i 's|__dirname + `../../../tokens/${session}.data.json`|require("path").join(process.cwd(), "tokens", `${session}.data.json`)|g' "$f"
+    sed -i 's|__dirname + `../../../tokens/${req.session}.data.json`|require("path").join(process.cwd(), "tokens", `${req.session}.data.json`)|g' "$f"
+    sed -i 's|__dirname + `../../../tokens/${req.params.session}.data.json`|require("path").join(process.cwd(), "tokens", `${req.params.session}.data.json`)|g' "$f"
+  done
+fi
+
 echo ""
 echo "=== Variáveis EasyPanel (serviço wppconnect) ==="
 echo "WPP_START_ALL_SESSION=false"
@@ -33,4 +50,5 @@ echo ""
 echo "=== PRONTO ==="
 echo "1) Reinicie o wppconnect no EasyPanel (Stop -> Start, 1 réplica)"
 echo "2) Log NÃO deve mostrar AggregateError em startAllSessions nem Auto close 60s"
-echo "3) No Zap: Conectar / Mostrar QR (só quando você clicar)"
+echo "3) No Zap: Limpar órfãs / Remover instância deve sumir do show-all-sessions"
+echo "4) Conectar / Mostrar QR (só quando você clicar)"

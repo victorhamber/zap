@@ -86,6 +86,18 @@ WPP_HUMANIZE=true
 
 **Instâncias:** **Remover** apaga no painel e no WPP (`clear-session-data`). **Limpar órfãs no WPP** remove sessões que existem no servidor mas não estão cadastradas no painel.
 
+### Excluir sessão no painel não some do servidor (show-all-sessions)
+
+Imagens `wppconnect-server` 2.x (incl. `ibsddev/wppconnect-server:latest`) têm um **bug**: `clear-session-data` apaga a pasta Chrome, mas **não apaga** `tokens/<sessão>.data.json` (path errado no código). O Zap chama a API certa; o WPP responde OK e a sessão continua listada.
+
+**Correção (uma vez no servidor WPP):**
+
+1. Console EasyPanel do **wppconnect** → cole o script `deploy/wppconnect-config-fix.sh` do repo (inclui patch de tokens).
+2. **OU** build com `deploy/Dockerfile.wppconnect` (mesma base `ibsddev/wppconnect-server:latest` + patch automático).
+3. Reinicie o wppconnect → no Zap use **Limpar órfãs** ou **Remover** de novo.
+
+Depois disso, criar/apagar instâncias pelo painel funciona sem apagar volume manualmente.
+
 **QR sozinho após deploy:** o Zap **não** chama mais `start-session` no boot, só se o status era `CONNECTED:…`. Use **Conectar / Mostrar QR** manualmente.
 
 **WPP ainda com `Auto close 60s`:** no serviço **wppconnect**, defina `WPP_AUTO_CLOSE=0` e `WPP_START_ALL_SESSION=false`, reinicie **1 réplica**. Senão o QR some em 60s e aparece `Auto Close Called` no log.
