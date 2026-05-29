@@ -1169,10 +1169,10 @@ function sleepMs(ms: number): Promise<void> {
 }
 
 const WPP_TOKEN_PATH_BUG_HINT =
-  "O WPPConnect não apagou tokens/<sessão>.data.json (bug 2.x sem patch). " +
-  "No console EasyPanel do wppconnect, cole o arquivo inteiro deploy/COLE-NO-CONSOLE-WPPCONNECT.sh " +
-  "(GitHub victorhamber/zap), reinicie o WPP e tente de novo. " +
-  "Emergência: deploy/APAGAR-TOKENS-MANUAL.sh no mesmo repo (apaga .data.json à mão). " +
+  "O WPP ainda lista esta sessão (tokens/<sessão>.data.json não sumiu). " +
+  "1) Console wppconnect: deploy/COLE-PATCH-TOKENS-IBSDDEV.sh (patch Node). " +
+  "2) REINICIE o wppconnect (Stop→Start) — sem isso o patch no disco não vale. " +
+  "3) Emergência: deploy/COLE-DIAGNOSTICO-E-LIMPAR.sh (apaga .data.json à mão). " +
   "Build permanente: deploy/Dockerfile.wppconnect.";
 
 /** Sessão com browser aberto no WPP (não só arquivo em tokens/). */
@@ -1297,7 +1297,13 @@ export async function purgeWppSessionFromServer(
     }
     await sleepMs(500);
 
-    const check = await sessionStillOnServer(name);
+    let check = await sessionStillOnServer(name);
+    if (check.still && !check.listError) {
+      await fetch(url, { method: "POST", headers: { accept: "application/json" } }).catch(() => {});
+      await sleepMs(800);
+      check = await sessionStillOnServer(name);
+    }
+
     if (check.listError) {
       return {
         ok: false,
