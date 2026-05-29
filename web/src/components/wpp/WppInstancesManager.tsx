@@ -9,60 +9,37 @@ type Instance = {
   onServer: boolean;
 };
 
-type OrphanCleanup = {
-  purged: string[];
-  failed: Array<{ name: string; error: string }>;
-};
-
 export function WppInstancesManager({ onActivated }: { onActivated?: () => void }) {
   const [instances, setInstances] = useState<Instance[]>([]);
-  const [serverSessions, setServerSessions] = useState<string[]>([]);
-  const [orphanSessions, setOrphanSessions] = useState<string[]>([]);
-  const [keepNames, setKeepNames] = useState<string[]>([]);
-  const [serverError, setServerError] = useState("");
   const [active, setActive] = useState("");
   const [newName, setNewName] = useState("");
   const [newLabel, setNewLabel] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
+  const [showCreate, setShowCreate] = useState(false);
 
   const load = useCallback(async () => {
     const r = await api<{
       active: string;
       instances: Instance[];
-      serverSessions: string[];
-      orphanSessions?: string[];
-      keepNames?: string[];
       serverError?: string;
-      orphanCleanup?: OrphanCleanup | null;
     }>("/api/wpp/instances");
     setInstances(r.instances);
     setActive(r.active);
-    setServerSessions(r.serverSessions);
-    setOrphanSessions(r.orphanSessions ?? []);
-    setKeepNames(r.keepNames ?? []);
-    setServerError(r.serverError ?? "");
-    if (r.orphanCleanup?.purged?.length) {
-      setMsg(
-        `Limpeza automática: removidas ${r.orphanCleanup.purged.join(", ")}.`
-      );
-    }
-    if (r.orphanCleanup?.failed?.length) {
-      setError(
-        r.orphanCleanup.failed.map((f) => `${f.name}: ${f.error}`).join(" · ")
-      );
+    if (r.serverError) {
+      setError(`Servidor indisponível: ${r.serverError}`);
     }
   }, []);
 
   useEffect(() => {
-    load().catch((e) => setError(e?.message ?? "Erro ao carregar instâncias"));
+    load().catch((e) => setError(e instanceof Error ? e.message : "Erro ao carregar"));
   }, [load]);
 
   async function createInstance() {
     const name = newName.trim().toLowerCase();
     if (!name) {
-      setError("Informe um nome para a instância (ex: vendas, suporte)");
+      setError("Informe um nome (ex: autofintech)");
       return;
     }
     setLoading(true);
@@ -75,11 +52,12 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
       });
       setNewName("");
       setNewLabel("");
-      setMsg(`Instância "${name}" criada. Vá em Conexão / QR e clique em Conectar.`);
+      setShowCreate(false);
+      setMsg(`Instância "${name}" criada. Vá em Conexão / QR para escanear o QR.`);
       await load();
       onActivated?.();
-    } catch (e: any) {
-      setError(e?.message ?? "Erro ao criar instância");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Erro ao criar");
     } finally {
       setLoading(false);
     }
@@ -97,11 +75,11 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
         method: "POST",
         body: JSON.stringify({})
       });
-      setMsg(`Instância "${name}" ativa.`);
+      setMsg(`"${name}" é a instância ativa.`);
       await load();
       onActivated?.();
-    } catch (e: any) {
-      setError(e?.message ?? "Erro ao ativar");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Erro ao ativar");
     } finally {
       setLoading(false);
     }
@@ -110,7 +88,7 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
   async function remove(name: string) {
     if (
       !confirm(
-        `Remover "${name}"?\n\nA sessão será apagada também no servidor WPP (tokens e pasta do Chrome).`
+        `Remover "${name}"?\n\nA sessão será apagada no servidor e você precisará conectar de novo.`
       )
     )
       return;
@@ -122,211 +100,176 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
         { method: "DELETE" }
       );
       await load();
-      if (r.warning) {
-        setError(r.warning);
-        setMsg(r.message ?? `Instância "${name}" removida do painel.`);
-      } else {
-        setMsg(r.message ?? `Instância "${name}" removida.`);
-      }
+      setMsg(r.message ?? `Instância "${name}" removida.`);
+      if (r.warning) setError(r.warning);
       onActivated?.();
-    } catch (e: any) {
-      setError(e?.message ?? "Erro ao remover");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Erro ao remover");
     } finally {
       setLoading(false);
     }
   }
 
-  async function purgeOnServer(name: string) {
-    if (!confirm(`Apagar a sessão "${name}" no servidor WPP (tokens + Chrome)?`)) return;
-    setLoading(true);
-    setError("");
-    setMsg("");
-    try {
-      const r = await api<{ ok: boolean; message?: string }>(
-        `/api/wpp/purge-server/${encodeURIComponent(name)}`,
-        { method: "POST", body: JSON.stringify({}) }
-      );
-      await load();
-      if (r.ok) setMsg(r.message ?? `Sessão "${name}" removida do servidor.`);
-      else setError(r.message ?? "Falha ao apagar no servidor");
-    } catch (e: any) {
-      setError(e?.message ?? "Erro ao apagar no servidor");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function cleanupOrphans() {
-    setLoading(true);
-    setError("");
-    setMsg("");
-    try {
-      const r = await api<{
-        ok: boolean;
-        message?: string;
-        purged?: string[];
-        failed?: Array<{ name: string; error: string }>;
-        targets?: string[];
-        serverSessionsBefore?: string[];
-        serverError?: string;
-      }>("/api/wpp/cleanup-orphans", { method: "POST", body: JSON.stringify({}) });
-      await load();
-      setMsg(r.message ?? "Limpeza concluída.");
-      if (r.failed?.length) {
-        setError(r.failed.map((f) => `${f.name}: ${f.error}`).join(" · "));
-      }
-      if (r.serverError) {
-        setError((prev) => (prev ? `${prev} · ` : "") + r.serverError);
-      }
-    } catch (e: any) {
-      setError(e?.message ?? "Erro na limpeza");
-    } finally {
-      setLoading(false);
-    }
-  }
+  const activeInstance = instances.find((i) => i.isActive);
 
   return (
-    <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-5">
-      <h2 className="text-lg font-semibold text-white">Instâncias WhatsApp</h2>
-      <p className="text-sm text-zinc-400 mt-1">
-        Remover no painel apaga a sessão no WPP. Use &quot;Limpar órfãs&quot; para sessões que só
-        existem no servidor.
-      </p>
-
+    <div className="space-y-4">
       {error && (
-        <div className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+        <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
           {error}
         </div>
       )}
-      {msg && <p className="mt-3 text-sm text-emerald-400/90">{msg}</p>}
-
-      {serverError && (
-        <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
-          Não foi possível listar o WPP: {serverError}. Confira WPP_INTERNAL_URL e se o serviço
-          wppconnect está online.
+      {msg && (
+        <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+          {msg}
         </div>
       )}
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        <input
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          placeholder="nome-sessao (ex: autofintech)"
-          className="flex-1 min-w-[140px] rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm font-mono"
-        />
-        <input
-          value={newLabel}
-          onChange={(e) => setNewLabel(e.target.value)}
-          placeholder="Apelido (opcional)"
-          className="flex-1 min-w-[120px] rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
-        />
-        <button
-          type="button"
-          disabled={loading}
-          onClick={createInstance}
-          className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 disabled:opacity-50"
-        >
-          + Nova instância
-        </button>
-        <button
-          type="button"
-          disabled={loading}
-          onClick={cleanupOrphans}
-          className="rounded-xl border border-zinc-600 px-4 py-2 text-sm hover:bg-zinc-800 disabled:opacity-50"
-        >
-          Limpar órfãs no WPP
-        </button>
-      </div>
-
-      <ul className="mt-5 space-y-2">
-        {instances.map((inst) => (
-          <li
-            key={inst.id}
-            className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-3 ${
-              inst.isActive ? "border-emerald-500/40 bg-emerald-500/5" : "border-zinc-800 bg-zinc-900/40"
-            }`}
-          >
-            <div>
-              <div className="font-medium text-white">{inst.label ?? inst.name}</div>
-              <code className="text-xs text-zinc-500">{inst.name}</code>
-              <div className="text-xs text-zinc-500 mt-0.5">
-                {inst.isActive ? "● Ativa no Zap" : "○ Inativa"}
-                {inst.onServer ? " · no servidor WPP" : " · só no Zap"}
-              </div>
+      {activeInstance && (
+        <div className="rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-zinc-950/80 p-5">
+          <div className="flex items-start gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-xl">
+              ✓
             </div>
-            <div className="flex gap-2">
-              {!inst.isActive && (
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={() => activate(inst.name)}
-                  className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs hover:bg-zinc-800"
-                >
-                  Usar esta
-                </button>
-              )}
-              {inst.onServer && !inst.isActive && (
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={() => purgeOnServer(inst.name)}
-                  className="rounded-lg border border-amber-800/50 px-3 py-1.5 text-xs text-amber-200 hover:bg-amber-950/30"
-                >
-                  Apagar no WPP
-                </button>
-              )}
-              <button
-                type="button"
-                disabled={loading || inst.isActive}
-                onClick={() => remove(inst.name)}
-                className="rounded-lg border border-red-900/40 px-3 py-1.5 text-xs text-red-300 hover:bg-red-950/30 disabled:opacity-40"
-                title={inst.isActive ? "Ative outra instância antes de remover esta" : undefined}
-              >
-                Remover
-              </button>
-            </div>
-          </li>
-        ))}
-        {instances.length === 0 && (
-          <li className="text-sm text-zinc-500">Nenhuma instância cadastrada ainda.</li>
-        )}
-      </ul>
-
-      <div className="mt-4 rounded-xl border border-zinc-800 bg-zinc-900/30 p-3 text-xs text-zinc-400">
-        <p className="text-zinc-300 font-medium mb-1">Servidor WPP (show-all-sessions)</p>
-        {serverSessions.length === 0 ? (
-          <p className="text-zinc-500">Nenhuma sessão listada{serverError ? " (erro acima)" : ""}.</p>
-        ) : (
-          <p className="font-mono text-zinc-400">{serverSessions.join(", ")}</p>
-        )}
-        {keepNames.length > 0 && (
-          <p className="mt-2 text-zinc-500">
-            Protegidas no painel: <span className="text-zinc-400">{keepNames.join(", ")}</span>
-          </p>
-        )}
-        {orphanSessions.length > 0 && (
-          <div className="mt-3">
-            <p className="text-amber-200/90 mb-2">Órfãs (não cadastradas): {orphanSessions.join(", ")}</p>
-            <div className="flex flex-wrap gap-2">
-              {orphanSessions.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  disabled={loading}
-                  onClick={() => purgeOnServer(s)}
-                  className="rounded-lg border border-red-900/40 px-2 py-1 text-red-300 hover:bg-red-950/30"
-                >
-                  Apagar {s}
-                </button>
-              ))}
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-medium uppercase tracking-wide text-emerald-400/90">
+                Instância ativa
+              </p>
+              <p className="text-lg font-semibold text-white truncate">
+                {activeInstance.label ?? activeInstance.name}
+              </p>
+              <p className="text-sm text-zinc-400 font-mono mt-0.5">{activeInstance.name}</p>
+              <p className="text-xs text-zinc-500 mt-2">
+                {activeInstance.onServer
+                  ? "Registrada no servidor Evolution"
+                  : "Cadastrada no painel — conecte em Conexão / QR"}
+              </p>
             </div>
           </div>
+        </div>
+      )}
+
+      <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
+        <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-zinc-800/80">
+          <div>
+            <h2 className="text-base font-semibold text-white">Suas instâncias</h2>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              {instances.length === 0
+                ? "Nenhuma cadastrada"
+                : `${instances.length} cadastrada${instances.length > 1 ? "s" : ""}`}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowCreate((v) => !v)}
+            className="rounded-lg bg-emerald-500/15 border border-emerald-500/25 px-3 py-2 text-sm font-medium text-emerald-300 hover:bg-emerald-500/25 transition"
+          >
+            {showCreate ? "Cancelar" : "+ Nova"}
+          </button>
+        </div>
+
+        {showCreate && (
+          <div className="px-5 py-4 border-b border-zinc-800/80 bg-zinc-900/30 space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1">Nome da sessão</label>
+                <input
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="ex: autofintech"
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-sm font-mono text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500/40"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1">Apelido (opcional)</label>
+                <input
+                  value={newLabel}
+                  onChange={(e) => setNewLabel(e.target.value)}
+                  placeholder="ex: Atendimento principal"
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500/40"
+                />
+              </div>
+            </div>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => void createInstance()}
+              className="w-full sm:w-auto rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 disabled:opacity-50"
+            >
+              Criar instância
+            </button>
+          </div>
         )}
+
+        <ul className="divide-y divide-zinc-800/80">
+          {instances.map((inst) => (
+            <li
+              key={inst.id}
+              className={`flex flex-wrap items-center justify-between gap-3 px-5 py-4 ${
+                inst.isActive ? "bg-emerald-500/[0.04]" : ""
+              }`}
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div
+                  className={`h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-sm font-bold ${
+                    inst.isActive
+                      ? "bg-emerald-500/20 text-emerald-300"
+                      : "bg-zinc-800 text-zinc-500"
+                  }`}
+                >
+                  {(inst.label ?? inst.name).charAt(0).toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium text-white truncate">
+                      {inst.label ?? inst.name}
+                    </span>
+                    {inst.isActive && (
+                      <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase text-emerald-300">
+                        Ativa
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-zinc-500 font-mono truncate">{inst.name}</p>
+                </div>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                {!inst.isActive && (
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={() => void activate(inst.name)}
+                    className="rounded-lg bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-200 hover:bg-zinc-700 disabled:opacity-50"
+                  >
+                    Usar esta
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={loading || inst.isActive}
+                  onClick={() => void remove(inst.name)}
+                  className="rounded-lg px-3 py-1.5 text-xs text-red-300/90 hover:bg-red-500/10 disabled:opacity-30"
+                  title={inst.isActive ? "Ative outra instância antes" : undefined}
+                >
+                  Remover
+                </button>
+              </div>
+            </li>
+          ))}
+          {instances.length === 0 && !showCreate && (
+            <li className="px-5 py-8 text-center text-sm text-zinc-500">
+              Nenhuma instância ainda. Clique em <strong className="text-zinc-400">+ Nova</strong>{" "}
+              para criar.
+            </li>
+          )}
+        </ul>
       </div>
 
-      <p className="mt-3 text-xs text-zinc-500">
-        Ativa agora: <code className="text-zinc-400">{active}</code>
-      </p>
+      {active && (
+        <p className="text-center text-xs text-zinc-600">
+          Sessão em uso no painel: <span className="text-zinc-400 font-mono">{active}</span>
+        </p>
+      )}
     </div>
   );
 }

@@ -430,12 +430,12 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
               : "border-zinc-700 bg-zinc-900/50 text-zinc-400";
 
   return (
-    <div className={compact ? "" : "rounded-2xl border border-zinc-800 bg-zinc-950/60 p-5"}>
+    <div className={compact ? "" : "rounded-2xl border border-zinc-800 bg-zinc-950/60 p-5 shadow-sm"}>
       {!compact && (
-        <div className="mb-4">
+        <div className="mb-5">
           <h2 className="text-lg font-semibold text-white">Conexão WhatsApp</h2>
-          <p className="text-sm text-zinc-400 mt-0.5">
-            Conecte o número da instância ativa escaneando o QR abaixo.
+          <p className="text-sm text-zinc-400 mt-1">
+            Vincule o aparelho da instância ativa. Depois use o menu WhatsApp para conversar.
           </p>
         </div>
       )}
@@ -458,21 +458,11 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
               ? "Verificando…"
               : state || "Sem aparelho"}
         </span>
-        {settings?.hasToken && (
-          <span className="text-xs text-zinc-600" title="Token da API salvo no banco (persiste no deploy do Zap)">
-            token salvo
-          </span>
-        )}
       </div>
 
       <div className={`mt-4 rounded-xl border px-4 py-3 text-sm ${noticeClass}`}>
         <p className="font-medium leading-snug">{noticeText}</p>
       </div>
-
-      <p className="mt-3 text-xs text-zinc-500 leading-relaxed">
-        <strong className="text-zinc-400">Fechar sessão</strong> — pausa no WPP.{" "}
-        <strong className="text-zinc-400">Desconectar</strong> — logout (novo QR depois).
-      </p>
 
       {qrImage && !isConnected && (
         <div className="mt-5 flex flex-col items-center">
@@ -480,8 +470,7 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
             <img src={qrImage} alt="QR Code WhatsApp" className="h-56 w-56 object-contain" />
           </div>
           <p className="mt-3 text-xs text-zinc-500 text-center max-w-sm">
-            Escaneie em até 30 segundos. No wppconnect use WPP_AUTO_CLOSE=0 — senão o servidor fecha o
-            QR em 60s. Mantenha só uma instância ativa.
+            No celular: WhatsApp → Aparelhos conectados → Conectar aparelho. Escaneie o código acima.
           </p>
         </div>
       )}
@@ -544,16 +533,10 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
         </button>
       </div>
 
-      {!compact && (
-        <p className="mt-4 text-xs text-zinc-500 leading-relaxed">
-          Mensagens recebidas: a Evolution envia POST para{" "}
-          <code className="text-zinc-400">ZAP_INTERNAL_URL/api/webhooks/evolution</code> (hostname
-          Docker do <strong className="text-zinc-400">zap</strong>, ex.{" "}
-          <code className="text-zinc-400">http://zap_zap:3000</code>). Após conectar, clique em{" "}
+      {!compact && isConnected && (
+        <p className="mt-4 text-xs text-zinc-500">
+          Se mensagens novas não aparecerem no menu WhatsApp, use{" "}
           <strong className="text-zinc-400">Atualizar webhook</strong> e envie um teste do celular.
-          Teste:{" "}
-          <code className="text-zinc-400 break-all">/api/webhooks/evolution</code> →{" "}
-          <code className="text-zinc-400">{`{ "ok": true }`}</code>.
         </p>
       )}
     </div>
