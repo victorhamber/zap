@@ -129,26 +129,10 @@ function extractMediaUrl(body: Record<string, unknown>): string | null {
 async function resolveStoredMedia(
   type: string,
   text: string,
-  mediaUrl: string | null | undefined,
-  fromMe: boolean
+  mediaUrl: string | null | undefined
 ): Promise<{ body: string; mediaUrl: string | null }> {
-  const rawText = text.trim();
-
-  if (!fromMe) {
-    let url = mediaUrl ?? null;
-    if (url?.startsWith("data:") || (url && !isPersistedUploadUrl(url))) {
-      url = null;
-    }
-    let body = rawText;
-    if (isLikelyBase64Payload(body)) {
-      body = captionFromText(type, "") || labelForMediaType(type) || "Mídia";
-    } else {
-      body = captionFromText(type, body);
-    }
-    return { body, mediaUrl: url ? toPublicMediaUrl(url) : null };
-  }
-
   let url = mediaUrl ?? null;
+  const rawText = text.trim();
 
   if (!url && isLikelyBase64Payload(rawText)) {
     try {
@@ -310,12 +294,7 @@ export async function saveInboxMessage(params: {
   if (!chatId || chatId.includes("status@broadcast")) return;
 
   const type = params.type ?? "chat";
-  const { body, mediaUrl } = await resolveStoredMedia(
-    type,
-    params.body,
-    params.mediaUrl,
-    params.fromMe
-  );
+  const { body, mediaUrl } = await resolveStoredMedia(type, params.body, params.mediaUrl);
   const waMessageId = params.waMessageId?.slice(0, 240) ?? null;
   const timestamp = params.timestamp ?? new Date();
 
@@ -353,49 +332,6 @@ export async function saveInboxMessage(params: {
       timestamp
     }
   });
-}
-
-export async function fetchInboxMessageMedia(
-  messageId: string
-): Promise<{ ok: true; url: string } | { ok: false; message: string }> {
-  if (!prisma) return { ok: false, message: "Banco indisponível" };
-
-  const row = await prisma.inboxMessage.findUnique({ where: { id: messageId } });
-  if (!row) return { ok: false, message: "Mensagem não encontrada" };
-
-  const existing = toPublicMediaUrl(row.mediaUrl);
-  if (existing && isPersistedUploadUrl(existing)) {
-    return { ok: true, url: existing };
-  }
-
-  if (!row.waMessageId) {
-    return { ok: false, message: "Esta mensagem não tem mídia disponível para download" };
-  }
-
-  const type = row.type === "ptt" ? "audio" : row.type;
-  const { isInboundMediaType, downloadMediaForStoredMessage } = await import("./wppMedia.js");
-  if (!isInboundMediaType(type)) {
-    return { ok: false, message: "Não é uma mensagem de mídia" };
-  }
-
-  try {
-    const url = await downloadMediaForStoredMessage({
-      chatId: row.chatId,
-      waMessageId: row.waMessageId,
-      type
-    });
-    if (!url) return { ok: false, message: "Não foi possível baixar a mídia" };
-
-    const publicUrl = toPublicMediaUrl(url) ?? url;
-    await prisma.inboxMessage.update({
-      where: { id: messageId },
-      data: { mediaUrl: publicUrl }
-    });
-    return { ok: true, url: publicUrl };
-  } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : String(e);
-    return { ok: false, message };
-  }
 }
 
 export async function updateInboxMessageMedia(
@@ -495,29 +431,21 @@ export async function listStoredMessages(
     let mediaUrl = toPublicMediaUrl(r.mediaUrl) ?? r.mediaUrl;
     const normalizedType = r.type === "ptt" ? "audio" : r.type;
     if (!mediaUrl && isLikelyBase64Payload(body)) {
-      if (r.fromMe) {
-        mediaUrl =
-          body.startsWith("data:")
-            ? body
-            : `data:${mimeFromMessageType(normalizedType)};base64,${body.replace(/\s/g, "")}`;
-      }
+      mediaUrl =
+        body.startsWith("data:")
+          ? body
+          : `data:${mimeFromMessageType(normalizedType)};base64,${body.replace(/\s/g, "")}`;
       body = labelForMediaType(normalizedType) || "Mídia";
     } else if (isLikelyBase64Payload(body)) {
       body = labelForMediaType(r.type) || body.slice(0, 40);
     }
-    const mediaPending =
-      !mediaUrl &&
-      !r.fromMe &&
-      ["image", "video", "audio", "document", "sticker", "ptt"].includes(normalizedType);
     return {
       id: r.id,
       body,
       fromMe: r.fromMe,
       timestamp: r.timestamp.getTime(),
       type: normalizedType,
-      mediaUrl,
-      waMessageId: r.waMessageId,
-      mediaPending
+      mediaUrl
     };
   });
 

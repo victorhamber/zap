@@ -3,7 +3,6 @@ import { isGenericSelfChatName } from "../services/waJid.js";
 import { prisma } from "../prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import * as inbox from "../services/inbox.js";
-import { fetchInboxMessageMedia } from "../services/inboxStore.js";
 import { getContactAvatarUrl } from "../services/contactAvatar.js";
 import { saveUploadFromData } from "../services/uploads.js";
 import {
@@ -190,15 +189,6 @@ export async function inboxRoutes(app: FastifyInstance) {
     } catch (e: any) {
       return { ok: false, message: e?.message ?? String(e), messages: [] };
     }
-  });
-
-  app.post("/api/inbox/messages/:id/fetch-media", async (req, reply) => {
-    const id = (req.params as { id: string }).id;
-    const result = await fetchInboxMessageMedia(id);
-    if (!result.ok) {
-      return reply.status(400).send({ ok: false, message: result.message });
-    }
-    return { ok: true, url: result.url };
   });
 
   app.post("/api/inbox/upload", async (req, reply) => {

@@ -37,7 +37,6 @@ type Message = {
   timestamp: number;
   type: string;
   mediaUrl?: string | null;
-  mediaPending?: boolean;
 };
 
 type FlowOption = { id: string; name: string; inboundTags: string[] };
@@ -132,39 +131,12 @@ function mediaUrlFromMessage(m: Message): string | null {
   return `data:${mime};base64,${m.body.replace(/\s/g, "")}`;
 }
 
-function mediaLabel(type: string): string {
-  if (type === "image" || type === "sticker") return "imagem";
-  if (type === "video") return "vídeo";
-  if (type === "audio" || type === "ptt") return "áudio";
-  if (type === "document") return "documento";
-  return "mídia";
-}
-
-function mediaIcon(type: string): string {
-  if (type === "image" || type === "sticker") return "📷";
-  if (type === "video") return "🎬";
-  if (type === "audio" || type === "ptt") return "🎤";
-  if (type === "document") return "📎";
-  return "📁";
-}
-
 const InboxMessageContent = memo(function InboxMessageContent({
-  message: m,
-  onMediaLoaded
+  message: m
 }: {
   message: Message;
-  onMediaLoaded?: (messageId: string, url: string) => void;
 }) {
-  const [localUrl, setLocalUrl] = useState<string | null>(() => mediaUrlFromMessage(m));
-  const [loadingMedia, setLoadingMedia] = useState(false);
-  const [mediaError, setMediaError] = useState("");
-
-  useEffect(() => {
-    setLocalUrl(mediaUrlFromMessage(m));
-    setMediaError("");
-  }, [m.id, m.mediaUrl, m.body, m.type]);
-
-  const url = localUrl;
+  const url = mediaUrlFromMessage(m);
   const showCaption =
     m.body &&
     !isBase64Blob(m.body) &&
@@ -172,53 +144,14 @@ const InboxMessageContent = memo(function InboxMessageContent({
     !m.body.startsWith("🎤") &&
     !m.body.startsWith("🎬");
   const isMedia =
-    m.type === "image" ||
-    m.type === "sticker" ||
-    m.type === "video" ||
-    m.type === "audio" ||
-    m.type === "ptt" ||
-    m.type === "document";
-  const needsFetch =
-    isMedia && !url && (m.mediaPending || (!m.fromMe && !m.mediaUrl));
+    url &&
+    (m.type === "image" ||
+      m.type === "sticker" ||
+      m.type === "video" ||
+      m.type === "audio" ||
+      m.type === "ptt");
 
-  async function fetchMedia() {
-    if (loadingMedia) return;
-    setLoadingMedia(true);
-    setMediaError("");
-    try {
-      const r = await api<{ ok: boolean; url?: string; message?: string }>(
-        `/api/inbox/messages/${encodeURIComponent(m.id)}/fetch-media`,
-        { method: "POST" }
-      );
-      if (!r.ok || !r.url) throw new Error(r.message ?? "Falha ao carregar mídia");
-      setLocalUrl(r.url);
-      onMediaLoaded?.(m.id, r.url);
-    } catch (e: unknown) {
-      setMediaError(e instanceof Error ? e.message : "Erro ao carregar mídia");
-    } finally {
-      setLoadingMedia(false);
-    }
-  }
-
-  if (needsFetch) {
-    return (
-      <div className="space-y-1">
-        <button
-          type="button"
-          disabled={loadingMedia}
-          onClick={() => void fetchMedia()}
-          className="flex items-center gap-2 rounded-xl bg-[#182229] border border-[#2a3942] px-3 py-2.5 text-sm text-[#53bdeb] hover:bg-[#233138] disabled:opacity-60 transition"
-        >
-          <span aria-hidden>{mediaIcon(m.type)}</span>
-          {loadingMedia ? "Baixando…" : `Toque para carregar ${mediaLabel(m.type)}`}
-        </button>
-        {mediaError && <p className="text-xs text-[#ea0038] px-1">{mediaError}</p>}
-        {showCaption && <p className="text-sm whitespace-pre-wrap">{m.body}</p>}
-      </div>
-    );
-  }
-
-  if (url && (m.type === "image" || m.type === "sticker")) {
+  if (isMedia && (m.type === "image" || m.type === "sticker")) {
     const caption = showCaption ? m.body : undefined;
     return (
       <div className="space-y-1 -mx-0.5">
@@ -227,7 +160,7 @@ const InboxMessageContent = memo(function InboxMessageContent({
       </div>
     );
   }
-  if (url && m.type === "video") {
+  if (isMedia && m.type === "video") {
     const caption = showCaption ? m.body : undefined;
     return (
       <div className="space-y-1 -mx-0.5">
@@ -236,7 +169,7 @@ const InboxMessageContent = memo(function InboxMessageContent({
       </div>
     );
   }
-  if (url && (m.type === "audio" || m.type === "ptt")) {
+  if (isMedia && (m.type === "audio" || m.type === "ptt")) {
     return (
       <div className="space-y-1">
         <WaAudioPlayer src={url} fromMe={m.fromMe} />
@@ -340,13 +273,7 @@ const ChatListRow = memo(function ChatListRow({
   );
 });
 
-const MessageRow = memo(function MessageRow({
-  message: m,
-  onMediaLoaded
-}: {
-  message: Message;
-  onMediaLoaded?: (messageId: string, url: string) => void;
-}) {
+const MessageRow = memo(function MessageRow({ message: m }: { message: Message }) {
   const isVisualMedia =
     m.type === "image" || m.type === "sticker" || m.type === "video" || m.type === "audio" || m.type === "ptt";
   return (
@@ -356,7 +283,7 @@ const MessageRow = memo(function MessageRow({
           isVisualMedia ? "max-w-[min(88%,480px)] px-1.5 py-1" : "max-w-[min(78%,420px)] px-3 py-1.5"
         } ${m.fromMe ? "wa-bubble-out" : "wa-bubble-in"}`}
       >
-        <InboxMessageContent message={m} onMediaLoaded={onMediaLoaded} />
+        <InboxMessageContent message={m} />
         <div
           className={`text-[10px] mt-0.5 text-right ${
             m.fromMe ? "text-[#99beb7]" : "text-[#8696a0]"
@@ -644,14 +571,6 @@ export function WhatsAppInbox() {
     setEditTagColor(tag.color);
     setShowTagManager(true);
   }
-
-  const handleMediaLoaded = useCallback((messageId: string, url: string) => {
-    setMessages((prev) =>
-      prev.map((m) =>
-        m.id === messageId ? { ...m, mediaUrl: url, mediaPending: false } : m
-      )
-    );
-  }, []);
 
   async function sendMessage() {
     if (!selected || !draft.trim()) return;
@@ -1412,7 +1331,7 @@ export function WhatsAppInbox() {
                 </p>
               )}
               {visibleMessages.map((m) => (
-                <MessageRow key={m.id} message={m} onMediaLoaded={handleMediaLoaded} />
+                <MessageRow key={m.id} message={m} />
               ))}
               <div ref={messagesEndRef} />
             </div>

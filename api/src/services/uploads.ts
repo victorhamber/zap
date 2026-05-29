@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -128,15 +128,27 @@ export async function saveUploadFromData(
   }
 
   const buf = Buffer.from(base64, "base64");
-  const maxBytes = (contentType.startsWith("video/") ? UPLOAD_MAX_VIDEO_BYTES : UPLOAD_MAX_BYTES);
+  const maxBytes = contentType.startsWith("video/") ? UPLOAD_MAX_VIDEO_BYTES : UPLOAD_MAX_BYTES;
   if (buf.length > maxBytes) {
     const mb = Math.round(maxBytes / (1024 * 1024));
     const kind = contentType.startsWith("video/") ? " para vídeo" : "";
     throw new Error(`Arquivo muito grande (máximo ${mb} MB${kind})`);
   }
   const ext = MIME_EXT[contentType] ?? "bin";
-  const filename = `${randomUUID()}.${ext}`;
-  await fs.writeFile(path.join(UPLOAD_DIR, filename), buf);
+
+  const hash = createHash("sha256").update(buf).digest("hex").slice(0, 48);
+  const dedupeFilename = `${hash}.${ext}`;
+  const dedupePath = path.join(UPLOAD_DIR, dedupeFilename);
+
+  try {
+    await fs.access(dedupePath);
+    return { url: publicUploadUrl(dedupeFilename), filename: dedupeFilename };
+  } catch {
+    /* arquivo novo — grava uma vez e reutiliza em outros chats/grupos */
+  }
+
+  const filename = dedupeFilename;
+  await fs.writeFile(dedupePath, buf);
 
   return { url: publicUploadUrl(filename), filename };
 }

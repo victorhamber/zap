@@ -11,9 +11,12 @@ import { parseGraph } from "../engine/graph.js";
 import { asString } from "../utils/jsonPathLite.js";
 import { normalizePhone } from "../utils/phone.js";
 import { getContactTagNames } from "../services/contacts.js";
+import { downloadInboundMedia, isInboundMediaType } from "../services/wppMedia.js";
 import {
   parseWppWebhookMessage,
-  saveInboxMessage
+  saveInboxMessage,
+  updateInboxMessageMedia,
+  webhookMediaAlreadyInline
 } from "../services/inboxStore.js";
 import {
   getWppWebhookEvent,
@@ -121,6 +124,22 @@ export async function webhookRoutes(app: FastifyInstance) {
       });
       saved = true;
       touchWppWebhookSaved();
+
+      const needsMediaDownload =
+        parsed.waMessageId &&
+        isInboundMediaType(parsed.type) &&
+        !webhookMediaAlreadyInline(parsed);
+
+      if (needsMediaDownload) {
+        const waId = parsed.waMessageId;
+        void downloadInboundMedia(body, waId)
+          .then((url) => {
+            if (url) return updateInboxMessageMedia(waId!, url);
+          })
+          .catch((e) => {
+            req.log.warn({ err: e, waId }, "download inbound media async");
+          });
+      }
     }
 
     const from =
@@ -279,6 +298,22 @@ export async function webhookRoutes(app: FastifyInstance) {
       });
       saved = true;
       touchWppWebhookSaved();
+
+      const needsMediaDownload =
+        parsed.waMessageId &&
+        isInboundMediaType(parsed.type) &&
+        !webhookMediaAlreadyInline(parsed);
+
+      if (needsMediaDownload) {
+        const waId = parsed.waMessageId;
+        void downloadInboundMedia(body, waId, parsed.rawData)
+          .then((url) => {
+            if (url) return updateInboxMessageMedia(waId!, url);
+          })
+          .catch((e) => {
+            req.log.warn({ err: e, waId }, "download evolution media async");
+          });
+      }
     }
 
     const parsed = lastParsed;

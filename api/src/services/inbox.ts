@@ -107,8 +107,6 @@ export type NormalizedMessage = {
   timestamp: number;
   type: string;
   mediaUrl?: string | null;
-  waMessageId?: string | null;
-  mediaPending?: boolean;
 };
 
 export type FetchMessagesOptions = {
