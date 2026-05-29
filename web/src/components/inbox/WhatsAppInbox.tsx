@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../../api/client";
 import { InboxComposer, type QuickReply } from "./InboxComposer";
 import { WaAudioPlayer } from "./WaAudioPlayer";
+import { WaMediaViewer } from "./WaMediaViewer";
 import { WhatsAppAvatar } from "./WhatsAppAvatar";
 
 type Tag = { id: string; name: string; color: string };
@@ -100,30 +101,20 @@ const InboxMessageContent = memo(function InboxMessageContent({
       m.type === "ptt");
 
   if (isMedia && (m.type === "image" || m.type === "sticker")) {
+    const caption = showCaption ? m.body : undefined;
     return (
-      <div className="space-y-1">
-        <img
-          src={url}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          className="max-w-full rounded-xl max-h-72 object-contain"
-        />
-        {showCaption && <p className="text-sm whitespace-pre-wrap">{m.body}</p>}
+      <div className="space-y-1 -mx-0.5">
+        <WaMediaViewer src={url} kind={m.type === "sticker" ? "sticker" : "image"} caption={caption} />
+        {showCaption && <p className="text-sm whitespace-pre-wrap px-0.5">{m.body}</p>}
       </div>
     );
   }
   if (isMedia && m.type === "video") {
+    const caption = showCaption ? m.body : undefined;
     return (
-      <div className="space-y-1">
-        <video
-          src={url}
-          controls
-          preload="metadata"
-          playsInline
-          className="wa-video w-full min-w-[240px] max-w-[min(100%,360px)] rounded-xl max-h-80 bg-black/40"
-        />
-        {showCaption && <p className="text-sm whitespace-pre-wrap">{m.body}</p>}
+      <div className="space-y-1 -mx-0.5">
+        <WaMediaViewer src={url} kind="video" caption={caption} />
+        {showCaption && <p className="text-sm whitespace-pre-wrap px-0.5">{m.body}</p>}
       </div>
     );
   }
@@ -232,12 +223,14 @@ const ChatListRow = memo(function ChatListRow({
 });
 
 const MessageRow = memo(function MessageRow({ message: m }: { message: Message }) {
+  const isVisualMedia =
+    m.type === "image" || m.type === "sticker" || m.type === "video" || m.type === "audio" || m.type === "ptt";
   return (
     <div className={`flex py-0.5 ${m.fromMe ? "justify-end" : "justify-start"}`}>
       <div
-        className={`wa-bubble max-w-[min(78%,420px)] px-3 py-1.5 break-words ${
-          m.fromMe ? "wa-bubble-out" : "wa-bubble-in"
-        }`}
+        className={`wa-bubble break-words ${
+          isVisualMedia ? "max-w-[min(88%,480px)] px-1.5 py-1" : "max-w-[min(78%,420px)] px-3 py-1.5"
+        } ${m.fromMe ? "wa-bubble-out" : "wa-bubble-in"}`}
       >
         <InboxMessageContent message={m} />
         <div

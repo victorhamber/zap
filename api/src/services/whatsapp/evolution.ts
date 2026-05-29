@@ -280,19 +280,33 @@ export async function sendVideo(phone: string, url: string, caption?: string): P
   return extractEvolutionSentMessageId(data);
 }
 
-export async function sendAudio(phone: string, url: string): Promise<string | null> {
+export async function sendAudio(phone: string, media: string): Promise<string | null> {
   const instance = await getInstanceName();
   const number = await resolveEvolutionSendNumber(phone);
-  const res = await evoFetch(`/message/sendMedia/${encodeURIComponent(instance)}`, {
-    method: "POST",
-    body: JSON.stringify({
-      number,
-      mediatype: "audio",
-      media: url
-    })
-  });
+
+  let audio: string;
+  if (media.startsWith("data:")) {
+    const match = media.match(/^data:[^;]+;base64,(.+)$/s);
+    audio = match ? match[1].replace(/\s/g, "") : media;
+  } else if (media.startsWith("http://") || media.startsWith("https://")) {
+    audio = rewriteUploadUrlForWpp(media);
+  } else {
+    audio = media.replace(/\s/g, "");
+  }
+
+  const res = await evoFetch(
+    `/message/sendWhatsAppAudio/${encodeURIComponent(instance)}`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        number,
+        audio,
+        encoding: true
+      })
+    }
+  );
   const data = await readJson(res);
-  if (!res.ok) throw new Error(`sendMedia audio: ${formatWppError(res.status, data)}`);
+  if (!res.ok) throw new Error(`sendWhatsAppAudio: ${formatWppError(res.status, data)}`);
   return extractEvolutionSentMessageId(data);
 }
 

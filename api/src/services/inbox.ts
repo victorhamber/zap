@@ -670,10 +670,9 @@ export async function sendChatMedia(
           base64Ptt = converted.base64;
           storedMediaUrl = converted.url;
         } catch {
-          const media = await prepareMediaForSend(url, mime);
-          await sendWppApi("/send-voice", { ...payload, path: media.wppPath });
-          storedMediaUrl = media.publicUrl;
-          return;
+          base64Ptt = base64FromDataUrl(url);
+          const saved = await saveUploadFromData(url, mime);
+          storedMediaUrl = saved.url;
         }
       } else {
         base64Ptt = base64FromDataUrl(url);
