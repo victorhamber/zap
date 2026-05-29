@@ -3,22 +3,29 @@ import { prisma } from "../prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import { env } from "../env.js";
 import * as wpp from "../services/wppconnect.js";
-import { dismissSession, getDismissedSessions, undismissSession } from "../utils/wppDismissed.js";
+import { resetInboxForSession } from "../services/inboxStore.js";
+import { undismissSession } from "../utils/wppDismissed.js";
 
-function parseSessionNames(serverPayload: unknown): string[] {
-  if (!serverPayload) return [];
-  if (Array.isArray(serverPayload)) {
-    return serverPayload.map((x) => String(x));
+function buildKeepSessionNames(
+  instanceNames: string[],
+  activeSession: string
+): string[] {
+  const names = new Set<string>();
+  for (const n of instanceNames) {
+    const t = n.trim().toLowerCase();
+    if (t) names.add(t);
   }
-  if (typeof serverPayload === "object") {
-    const o = serverPayload as Record<string, unknown>;
-    if (Array.isArray(o.response)) return o.response.map((x) => String(x));
-    if (Array.isArray(o.sessions)) return o.sessions.map((x) => String(x));
-    if (o.response && typeof o.response === "object") {
-      return Object.keys(o.response as object);
-    }
-  }
-  return [];
+  const active = activeSession.trim().toLowerCase();
+  if (active) names.add(active);
+  return [...names];
+}
+
+async function syncOrphanSessionsOnServer(keepNames: string[]): Promise<{
+  purged: string[];
+  failed: Array<{ name: string; error: string }>;
+} | null> {
+  if (!env.WPP_AUTO_PURGE_ORPHANS) return null;
+  return wpp.purgeOrphanWppSessions(keepNames);
 }
 
 export async function wppRoutes(app: FastifyInstance) {
@@ -30,17 +37,30 @@ export async function wppRoutes(app: FastifyInstance) {
     const settings = await prisma.appSettings.findUnique({ where: { id: "default" } });
     const active = settings?.wppSession ?? env.WPP_SESSION;
     const instances = await prisma.wppInstance.findMany({ orderBy: { createdAt: "asc" } });
+    const instanceNames = instances.map((i) => i.name);
+    const keepNames = buildKeepSessionNames(instanceNames, active);
+
+    let orphanCleanup: { purged: string[]; failed: Array<{ name: string; error: string }> } | null =
+      null;
+    try {
+      orphanCleanup = await syncOrphanSessionsOnServer(keepNames);
+      if (orphanCleanup?.purged.length) {
+        for (const n of orphanCleanup.purged) {
+          await undismissSession(n);
+          await resetInboxForSession(n);
+        }
+      }
+    } catch {
+      /* WPP offline */
+    }
 
     let serverSessions: string[] = [];
     try {
       const raw = await wpp.listServerSessions();
-      serverSessions = parseSessionNames(raw);
+      serverSessions = wpp.parseWppServerSessionNames(raw);
     } catch {
       /* servidor pode estar offline */
     }
-
-    const dismissed = await getDismissedSessions();
-    serverSessions = serverSessions.filter((s) => !dismissed.includes(s.toLowerCase()));
 
     return {
       active,
@@ -51,7 +71,8 @@ export async function wppRoutes(app: FastifyInstance) {
         isActive: i.name === active,
         onServer: serverSessions.includes(i.name)
       })),
-      serverSessions
+      serverSessions,
+      orphanCleanup
     };
   });
 
@@ -111,27 +132,65 @@ export async function wppRoutes(app: FastifyInstance) {
 
   app.delete("/api/wpp/instances/:name", async (req, reply) => {
     if (!prisma) return reply.status(503).send({ error: "Banco indisponível" });
-    const name = (req.params as { name: string }).name;
+    const name = (req.params as { name: string }).name.trim().toLowerCase();
 
     const settings = await prisma.appSettings.findUnique({ where: { id: "default" } });
-    if (settings?.wppSession === name) {
-      try {
-        await wpp.closeSession();
-      } catch {
-        /* ignora */
-      }
-    }
+    const wasActive = settings?.wppSession === name;
+
+    const purge = await wpp.purgeWppSessionFromServer(name);
+    await resetInboxForSession(name);
+    await undismissSession(name);
 
     await prisma.wppInstance.deleteMany({ where: { name } });
-    await dismissSession(name);
 
     const remaining = await prisma.wppInstance.findFirst({ orderBy: { createdAt: "asc" } });
-    if (remaining && settings?.wppSession === name) {
+    if (remaining && wasActive) {
       await wpp.setActiveSession(remaining.name);
       await wpp.refreshWppToken(remaining.name).catch(() => {});
     }
 
-    return { ok: true, message: `Instância "${name}" removida do painel. A sessão pode continuar no servidor WPP.` };
+    const message = purge.ok
+      ? `Instância "${name}" removida do painel e do servidor WPP.`
+      : `Instância "${name}" removida do painel. Não foi possível limpar no WPP: ${purge.detail}`;
+
+    return {
+      ok: true,
+      purge,
+      message,
+      warning: purge.ok ? undefined : purge.detail
+    };
+  });
+
+  app.post("/api/wpp/cleanup-orphans", async (_req, reply) => {
+    if (!prisma) return reply.status(503).send({ error: "Banco indisponível" });
+
+    const settings = await prisma.appSettings.findUnique({ where: { id: "default" } });
+    const active = settings?.wppSession ?? env.WPP_SESSION;
+    const instances = await prisma.wppInstance.findMany();
+    const keepNames = buildKeepSessionNames(
+      instances.map((i) => i.name),
+      active
+    );
+
+    try {
+      const result = await wpp.purgeOrphanWppSessions(keepNames);
+      for (const n of result.purged) {
+        await undismissSession(n);
+        await resetInboxForSession(n);
+      }
+      return {
+        ok: result.failed.length === 0,
+        ...result,
+        message:
+          result.purged.length > 0
+            ? `Removidas do servidor WPP: ${result.purged.join(", ")}`
+            : result.failed.length > 0
+              ? "Nenhuma sessão removida — veja os erros."
+              : "Nenhuma sessão órfã no servidor WPP."
+      };
+    } catch (e: any) {
+      return reply.status(502).send({ ok: false, error: e?.message ?? String(e) });
+    }
   });
 
   app.post("/api/wpp/sync-webhook", async (_req, reply) => {

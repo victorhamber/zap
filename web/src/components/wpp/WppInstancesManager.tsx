@@ -9,6 +9,11 @@ type Instance = {
   onServer: boolean;
 };
 
+type OrphanCleanup = {
+  purged: string[];
+  failed: Array<{ name: string; error: string }>;
+};
+
 export function WppInstancesManager({ onActivated }: { onActivated?: () => void }) {
   const [instances, setInstances] = useState<Instance[]>([]);
   const [serverSessions, setServerSessions] = useState<string[]>([]);
@@ -24,10 +29,16 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
       active: string;
       instances: Instance[];
       serverSessions: string[];
+      orphanCleanup?: OrphanCleanup | null;
     }>("/api/wpp/instances");
     setInstances(r.instances);
     setActive(r.active);
     setServerSessions(r.serverSessions);
+    if (r.orphanCleanup?.purged?.length) {
+      setMsg(
+        `Limpeza automática no servidor WPP: removidas ${r.orphanCleanup.purged.join(", ")}.`
+      );
+    }
   }, []);
 
   useEffect(() => {
@@ -85,20 +96,50 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
   async function remove(name: string) {
     if (
       !confirm(
-        `Remover "${name}" do painel Zap?\n\nA sessão pode continuar no servidor WPP, mas não voltará a aparecer aqui automaticamente.`
+        `Remover "${name}"?\n\nA sessão será apagada também no servidor WPP (tokens e pasta do Chrome).`
       )
     )
       return;
     setLoading(true);
+    setError("");
     try {
-      const r = await api<{ ok: boolean; message?: string }>(
+      const r = await api<{ ok: boolean; message?: string; warning?: string }>(
         `/api/wpp/instances/${encodeURIComponent(name)}`,
         { method: "DELETE" }
       );
       await load();
-      setMsg(r.message ?? `Instância "${name}" removida.`);
+      if (r.warning) {
+        setError(r.warning);
+        setMsg(r.message ?? `Instância "${name}" removida do painel.`);
+      } else {
+        setMsg(r.message ?? `Instância "${name}" removida.`);
+      }
+      onActivated?.();
     } catch (e: any) {
       setError(e?.message ?? "Erro ao remover");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function cleanupOrphans() {
+    setLoading(true);
+    setError("");
+    setMsg("");
+    try {
+      const r = await api<{
+        ok: boolean;
+        message?: string;
+        purged?: string[];
+        failed?: Array<{ name: string; error: string }>;
+      }>("/api/wpp/cleanup-orphans", { method: "POST", body: JSON.stringify({}) });
+      await load();
+      setMsg(r.message ?? "Limpeza concluída.");
+      if (r.failed?.length) {
+        setError(r.failed.map((f) => `${f.name}: ${f.error}`).join(" · "));
+      }
+    } catch (e: any) {
+      setError(e?.message ?? "Erro na limpeza");
     } finally {
       setLoading(false);
     }
@@ -110,7 +151,8 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
     <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-5">
       <h2 className="text-lg font-semibold text-white">Instâncias WhatsApp</h2>
       <p className="text-sm text-zinc-400 mt-1">
-        Cada instância = um WhatsApp diferente. Crie aqui, depois conecte o QR na aba Conexão.
+        Cada instância = um WhatsApp diferente. Ao remover, o Zap apaga a sessão no servidor WPP.
+        Sessões antigas que não estão no painel são limpas automaticamente ao abrir esta tela.
       </p>
 
       {error && (
@@ -175,6 +217,7 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
                 disabled={loading || inst.isActive}
                 onClick={() => remove(inst.name)}
                 className="rounded-lg border border-red-900/40 px-3 py-1.5 text-xs text-red-300 hover:bg-red-950/30 disabled:opacity-40"
+                title={inst.isActive ? "Ative outra instância antes de remover esta" : undefined}
               >
                 Remover
               </button>
@@ -189,30 +232,20 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
       {orphanServer.length > 0 && (
         <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-zinc-400">
           <p className="text-amber-200/90 font-medium mb-1">
-            Sessões no servidor WPP (importar manualmente)
+            Sessões órfãs no servidor WPP ({orphanServer.join(", ")})
           </p>
           <p className="mb-2 text-zinc-500">
-            Só aparecem aqui se você quiser adicionar de volta ao painel.
+            Não estão cadastradas no painel. Serão removidas automaticamente ao recarregar, ou use o
+            botão abaixo.
           </p>
-          <div className="flex flex-wrap gap-2">
-            {orphanServer.map((s) => (
-              <button
-                key={s}
-                type="button"
-                disabled={loading}
-                onClick={async () => {
-                  await api("/api/wpp/instances", {
-                    method: "POST",
-                    body: JSON.stringify({ name: s, label: s, connect: false })
-                  });
-                  await load();
-                }}
-                className="rounded-lg border border-zinc-700 px-2 py-1 hover:bg-zinc-800"
-              >
-                + {s}
-              </button>
-            ))}
-          </div>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={cleanupOrphans}
+            className="rounded-lg border border-amber-700/50 px-3 py-1.5 text-amber-200 hover:bg-amber-950/30 disabled:opacity-50"
+          >
+            Limpar sessões órfãs agora
+          </button>
         </div>
       )}
 

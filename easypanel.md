@@ -80,7 +80,11 @@ WPP_AUTO_RECONNECT=true
 WPP_RECONNECT_INTERVAL_SEC=120
 WPP_RECONNECT_COOLDOWN_SEC=180
 WPP_HUMANIZE=true
+# Remove no WPP sessões que não estão cadastradas no painel (padrão: true)
+WPP_AUTO_PURGE_ORPHANS=true
 ```
+
+**Instâncias:** ao clicar em **Remover** no painel, o Zap chama `clear-session-data` no WPP (apaga `tokens/` e `userDataDir/` da sessão). Ao abrir a lista de instâncias, sessões órfãs no servidor são limpas automaticamente (desligue com `WPP_AUTO_PURGE_ORPHANS=false` se precisar importar uma sessão antiga manualmente).
 
 `WPP_AUTO_RECONNECT=false` desliga a reconexão em background. **Fechar sessão** no painel marca `PAUSED` (não reconecta sozinho); **Desconectar** marca `LOGOUT`.
 

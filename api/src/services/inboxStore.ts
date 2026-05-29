@@ -71,6 +71,14 @@ export async function resetInboxCapture(clearMessages = true): Promise<void> {
   });
 }
 
+/** Remove mensagens locais de uma instância excluída do painel. */
+export async function resetInboxForSession(sessionName: string): Promise<void> {
+  if (!prisma) return;
+  const session = sessionName.trim().toLowerCase();
+  if (!session) return;
+  await prisma.inboxMessage.deleteMany({ where: { session } });
+}
+
 function extractMediaUrl(body: Record<string, unknown>): string | null {
   for (const key of ["fileUrl", "mediaUrl"] as const) {
     const v = body[key];

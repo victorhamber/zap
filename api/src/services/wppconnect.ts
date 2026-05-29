@@ -961,6 +961,28 @@ export async function logoutSession(): Promise<{ raw?: unknown; noSession: boole
   return { noSession: false, raw: body };
 }
 
+export function parseWppServerSessionNames(serverPayload: unknown): string[] {
+  if (!serverPayload) return [];
+  if (Array.isArray(serverPayload)) {
+    return serverPayload.map((x) => String(x).trim().toLowerCase()).filter(Boolean);
+  }
+  if (typeof serverPayload === "object") {
+    const o = serverPayload as Record<string, unknown>;
+    if (Array.isArray(o.response)) {
+      return o.response.map((x) => String(x).trim().toLowerCase()).filter(Boolean);
+    }
+    if (Array.isArray(o.sessions)) {
+      return o.sessions.map((x) => String(x).trim().toLowerCase()).filter(Boolean);
+    }
+    if (o.response && typeof o.response === "object") {
+      return Object.keys(o.response as object)
+        .map((x) => x.trim().toLowerCase())
+        .filter(Boolean);
+    }
+  }
+  return [];
+}
+
 export async function listServerSessions(): Promise<unknown> {
   const settings = await getSettings();
   const base = wppBaseUrl(settings);
@@ -977,6 +999,78 @@ export async function listServerSessions(): Promise<unknown> {
     throw new Error(`show-all-sessions: ${formatWppError(res.status, body)}`);
   }
   return body;
+}
+
+const PURGE_GAP_MS = 400;
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Remove tokens, userDataDir e referências da sessão no WPPConnect (clear-session-data).
+ */
+export async function purgeWppSessionFromServer(
+  sessionName: string
+): Promise<{ ok: boolean; detail: string }> {
+  const name = sessionName.trim().toLowerCase();
+  if (!name) return { ok: false, detail: "Nome de sessão vazio" };
+  if (!/^[\w-]{2,64}$/i.test(name)) {
+    return { ok: false, detail: "Nome de sessão inválido" };
+  }
+
+  const settings = await getSettings();
+  const isActive = settings.wppSession.toLowerCase() === name;
+
+  if (isActive) {
+    try {
+      await closeSession();
+    } catch {
+      /* browser pode já estar fechado */
+    }
+    await clearWppStoredAuth("REMOVED");
+  }
+
+  const base = wppBaseUrl(settings);
+  const url = `${base}/api/${encodeURIComponent(name)}/${encodeURIComponent(env.WPP_SECRET_KEY)}/clear-session-data`;
+
+  try {
+    const res = await fetch(url, { method: "POST", headers: { accept: "application/json" } });
+    const body = await readWppJson(res);
+    if (res.ok) {
+      return { ok: true, detail: "Sessão removida do servidor WPP (tokens e perfil Chrome)." };
+    }
+    return { ok: false, detail: formatWppError(res.status, body) };
+  } catch (e: any) {
+    return { ok: false, detail: e?.message ?? String(e) };
+  }
+}
+
+/** Apaga no WPP todas as sessões que não estão na lista keepNames (nomes do painel + sessão ativa). */
+export async function purgeOrphanWppSessions(keepNames: string[]): Promise<{
+  purged: string[];
+  failed: Array<{ name: string; error: string }>;
+}> {
+  const keep = new Set(keepNames.map((n) => n.trim().toLowerCase()).filter(Boolean));
+  let server: string[] = [];
+  try {
+    server = parseWppServerSessionNames(await listServerSessions());
+  } catch (e: any) {
+    return { purged: [], failed: [{ name: "*", error: e?.message ?? String(e) }] };
+  }
+
+  const purged: string[] = [];
+  const failed: Array<{ name: string; error: string }> = [];
+
+  for (const name of server) {
+    if (keep.has(name.toLowerCase())) continue;
+    const result = await purgeWppSessionFromServer(name);
+    if (result.ok) purged.push(name);
+    else failed.push({ name, error: result.detail });
+    await sleepMs(PURGE_GAP_MS);
+  }
+
+  return { purged, failed };
 }
 
 export async function runWppDiagnostics() {
