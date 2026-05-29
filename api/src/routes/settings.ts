@@ -228,9 +228,11 @@ export async function settingsRoutes(app: FastifyInstance) {
       if (prisma) {
         const cs = result.connected
           ? `CONNECTED:${result.state}`
-          : result.connecting || wpp.sessionNeedsQr(result.state ?? "")
-            ? `AWAITING_QR:${result.state}`
-            : `DISCONNECTED:${result.state}`;
+          : result.ghostSession
+            ? `DISCONNECTED:GHOST`
+            : result.connecting || wpp.sessionNeedsQr(result.state ?? "")
+              ? `AWAITING_QR:${result.state}`
+              : `DISCONNECTED:${result.state}`;
         await prisma.appSettings.update({
           where: { id: "default" },
           data: { connectionStatus: cs }

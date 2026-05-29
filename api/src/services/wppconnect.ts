@@ -103,6 +103,7 @@ export async function clearWppStoredAuth(connectionStatus: string): Promise<void
 /** Janela em que o Zap não deve logout/start/check agressivo (QR + sync após scan). */
 let pairingQuietUntil = 0;
 const PAIRING_GRACE_MS = 180_000;
+const QR_SUCCESS_GRACE_MS = 300_000;
 
 function extendPairingQuiet(extraMs = PAIRING_GRACE_MS): void {
   pairingQuietUntil = Math.max(pairingQuietUntil, Date.now() + extraMs);
@@ -117,7 +118,7 @@ function clearPairingQuiet(): void {
 }
 
 function touchQrReadSuccess(): void {
-  extendPairingQuiet();
+  pairingQuietUntil = Math.max(pairingQuietUntil, Date.now() + QR_SUCCESS_GRACE_MS);
 }
 
 /** Estado estável com aparelho pareado (não QR / CONNECTING). */
@@ -180,6 +181,13 @@ export async function handleWppLifecycleWebhook(body: Record<string, unknown>): 
   const status = String(body.status ?? body.state ?? "").trim();
   const st = normalizeStatusFind(status);
 
+  const webhookSession = String(body.session ?? "").trim().toLowerCase();
+  const settings = await getSettings();
+  const activeSession = settings.wppSession.trim().toLowerCase();
+  if (webhookSession && webhookSession !== activeSession) {
+    return true;
+  }
+
   if (ev === "logoutsession") {
     if (!isPairingQuiet()) await markSessionRequiresQr("LOGOUT");
     return true;
@@ -188,9 +196,11 @@ export async function handleWppLifecycleWebhook(body: Record<string, unknown>): 
     if (st === "qrreadsuccess" || st === "islogged") {
       touchQrReadSuccess();
       await persistConnectionStatus(
-        st === "islogged" ? "CONNECTED:ISLOGGED" : "CONNECTED:PAIRING",
+        st === "islogged" ? "CONNECTED:ISLOGGED" : "CONNECTED:QRREADSUCCESS",
         body
       );
+      const { ensureInboxCaptureStarted } = await import("./inboxStore.js");
+      await ensureInboxCaptureStarted();
       return true;
     }
     if (st === "browserclose" && isPairingQuiet()) {
@@ -599,6 +609,7 @@ export async function verifyActiveSession() {
 
   const sessionAlive = isWppConnectedState(state);
   const disconnected = isDisconnectedState(state);
+  const stablePhone = isStablePhoneConnectionState(state);
   const pairingStates = new Set(["OPENING", "PAIRING", "SYNCING", "INITIALIZING"]);
   const isPairing = pairingStates.has(state);
   const isConnecting =
@@ -608,14 +619,19 @@ export async function verifyActiveSession() {
     state === "QR";
   /** Browser aberto no WPP mas aparelho já removido em “Aparelhos conectados”. */
   const syncedStates = new Set(["MAIN", "INCHAT", "CONNECTED", "SUCCESS", "NORMAL"]);
+  const needsQr = sessionNeedsQr(state);
+  const connected =
+    !disconnected &&
+    !needsQr &&
+    (phoneConnected || stablePhone || (isPairingQuiet() && sessionAlive && !disconnected));
   const ghostSession =
+    !stablePhone &&
+    !isPairingQuiet() &&
     sessionAlive &&
     !phoneConnected &&
     !isConnecting &&
     !disconnected &&
     syncedStates.has(state);
-  const needsQr = sessionNeedsQr(state);
-  const connected = !disconnected && phoneConnected && !needsQr;
   const connecting = !disconnected && (isConnecting || needsQr) && !connected;
   const noSession = !connected && !connecting;
 
@@ -630,6 +646,8 @@ export async function verifyActiveSession() {
     message =
       `O WhatsApp foi removido no celular, mas o servidor ainda tentava usar a sessão antiga. ` +
       `Use "Desconectar" ou "Conectar / Mostrar QR" para vincular de novo.`;
+  } else if (connected && !phoneConnected && stablePhone) {
+    message = `Aparelho pareado na instância "${sessionName}" (${state}). Sincronizando com o servidor…`;
   } else if (connecting) {
     message = `Conectando instância "${sessionName}" (${state})…`;
   } else if (disconnected || state === "INDISPONÍVEL" || state === "DESCONHECIDO") {
@@ -850,7 +868,13 @@ export async function startSession(options?: {
     throw new Error(`start-session: ${mapWppErrorMessage(formatWppError(res.status, body))}`);
   }
   const state = extractSessionState(body);
-  if (isWppConnectedState(state) && !sessionNeedsQr(state)) {
+  if (isStablePhoneConnectionState(state)) {
+    touchQrReadSuccess();
+    await persistConnectionStatus(`CONNECTED:${state}`, body);
+    const { ensureInboxCaptureStarted } = await import("./inboxStore.js");
+    await ensureInboxCaptureStarted();
+  } else if (isWppConnectedState(state) && !sessionNeedsQr(state)) {
+    extendPairingQuiet();
     await persistConnectionStatus(`CONNECTED:${state}`, body);
   } else {
     extendPairingQuiet();

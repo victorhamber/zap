@@ -116,6 +116,7 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
             `Aparelho conectado na instância "${settings?.wppSession ?? ""}".`
         );
         setQrImage(null);
+        void api("/api/wpp/sync-webhook", { method: "POST", body: "{}" }).catch(() => {});
         return;
       }
 
@@ -266,7 +267,10 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
       if (r.state) setState(r.state);
 
       if (r.connected && !r.needsQr) {
+        setNoticeKind("connected");
+        setQrImage(null);
         await verifyConnection(false);
+        void api("/api/wpp/sync-webhook", { method: "POST", body: "{}" }).catch(() => {});
         return;
       }
 
@@ -473,7 +477,8 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
             <img src={qrImage} alt="QR Code WhatsApp" className="h-56 w-56 object-contain" />
           </div>
           <p className="mt-3 text-xs text-zinc-500 text-center max-w-sm">
-            Escaneie em até ~60s. O QR atualiza sozinho enquanto esta tela estiver aberta.
+            Escaneie em até 30 segundos. No wppconnect use WPP_AUTO_CLOSE=0 — senão o servidor fecha o
+            QR em 60s. Mantenha só uma instância ativa.
           </p>
         </div>
       )}
