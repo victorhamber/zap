@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../api/client";
 import type { QuickReply } from "../../types/quickReply";
+import { MicWaveform } from "./MicWaveform";
+import { useMicWaveform } from "./useMicWaveform";
 
 export type { QuickReply };
 
@@ -131,10 +133,12 @@ export function InboxComposer({
   const [attachOpen, setAttachOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [recordStream, setRecordStream] = useState<MediaStream | null>(null);
   const [recordSec, setRecordSec] = useState(0);
   const [uploading, setUploading] = useState(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const waveformLevels = useMicWaveform(recording, recordStream);
   const chunksRef = useRef<Blob[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingAccept, setPendingAccept] = useState("image/*,video/*");
@@ -183,13 +187,18 @@ export function InboxComposer({
   function stopStream() {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
+    setRecordStream(null);
   }
 
   function cancelRecording() {
-    try {
-      recorderRef.current?.stop();
-    } catch {
-      /* ignore */
+    const rec = recorderRef.current;
+    if (rec) {
+      rec.onstop = null;
+      try {
+        rec.stop();
+      } catch {
+        /* ignore */
+      }
     }
     stopStream();
     recorderRef.current = null;
@@ -222,6 +231,7 @@ export function InboxComposer({
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
+      setRecordStream(stream);
       const mime = pickAudioMimeType();
       mimeRef.current = mime;
       const rec = new MediaRecorder(stream, { mimeType: mime });
@@ -304,30 +314,27 @@ export function InboxComposer({
 
   if (recording) {
     return (
-      <div className="wa-composer shrink-0 px-3 py-3">
-        <div className="flex items-center gap-3 rounded-2xl bg-[var(--wa-bg-input)] px-3 py-2.5">
-          <button
-            type="button"
-            onClick={cancelRecording}
-            className="text-[var(--wa-text-secondary)] hover:text-[var(--wa-text-primary)] p-2 rounded-full hover:bg-white/5"
-            title="Descartar"
-          >
-            <IconTrash />
-          </button>
-          <span className="w-2 h-2 rounded-full bg-[#ea0038] shrink-0 animate-pulse" />
-          <span className="text-[var(--wa-text-primary)] text-sm tabular-nums min-w-[2.5rem]">
-            {formatRecordTime(recordSec)}
-          </span>
-          <div className="flex-1 h-1.5 rounded-full bg-[#3b4a54] overflow-hidden">
-            <div
-              className="h-full bg-[var(--wa-accent)] transition-all duration-300 rounded-full"
-              style={{ width: `${Math.min(100, 12 + recordSec * 3)}%` }}
-            />
+      <div className="wa-composer shrink-0 px-2 py-2">
+        <div className="flex items-center gap-2 max-w-full">
+          <div className="flex flex-1 min-w-0 items-center gap-1.5 h-12 rounded-full bg-[var(--wa-bg-input)] px-2 sm:px-3">
+            <button
+              type="button"
+              onClick={cancelRecording}
+              className="shrink-0 text-[var(--wa-text-secondary)] hover:text-[var(--wa-text-primary)] p-1.5 rounded-full hover:bg-white/5"
+              title="Descartar"
+            >
+              <IconTrash />
+            </button>
+            <span className="w-2 h-2 rounded-full bg-[#ea0038] shrink-0" />
+            <span className="text-[var(--wa-text-primary)] text-sm tabular-nums shrink-0 w-[2.25rem]">
+              {formatRecordTime(recordSec)}
+            </span>
+            <MicWaveform levels={waveformLevels} />
           </div>
           <button
             type="button"
             onClick={finishRecording}
-            className="h-11 w-11 rounded-full bg-[var(--wa-accent)] text-[#052e24] flex items-center justify-center shrink-0 shadow-md"
+            className="h-12 w-12 shrink-0 rounded-full bg-[#f0f2f5] text-[#111b21] flex items-center justify-center shadow-md hover:bg-white transition-colors"
             title="Enviar áudio"
           >
             <IconSend />
