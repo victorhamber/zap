@@ -3,7 +3,12 @@ import { prisma } from "../prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import { env } from "../env.js";
 import * as wpp from "../services/wppconnect.js";
-import { getLastWppWebhookAt, getLastWppWebhookEvent } from "../services/wppWebhook.js";
+import {
+  getLastWppWebhookAt,
+  getLastWppWebhookEvent,
+  getLastWppWebhookSavedAt,
+  getLastWppWebhookSkipReason
+} from "../services/wppWebhook.js";
 
 export async function settingsRoutes(app: FastifyInstance) {
   app.addHook("preHandler", requireAuth);
@@ -29,18 +34,19 @@ export async function settingsRoutes(app: FastifyInstance) {
   app.put("/api/settings/wpp", async (req) => {
     if (!prisma) throw new Error("Banco indisponível");
     const body = req.body as { wppBaseUrl?: string; wppSession?: string };
+    const wppSession = body.wppSession?.trim().toLowerCase();
     return prisma.appSettings.upsert({
       where: { id: "default" },
       update: {
         wppBaseUrl: body.wppBaseUrl,
-        wppSession: body.wppSession,
+        ...(wppSession ? { wppSession } : {}),
         wppToken: null,
         wppTokenFull: null
       },
       create: {
         id: "default",
         wppBaseUrl: body.wppBaseUrl ?? env.WPP_BASE_URL,
-        wppSession: body.wppSession ?? env.WPP_SESSION
+        wppSession: wppSession ?? env.WPP_SESSION.toLowerCase()
       }
     });
   });
@@ -241,18 +247,24 @@ export async function settingsRoutes(app: FastifyInstance) {
   app.get("/api/settings/wpp/webhook-status", async () => {
     const diag = wpp.getInboundWebhookDiagnostics();
     const lastAt = getLastWppWebhookAt();
+    const lastSavedAt = getLastWppWebhookSavedAt();
     const lastEvent = getLastWppWebhookEvent();
+    const lastSkip = getLastWppWebhookSkipReason();
     return {
       ok: true,
       ...diag,
       lastWebhookAt: lastAt,
+      lastWebhookSavedAt: lastSavedAt,
       lastWebhookEvent: lastEvent,
-      receivingOk: Boolean(lastAt),
+      lastWebhookSkipReason: lastSkip,
+      receivingOk: Boolean(lastSavedAt),
       hint: diag.needsInternalUrl
         ? "Defina ZAP_INTERNAL_URL no serviço zap (rede Docker). Sem isso o WPP não entrega mensagens recebidas."
-        : lastAt
-          ? "O Zap já recebeu eventos do WPP. Envie uma mensagem de teste e confira lastWebhookAt."
-          : "Após conectar, clique em Atualizar webhook e envie uma mensagem do celular. Se lastWebhookAt continuar vazio, o wppconnect não está alcançando o Zap."
+        : lastSavedAt
+          ? "O Zap já gravou mensagem recebida no inbox. Abra o chat no menu WhatsApp."
+          : lastAt
+            ? `O WPP chama o Zap (${lastEvent ?? "evento"}), mas nenhuma mensagem foi salva ainda${lastSkip ? ` — último skip: ${lastSkip}` : ""}. Confira instância ativa e envie texto de outro celular.`
+            : "Após conectar, clique em Atualizar webhook e envie uma mensagem do celular. Se continuar vazio, o wppconnect não está alcançando o Zap."
     };
   });
 

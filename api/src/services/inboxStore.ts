@@ -38,7 +38,24 @@ function chatIdVariants(chatId: string): string[] {
 async function getSessionName(): Promise<string> {
   if (!prisma) return "default";
   const s = await prisma.appSettings.findUnique({ where: { id: "default" } });
-  return s?.wppSession ?? "default";
+  return (s?.wppSession ?? "default").trim().toLowerCase();
+}
+
+/** Corrige sessão salva com maiúsculas (mensagens não apareciam no inbox). */
+export async function normalizeInboxSessionKeys(): Promise<void> {
+  if (!prisma) return;
+  const s = await prisma.appSettings.findUnique({ where: { id: "default" } });
+  if (!s?.wppSession) return;
+  const norm = s.wppSession.trim().toLowerCase();
+  if (s.wppSession === norm) return;
+  await prisma.inboxMessage.updateMany({
+    where: { session: s.wppSession },
+    data: { session: norm }
+  });
+  await prisma.appSettings.update({
+    where: { id: "default" },
+    data: { wppSession: norm }
+  });
 }
 
 async function getCaptureSince(): Promise<Date | null> {

@@ -1,12 +1,15 @@
 import bcrypt from "bcrypt";
 import { prisma } from "./prisma.js";
-import { env } from "./env.js";
+import { env, flags } from "./env.js";
 import { defaultHotmartGraph } from "./engine/graph.js";
 import {
   startWppReconnectWatchdog,
   tryRestoreSessionAfterDeploy
 } from "./services/wppReconnect.js";
-import { ensureInboxCaptureStarted } from "./services/inboxStore.js";
+import {
+  ensureInboxCaptureStarted,
+  normalizeInboxSessionKeys
+} from "./services/inboxStore.js";
 
 export async function bootstrapDatabase() {
   if (!prisma) return;
@@ -50,9 +53,24 @@ export async function bootstrapDatabase() {
     console.log("[bootstrap] Fluxo exemplo criado");
   }
 
+  await normalizeInboxSessionKeys();
+
   const settings = await prisma.appSettings.findUnique({ where: { id: "default" } });
   if (settings?.connectionStatus?.startsWith("CONNECTED")) {
     await ensureInboxCaptureStarted();
+  }
+
+  if (flags.isProd) {
+    if (!env.ZAP_INTERNAL_URL?.trim()) {
+      console.warn(
+        "[bootstrap] AVISO: ZAP_INTERNAL_URL não definido — mensagens recebidas do WhatsApp provavelmente NÃO chegarão ao inbox."
+      );
+    }
+    if (!env.WPP_INTERNAL_URL?.trim()) {
+      console.warn(
+        "[bootstrap] AVISO: WPP_INTERNAL_URL não definido — o Zap pode não alcançar o wppconnect na rede Docker."
+      );
+    }
   }
 
   void tryRestoreSessionAfterDeploy();

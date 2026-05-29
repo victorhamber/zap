@@ -258,9 +258,13 @@ type TokenResponse = {
   full: string;
 };
 
+function normalizeSessionName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
 export async function getActiveWppSessionName(): Promise<string> {
   const s = await getSettings();
-  return s.wppSession.trim().toLowerCase();
+  return normalizeSessionName(s.wppSession);
 }
 
 async function getSettings() {
@@ -286,7 +290,7 @@ async function getSettings() {
 }
 
 export async function setActiveSession(sessionName: string): Promise<void> {
-  const name = sessionName.trim();
+  const name = sessionName.trim().toLowerCase();
   if (!/^[\w-]{2,64}$/i.test(name)) {
     throw new Error("Nome da sessão inválido (use letras, números, _ ou -)");
   }
@@ -306,7 +310,7 @@ export async function setActiveSession(sessionName: string): Promise<void> {
 export async function refreshWppToken(sessionOverride?: string): Promise<string> {
   const settings = await getSettings();
   const base = wppBaseUrl(settings);
-  const session = sessionOverride ?? settings.wppSession;
+  const session = normalizeSessionName(sessionOverride ?? settings.wppSession);
   const secret = env.WPP_SECRET_KEY;
 
   const url = `${base}/api/${encodeURIComponent(session)}/${encodeURIComponent(secret)}/generate-token`;
@@ -354,7 +358,7 @@ async function wppFetch(path: string, init: RequestInit, retry = true): Promise<
 
   const settings = await getSettings();
   const base = wppBaseUrl(settings);
-  const session = settings.wppSession;
+  const session = normalizeSessionName(settings.wppSession);
   const token = await getWppToken();
 
   const url = `${base}/api/${encodeURIComponent(session)}${path}`;
@@ -718,7 +722,12 @@ export async function registerInboundWebhook(options?: {
     state.includes("SYNCING") ||
     isPairingQuiet()
   ) {
-    return { url: primary, ok: true, detail: "deferred_until_stable_session" };
+    return {
+      url: primary,
+      ok: false,
+      detail:
+        "Sessão ainda sincronizando (QR/conexão). Aguarde ficar conectado e clique Atualizar webhook de novo."
+    };
   }
 
   const tryUrls = [primary, ...(fallback && fallback !== primary ? [fallback] : [])];
@@ -733,7 +742,11 @@ export async function registerInboundWebhook(options?: {
   }
 
   if (!isStablePhoneConnectionState(state)) {
-    return { url: primary, ok: true, detail: "session_not_stable_yet" };
+    return {
+      url: primary,
+      ok: false,
+      detail: "WhatsApp ainda não está estável (MAIN/INCHAT). Conecte o aparelho e tente de novo."
+    };
   }
 
   try {
@@ -1232,12 +1245,15 @@ async function closeWppSessionOnServer(sessionName: string): Promise<void> {
   }
 }
 
-async function sessionStillOnServer(sessionName: string): Promise<boolean> {
+async function sessionStillOnServer(
+  sessionName: string
+): Promise<{ still: boolean; listError?: string }> {
   try {
     const names = parseWppServerSessionNames(await listServerSessions());
-    return names.includes(sessionName.trim().toLowerCase());
-  } catch {
-    return false;
+    return { still: names.includes(sessionName.trim().toLowerCase()) };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { still: true, listError: msg };
   }
 }
 
@@ -1262,7 +1278,6 @@ export async function purgeWppSessionFromServer(
     } catch {
       /* browser pode já estar fechado */
     }
-    await clearWppStoredAuth("REMOVED");
   } else {
     const remoteState = await fetchSessionStateOnServer(name);
     if (remoteState && isSessionBrowserOpenState(remoteState)) {
@@ -1282,13 +1297,24 @@ export async function purgeWppSessionFromServer(
     }
     await sleepMs(500);
 
-    const still = await sessionStillOnServer(name);
-    if (still) {
+    const check = await sessionStillOnServer(name);
+    if (check.listError) {
+      return {
+        ok: false,
+        stillOnServer: true,
+        detail: `Não foi possível confirmar remoção no WPP: ${check.listError}`
+      };
+    }
+    if (check.still) {
       return {
         ok: false,
         stillOnServer: true,
         detail: WPP_TOKEN_PATH_BUG_HINT
       };
+    }
+
+    if (isActive) {
+      await clearWppStoredAuth("REMOVED");
     }
 
     return { ok: true, detail: "Sessão removida do servidor WPP (tokens e perfil Chrome)." };
