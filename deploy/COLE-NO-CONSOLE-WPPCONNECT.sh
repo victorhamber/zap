@@ -27,6 +27,10 @@ patch_one_file() {
   grep -q '__dirname.*tokens/' "$f" 2>/dev/null || return 0
   echo "  -> $f"
   cp "$f" "${f}.bak.zap.$(date +%s)"
+  # ibsddev/wppconnect-server: aspas simples — '${session}' é literal, não template
+  sed -i "s|__dirname + '../../../tokens/\${session}.data.json'|require('path').resolve(process.cwd(), 'tokens', session + '.data.json')|g" "$f"
+  sed -i "s|__dirname + '../../../tokens/\${req.session}.data.json'|require('path').resolve(process.cwd(), 'tokens', req.session + '.data.json')|g" "$f"
+  sed -i "s|__dirname + '../../../tokens/\${req.params.session}.data.json'|require('path').resolve(process.cwd(), 'tokens', req.params.session + '.data.json')|g" "$f"
   sed -i 's|__dirname + `../../../tokens/${session}.data.json`|require("path").resolve(process.cwd(), "tokens", session + ".data.json")|g' "$f"
   sed -i 's|__dirname + `../../../tokens/${req.session}.data.json`|require("path").resolve(process.cwd(), "tokens", req.session + ".data.json")|g' "$f"
   sed -i 's|__dirname + `../../../tokens/${req.params.session}.data.json`|require("path").resolve(process.cwd(), "tokens", req.params.session + ".data.json")|g' "$f"

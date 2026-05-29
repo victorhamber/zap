@@ -24,6 +24,11 @@ patch_one_file() {
   echo "  -> $f"
   cp "$f" "${f}.bak.zap.$(date +%s)"
 
+  # ibsddev: aspas simples com ${session} literal (não interpola)
+  sed -i "s|__dirname + '../../../tokens/\${session}.data.json'|require('path').resolve(process.cwd(), 'tokens', session + '.data.json')|g" "$f"
+  sed -i "s|__dirname + '../../../tokens/\${req.session}.data.json'|require('path').resolve(process.cwd(), 'tokens', req.session + '.data.json')|g" "$f"
+  sed -i "s|__dirname + '../../../tokens/\${req.params.session}.data.json'|require('path').resolve(process.cwd(), 'tokens', req.params.session + '.data.json')|g" "$f"
+
   # Template literals (src ou dist ES2015+)
   sed -i 's|__dirname + `../../../tokens/${session}.data.json`|require("path").resolve(process.cwd(), "tokens", session + ".data.json")|g' "$f"
   sed -i 's|__dirname + `../../../tokens/${req.session}.data.json`|require("path").resolve(process.cwd(), "tokens", req.session + ".data.json")|g' "$f"
