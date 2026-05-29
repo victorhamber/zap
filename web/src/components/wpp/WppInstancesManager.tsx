@@ -17,6 +17,9 @@ type OrphanCleanup = {
 export function WppInstancesManager({ onActivated }: { onActivated?: () => void }) {
   const [instances, setInstances] = useState<Instance[]>([]);
   const [serverSessions, setServerSessions] = useState<string[]>([]);
+  const [orphanSessions, setOrphanSessions] = useState<string[]>([]);
+  const [keepNames, setKeepNames] = useState<string[]>([]);
+  const [serverError, setServerError] = useState("");
   const [active, setActive] = useState("");
   const [newName, setNewName] = useState("");
   const [newLabel, setNewLabel] = useState("");
@@ -29,20 +32,31 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
       active: string;
       instances: Instance[];
       serverSessions: string[];
+      orphanSessions?: string[];
+      keepNames?: string[];
+      serverError?: string;
       orphanCleanup?: OrphanCleanup | null;
     }>("/api/wpp/instances");
     setInstances(r.instances);
     setActive(r.active);
     setServerSessions(r.serverSessions);
+    setOrphanSessions(r.orphanSessions ?? []);
+    setKeepNames(r.keepNames ?? []);
+    setServerError(r.serverError ?? "");
     if (r.orphanCleanup?.purged?.length) {
       setMsg(
-        `Limpeza automática no servidor WPP: removidas ${r.orphanCleanup.purged.join(", ")}.`
+        `Limpeza automática: removidas ${r.orphanCleanup.purged.join(", ")}.`
+      );
+    }
+    if (r.orphanCleanup?.failed?.length) {
+      setError(
+        r.orphanCleanup.failed.map((f) => `${f.name}: ${f.error}`).join(" · ")
       );
     }
   }, []);
 
   useEffect(() => {
-    load().catch(() => {});
+    load().catch((e) => setError(e?.message ?? "Erro ao carregar instâncias"));
   }, [load]);
 
   async function createInstance() {
@@ -122,6 +136,26 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
     }
   }
 
+  async function purgeOnServer(name: string) {
+    if (!confirm(`Apagar a sessão "${name}" no servidor WPP (tokens + Chrome)?`)) return;
+    setLoading(true);
+    setError("");
+    setMsg("");
+    try {
+      const r = await api<{ ok: boolean; message?: string }>(
+        `/api/wpp/purge-server/${encodeURIComponent(name)}`,
+        { method: "POST", body: JSON.stringify({}) }
+      );
+      await load();
+      if (r.ok) setMsg(r.message ?? `Sessão "${name}" removida do servidor.`);
+      else setError(r.message ?? "Falha ao apagar no servidor");
+    } catch (e: any) {
+      setError(e?.message ?? "Erro ao apagar no servidor");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function cleanupOrphans() {
     setLoading(true);
     setError("");
@@ -132,11 +166,17 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
         message?: string;
         purged?: string[];
         failed?: Array<{ name: string; error: string }>;
+        targets?: string[];
+        serverSessionsBefore?: string[];
+        serverError?: string;
       }>("/api/wpp/cleanup-orphans", { method: "POST", body: JSON.stringify({}) });
       await load();
       setMsg(r.message ?? "Limpeza concluída.");
       if (r.failed?.length) {
         setError(r.failed.map((f) => `${f.name}: ${f.error}`).join(" · "));
+      }
+      if (r.serverError) {
+        setError((prev) => (prev ? `${prev} · ` : "") + r.serverError);
       }
     } catch (e: any) {
       setError(e?.message ?? "Erro na limpeza");
@@ -145,14 +185,12 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
     }
   }
 
-  const orphanServer = serverSessions.filter((s) => !instances.some((i) => i.name === s));
-
   return (
     <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-5">
       <h2 className="text-lg font-semibold text-white">Instâncias WhatsApp</h2>
       <p className="text-sm text-zinc-400 mt-1">
-        Cada instância = um WhatsApp diferente. Ao remover, o Zap apaga a sessão no servidor WPP.
-        Sessões antigas que não estão no painel são limpas automaticamente ao abrir esta tela.
+        Remover no painel apaga a sessão no WPP. Use &quot;Limpar órfãs&quot; para sessões que só
+        existem no servidor.
       </p>
 
       {error && (
@@ -161,6 +199,13 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
         </div>
       )}
       {msg && <p className="mt-3 text-sm text-emerald-400/90">{msg}</p>}
+
+      {serverError && (
+        <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+          Não foi possível listar o WPP: {serverError}. Confira WPP_INTERNAL_URL e se o serviço
+          wppconnect está online.
+        </div>
+      )}
 
       <div className="mt-4 flex flex-wrap gap-2">
         <input
@@ -182,6 +227,14 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
           className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 disabled:opacity-50"
         >
           + Nova instância
+        </button>
+        <button
+          type="button"
+          disabled={loading}
+          onClick={cleanupOrphans}
+          className="rounded-xl border border-zinc-600 px-4 py-2 text-sm hover:bg-zinc-800 disabled:opacity-50"
+        >
+          Limpar órfãs no WPP
         </button>
       </div>
 
@@ -212,6 +265,16 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
                   Usar esta
                 </button>
               )}
+              {inst.onServer && !inst.isActive && (
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => purgeOnServer(inst.name)}
+                  className="rounded-lg border border-amber-800/50 px-3 py-1.5 text-xs text-amber-200 hover:bg-amber-950/30"
+                >
+                  Apagar no WPP
+                </button>
+              )}
               <button
                 type="button"
                 disabled={loading || inst.isActive}
@@ -229,25 +292,37 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
         )}
       </ul>
 
-      {orphanServer.length > 0 && (
-        <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-zinc-400">
-          <p className="text-amber-200/90 font-medium mb-1">
-            Sessões órfãs no servidor WPP ({orphanServer.join(", ")})
+      <div className="mt-4 rounded-xl border border-zinc-800 bg-zinc-900/30 p-3 text-xs text-zinc-400">
+        <p className="text-zinc-300 font-medium mb-1">Servidor WPP (show-all-sessions)</p>
+        {serverSessions.length === 0 ? (
+          <p className="text-zinc-500">Nenhuma sessão listada{serverError ? " (erro acima)" : ""}.</p>
+        ) : (
+          <p className="font-mono text-zinc-400">{serverSessions.join(", ")}</p>
+        )}
+        {keepNames.length > 0 && (
+          <p className="mt-2 text-zinc-500">
+            Protegidas no painel: <span className="text-zinc-400">{keepNames.join(", ")}</span>
           </p>
-          <p className="mb-2 text-zinc-500">
-            Não estão cadastradas no painel. Serão removidas automaticamente ao recarregar, ou use o
-            botão abaixo.
-          </p>
-          <button
-            type="button"
-            disabled={loading}
-            onClick={cleanupOrphans}
-            className="rounded-lg border border-amber-700/50 px-3 py-1.5 text-amber-200 hover:bg-amber-950/30 disabled:opacity-50"
-          >
-            Limpar sessões órfãs agora
-          </button>
-        </div>
-      )}
+        )}
+        {orphanSessions.length > 0 && (
+          <div className="mt-3">
+            <p className="text-amber-200/90 mb-2">Órfãs (não cadastradas): {orphanSessions.join(", ")}</p>
+            <div className="flex flex-wrap gap-2">
+              {orphanSessions.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  disabled={loading}
+                  onClick={() => purgeOnServer(s)}
+                  className="rounded-lg border border-red-900/40 px-2 py-1 text-red-300 hover:bg-red-950/30"
+                >
+                  Apagar {s}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
 
       <p className="mt-3 text-xs text-zinc-500">
         Ativa agora: <code className="text-zinc-400">{active}</code>

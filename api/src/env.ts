@@ -32,11 +32,11 @@ const EnvSchema = z.object({
     .string()
     .optional()
     .transform((v) => v === "true"),
-  /** true (padrão) = remove no WPP sessões que existem no servidor mas não estão cadastradas no painel Zap */
+  /** true = ao listar instâncias, remove órfãs no WPP (padrão false — use o botão no painel) */
   WPP_AUTO_PURGE_ORPHANS: z
     .string()
     .optional()
-    .transform((v) => v !== "false"),
+    .transform((v) => v === "true"),
 
   HOTMART_WEBHOOK_SECRET: z.string().optional(),
   ADMIN_EMAIL: z.string().email().default("admin@trajettu.com"),

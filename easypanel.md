@@ -80,11 +80,15 @@ WPP_AUTO_RECONNECT=true
 WPP_RECONNECT_INTERVAL_SEC=120
 WPP_RECONNECT_COOLDOWN_SEC=180
 WPP_HUMANIZE=true
-# Remove no WPP sessões que não estão cadastradas no painel (padrão: true)
-WPP_AUTO_PURGE_ORPHANS=true
+# Opcional: limpar órfãs ao abrir a lista (padrão: false — use o botão no painel)
+# WPP_AUTO_PURGE_ORPHANS=true
 ```
 
-**Instâncias:** ao clicar em **Remover** no painel, o Zap chama `clear-session-data` no WPP (apaga `tokens/` e `userDataDir/` da sessão). Ao abrir a lista de instâncias, sessões órfãs no servidor são limpas automaticamente (desligue com `WPP_AUTO_PURGE_ORPHANS=false` se precisar importar uma sessão antiga manualmente).
+**Instâncias:** **Remover** apaga no painel e no WPP (`clear-session-data`). **Limpar órfãs no WPP** remove sessões que existem no servidor mas não estão cadastradas no painel.
+
+**QR sozinho após deploy:** o Zap **não** chama mais `start-session` no boot, só se o status era `CONNECTED:…`. Use **Conectar / Mostrar QR** manualmente.
+
+**WPP ainda com `Auto close 60s`:** no serviço **wppconnect**, defina `WPP_AUTO_CLOSE=0` e `WPP_START_ALL_SESSION=false`, reinicie **1 réplica**. Senão o QR some em 60s e aparece `Auto Close Called` no log.
 
 `WPP_AUTO_RECONNECT=false` desliga a reconexão em background. **Fechar sessão** no painel marca `PAUSED` (não reconecta sozinho); **Desconectar** marca `LOGOUT`.
 

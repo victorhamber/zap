@@ -961,26 +961,56 @@ export async function logoutSession(): Promise<{ raw?: unknown; noSession: boole
   return { noSession: false, raw: body };
 }
 
+function sessionNameFromTokenEntry(entry: unknown): string | null {
+  if (typeof entry === "string") {
+    const t = entry.trim().toLowerCase();
+    return t || null;
+  }
+  if (entry && typeof entry === "object") {
+    const o = entry as Record<string, unknown>;
+    for (const key of ["session", "name", "sessionName"] as const) {
+      const v = o[key];
+      if (typeof v === "string" && v.trim()) return v.trim().toLowerCase();
+    }
+  }
+  return null;
+}
+
 export function parseWppServerSessionNames(serverPayload: unknown): string[] {
-  if (!serverPayload) return [];
-  if (Array.isArray(serverPayload)) {
-    return serverPayload.map((x) => String(x).trim().toLowerCase()).filter(Boolean);
-  }
-  if (typeof serverPayload === "object") {
-    const o = serverPayload as Record<string, unknown>;
-    if (Array.isArray(o.response)) {
-      return o.response.map((x) => String(x).trim().toLowerCase()).filter(Boolean);
+  const names = new Set<string>();
+
+  const collect = (value: unknown) => {
+    if (!value) return;
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const n = sessionNameFromTokenEntry(item);
+        if (n) names.add(n);
+      }
+      return;
     }
-    if (Array.isArray(o.sessions)) {
-      return o.sessions.map((x) => String(x).trim().toLowerCase()).filter(Boolean);
+    if (typeof value === "object") {
+      const o = value as Record<string, unknown>;
+      if (Array.isArray(o.response)) collect(o.response);
+      else if (Array.isArray(o.sessions)) collect(o.sessions);
+      else if (typeof o.response === "string") {
+        const n = o.response.trim().toLowerCase();
+        if (n) names.add(n);
+      } else if (o.response && typeof o.response === "object") {
+        for (const key of Object.keys(o.response as object)) {
+          const n = key.trim().toLowerCase();
+          if (n) names.add(n);
+        }
+      } else {
+        for (const key of Object.keys(o)) {
+          const n = sessionNameFromTokenEntry(o[key]) ?? key.trim().toLowerCase();
+          if (n && n !== "response" && n !== "status") names.add(n);
+        }
+      }
     }
-    if (o.response && typeof o.response === "object") {
-      return Object.keys(o.response as object)
-        .map((x) => x.trim().toLowerCase())
-        .filter(Boolean);
-    }
-  }
-  return [];
+  };
+
+  collect(serverPayload);
+  return [...names];
 }
 
 export async function listServerSessions(): Promise<unknown> {
@@ -1007,12 +1037,54 @@ function sleepMs(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Fecha o browser de uma sessão específica sem trocar a instância ativa no Postgres. */
+async function closeWppSessionOnServer(sessionName: string): Promise<void> {
+  const name = sessionName.trim().toLowerCase();
+  const settings = await getSettings();
+  const base = wppBaseUrl(settings);
+  const secret = env.WPP_SECRET_KEY;
+  const tokenUrl = `${base}/api/${encodeURIComponent(name)}/${encodeURIComponent(secret)}/generate-token`;
+  let tokenRes: Response;
+  try {
+    tokenRes = await fetch(tokenUrl, { method: "POST", headers: { accept: "application/json" } });
+  } catch {
+    return;
+  }
+  const tokenBody = await readWppJson(tokenRes);
+  if (!tokenRes.ok) return;
+  const token = (tokenBody as TokenResponse).token;
+  if (!token) return;
+
+  try {
+    await fetch(`${base}/api/${encodeURIComponent(name)}/close-session`, {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json"
+      },
+      body: "{}"
+    });
+  } catch {
+    /* ignora */
+  }
+}
+
+async function sessionStillOnServer(sessionName: string): Promise<boolean> {
+  try {
+    const names = parseWppServerSessionNames(await listServerSessions());
+    return names.includes(sessionName.trim().toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Remove tokens, userDataDir e referências da sessão no WPPConnect (clear-session-data).
  */
 export async function purgeWppSessionFromServer(
   sessionName: string
-): Promise<{ ok: boolean; detail: string }> {
+): Promise<{ ok: boolean; detail: string; stillOnServer?: boolean }> {
   const name = sessionName.trim().toLowerCase();
   if (!name) return { ok: false, detail: "Nome de sessão vazio" };
   if (!/^[\w-]{2,64}$/i.test(name)) {
@@ -1029,6 +1101,9 @@ export async function purgeWppSessionFromServer(
       /* browser pode já estar fechado */
     }
     await clearWppStoredAuth("REMOVED");
+  } else {
+    await closeWppSessionOnServer(name);
+    await sleepMs(300);
   }
 
   const base = wppBaseUrl(settings);
@@ -1037,10 +1112,27 @@ export async function purgeWppSessionFromServer(
   try {
     const res = await fetch(url, { method: "POST", headers: { accept: "application/json" } });
     const body = await readWppJson(res);
-    if (res.ok) {
-      return { ok: true, detail: "Sessão removida do servidor WPP (tokens e perfil Chrome)." };
+    if (!res.ok) {
+      return { ok: false, detail: formatWppError(res.status, body) };
     }
-    return { ok: false, detail: formatWppError(res.status, body) };
+
+    await sleepMs(500);
+    const still = await sessionStillOnServer(name);
+    if (still) {
+      return {
+        ok: false,
+        stillOnServer: true,
+        detail:
+          "O WPP respondeu OK, mas a sessão ainda aparece em show-all-sessions. " +
+          "Pare o wppconnect, apague manualmente userDataDir/" +
+          name +
+          " e tokens/" +
+          name +
+          ".data.json no volume, e confira WPP_SECRET_KEY igual no zap e wppconnect."
+      };
+    }
+
+    return { ok: true, detail: "Sessão removida do servidor WPP (tokens e perfil Chrome)." };
   } catch (e: any) {
     return { ok: false, detail: e?.message ?? String(e) };
   }

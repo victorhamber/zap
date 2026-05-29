@@ -20,12 +20,13 @@ function buildKeepSessionNames(
   return [...names];
 }
 
-async function syncOrphanSessionsOnServer(keepNames: string[]): Promise<{
-  purged: string[];
-  failed: Array<{ name: string; error: string }>;
-} | null> {
-  if (!env.WPP_AUTO_PURGE_ORPHANS) return null;
-  return wpp.purgeOrphanWppSessions(keepNames);
+async function listServerSessionNames(): Promise<{ sessions: string[]; error?: string }> {
+  try {
+    const raw = await wpp.listServerSessions();
+    return { sessions: wpp.parseWppServerSessionNames(raw) };
+  } catch (e: any) {
+    return { sessions: [], error: e?.message ?? String(e) };
+  }
 }
 
 export async function wppRoutes(app: FastifyInstance) {
@@ -40,27 +41,22 @@ export async function wppRoutes(app: FastifyInstance) {
     const instanceNames = instances.map((i) => i.name);
     const keepNames = buildKeepSessionNames(instanceNames, active);
 
-    let orphanCleanup: { purged: string[]; failed: Array<{ name: string; error: string }> } | null =
-      null;
-    try {
-      orphanCleanup = await syncOrphanSessionsOnServer(keepNames);
-      if (orphanCleanup?.purged.length) {
-        for (const n of orphanCleanup.purged) {
-          await undismissSession(n);
-          await resetInboxForSession(n);
-        }
+    const { sessions: serverSessions, error: serverError } = await listServerSessionNames();
+    const orphanSessions = serverSessions.filter(
+      (s) => !keepNames.map((k) => k.toLowerCase()).includes(s.toLowerCase())
+    );
+
+    let orphanCleanup: Awaited<ReturnType<typeof wpp.purgeOrphanWppSessions>> | null = null;
+    if (env.WPP_AUTO_PURGE_ORPHANS && orphanSessions.length > 0) {
+      orphanCleanup = await wpp.purgeOrphanWppSessions(keepNames);
+      for (const n of orphanCleanup.purged) {
+        await undismissSession(n);
+        await resetInboxForSession(n);
       }
-    } catch {
-      /* WPP offline */
     }
 
-    let serverSessions: string[] = [];
-    try {
-      const raw = await wpp.listServerSessions();
-      serverSessions = wpp.parseWppServerSessionNames(raw);
-    } catch {
-      /* servidor pode estar offline */
-    }
+    const afterList =
+      orphanCleanup?.purged.length ? await listServerSessionNames() : { sessions: serverSessions };
 
     return {
       active,
@@ -69,9 +65,14 @@ export async function wppRoutes(app: FastifyInstance) {
         name: i.name,
         label: i.label,
         isActive: i.name === active,
-        onServer: serverSessions.includes(i.name)
+        onServer: afterList.sessions.includes(i.name)
       })),
-      serverSessions,
+      serverSessions: afterList.sessions,
+      keepNames,
+      orphanSessions: afterList.sessions.filter(
+        (s) => !keepNames.map((k) => k.toLowerCase()).includes(s.toLowerCase())
+      ),
+      serverError,
       orphanCleanup
     };
   });
@@ -161,6 +162,25 @@ export async function wppRoutes(app: FastifyInstance) {
     };
   });
 
+  app.post("/api/wpp/purge-server/:name", async (req, reply) => {
+    const name = (req.params as { name: string }).name.trim().toLowerCase();
+    if (!name) return reply.status(400).send({ error: "Nome obrigatório" });
+
+    const purge = await wpp.purgeWppSessionFromServer(name);
+    if (purge.ok) {
+      await resetInboxForSession(name);
+      await undismissSession(name);
+    }
+
+    return {
+      ok: purge.ok,
+      purge,
+      message: purge.ok
+        ? `Sessão "${name}" removida do servidor WPP.`
+        : `Não foi possível remover "${name}": ${purge.detail}`
+    };
+  });
+
   app.post("/api/wpp/cleanup-orphans", async (_req, reply) => {
     if (!prisma) return reply.status(503).send({ error: "Banco indisponível" });
 
@@ -172,21 +192,56 @@ export async function wppRoutes(app: FastifyInstance) {
       active
     );
 
+    const before = await listServerSessionNames();
+    if (before.error) {
+      return reply.status(502).send({
+        ok: false,
+        error: before.error,
+        message: `Não foi possível listar sessões no WPP: ${before.error}`
+      });
+    }
+
+    const targets = before.sessions.filter(
+      (s) => !keepNames.map((k) => k.toLowerCase()).includes(s.toLowerCase())
+    );
+
+    if (targets.length === 0) {
+      return {
+        ok: true,
+        purged: [],
+        failed: [],
+        keepNames,
+        serverSessions: before.sessions,
+        message:
+          before.sessions.length === 0
+            ? "Nenhuma sessão no servidor WPP (lista vazia)."
+            : `Nada a limpar: todas as ${before.sessions.length} sessão(ões) no servidor estão cadastradas no painel (${keepNames.join(", ")}). Remova a instância no painel primeiro se quiser apagá-la no WPP.`
+      };
+    }
+
     try {
       const result = await wpp.purgeOrphanWppSessions(keepNames);
       for (const n of result.purged) {
         await undismissSession(n);
         await resetInboxForSession(n);
       }
+
+      const after = await listServerSessionNames();
+
       return {
         ok: result.failed.length === 0,
         ...result,
+        keepNames,
+        targets,
+        serverSessionsBefore: before.sessions,
+        serverSessionsAfter: after.sessions,
+        serverError: after.error,
         message:
           result.purged.length > 0
             ? `Removidas do servidor WPP: ${result.purged.join(", ")}`
             : result.failed.length > 0
-              ? "Nenhuma sessão removida — veja os erros."
-              : "Nenhuma sessão órfã no servidor WPP."
+              ? `Falha ao remover: ${result.failed.map((f) => `${f.name} (${f.error})`).join("; ")}`
+              : "Nenhuma sessão removida."
       };
     } catch (e: any) {
       return reply.status(502).send({ ok: false, error: e?.message ?? String(e) });

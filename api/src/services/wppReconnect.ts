@@ -22,11 +22,13 @@ function shouldWatchReconnect(connectionStatus: string | null | undefined): bool
     cs.startsWith("LOGOUT") ||
     cs.startsWith("PAUSED") ||
     cs.startsWith("AWAITING_QR") ||
-    cs.startsWith("DISCONNECTED:")
+    cs.startsWith("DISCONNECTED:") ||
+    cs === "token_ok" ||
+    cs === "REMOVED"
   ) {
     return false;
   }
-  return cs.startsWith("CONNECTED:") || cs === "token_ok";
+  return cs.startsWith("CONNECTED:");
 }
 
 function needsQrScan(state: string): boolean {
@@ -140,5 +142,14 @@ export function startWppReconnectWatchdog(): void {
 }
 
 export async function tryRestoreSessionAfterDeploy(): Promise<void> {
+  if (!prisma) return;
+  const settings = await prisma.appSettings.findUnique({ where: { id: "default" } });
+  const cs = settings?.connectionStatus ?? "";
+  if (!cs.startsWith("CONNECTED:")) {
+    console.log(
+      "[wpp-reconnect] Deploy: não inicia sessão automaticamente (use Conectar / QR no painel)."
+    );
+    return;
+  }
   await attemptAutoReconnect({ reason: "deploy", skipCooldown: true });
 }
