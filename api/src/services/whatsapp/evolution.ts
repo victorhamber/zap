@@ -4,6 +4,13 @@
 import { prisma } from "../../prisma.js";
 import { defaultWhatsAppSession, env } from "../../env.js";
 import { evolutionApiKey, evolutionBaseUrl } from "./provider.js";
+import {
+  digitsOnly,
+  evolutionSendNumber,
+  isLikelyInternalLidJid,
+  isValidWhatsAppPhoneDigits,
+  normalizeDirectJid
+} from "../waJid.js";
 
 export const MSG_NO_DEVICE =
   "Nenhum WhatsApp conectado na Evolution. Crie/conecte a instância e escaneie o QR.";
@@ -171,23 +178,52 @@ export async function getWppToken(): Promise<string> {
   return refreshWppToken();
 }
 
-function digitsOnly(s: string): string {
-  return s.replace(/\D/g, "");
+async function resolveEvolutionSendNumber(chatId: string, isGroup?: boolean): Promise<string> {
+  const jid = normalizeDirectJid(chatId.trim());
+  if (isGroup || jid.endsWith("@g.us")) {
+    return evolutionSendNumber(jid, true);
+  }
+
+  const d = digitsOnly(jid);
+  if (isValidWhatsAppPhoneDigits(d)) return d;
+
+  if (jid.endsWith("@lid") || isLikelyInternalLidJid(jid)) {
+    const instance = await getInstanceName();
+    const query = jid.includes("@") ? jid : `${d}@lid`;
+    const res = await evoFetch(`/chat/whatsappNumbers/${encodeURIComponent(instance)}`, {
+      method: "POST",
+      body: JSON.stringify({ numbers: [query] })
+    });
+    const data = await readJson(res);
+    const list = Array.isArray(data)
+      ? data
+      : Array.isArray((data as Record<string, unknown>).response)
+        ? ((data as Record<string, unknown>).response as unknown[])
+        : [];
+    const first = list[0] as Record<string, unknown> | undefined;
+    const resolved = String(first?.jid ?? first?.number ?? "").trim();
+    if (resolved && !isLikelyInternalLidJid(resolved)) {
+      return evolutionSendNumber(resolved, false);
+    }
+    throw new Error(
+      "Contato com ID interno (@lid). Abra a conversa pelo nome/número real (ex.: Victor Hamber) ou aguarde uma mensagem recebida desse contato."
+    );
+  }
+
+  return evolutionSendNumber(jid, false);
 }
 
 function toEvolutionNumber(chatId: string, isGroup?: boolean): string {
-  if (chatId.includes("@")) return chatId;
-  const d = digitsOnly(chatId);
-  if (!d) return chatId;
-  return isGroup ? `${d}@g.us` : `${d}@s.whatsapp.net`;
+  return evolutionSendNumber(chatId, isGroup);
 }
 
 export async function sendText(phone: string, message: string) {
   const instance = await getInstanceName();
+  const number = await resolveEvolutionSendNumber(phone);
   const res = await evoFetch(`/message/sendText/${encodeURIComponent(instance)}`, {
     method: "POST",
     body: JSON.stringify({
-      number: toEvolutionNumber(phone),
+      number,
       text: message
     })
   });
@@ -196,10 +232,11 @@ export async function sendText(phone: string, message: string) {
 
 export async function sendImage(phone: string, url: string, caption?: string) {
   const instance = await getInstanceName();
+  const number = await resolveEvolutionSendNumber(phone);
   const res = await evoFetch(`/message/sendMedia/${encodeURIComponent(instance)}`, {
     method: "POST",
     body: JSON.stringify({
-      number: toEvolutionNumber(phone),
+      number,
       mediatype: "image",
       media: url,
       caption: caption ?? ""
@@ -210,10 +247,11 @@ export async function sendImage(phone: string, url: string, caption?: string) {
 
 export async function sendVideo(phone: string, url: string, caption?: string) {
   const instance = await getInstanceName();
+  const number = await resolveEvolutionSendNumber(phone);
   const res = await evoFetch(`/message/sendMedia/${encodeURIComponent(instance)}`, {
     method: "POST",
     body: JSON.stringify({
-      number: toEvolutionNumber(phone),
+      number,
       mediatype: "video",
       media: url,
       caption: caption ?? ""
@@ -224,10 +262,11 @@ export async function sendVideo(phone: string, url: string, caption?: string) {
 
 export async function sendAudio(phone: string, url: string) {
   const instance = await getInstanceName();
+  const number = await resolveEvolutionSendNumber(phone);
   const res = await evoFetch(`/message/sendMedia/${encodeURIComponent(instance)}`, {
     method: "POST",
     body: JSON.stringify({
-      number: toEvolutionNumber(phone),
+      number,
       mediatype: "audio",
       media: url
     })

@@ -3,6 +3,13 @@ import { listStoredMessages, saveInboxMessage } from "./inboxStore.js";
 import { buildWppSendTarget, sendWppApi, sendWppText } from "./wppSend.js";
 import { convertWebmDataUrlToOgg } from "./mediaConvert.js";
 import {
+  canonicalEvolutionChatId,
+  digitsOnly,
+  isLikelyInternalLidJid,
+  isValidWhatsAppPhoneDigits,
+  normalizeDirectJid
+} from "./waJid.js";
+import {
   readUploadFileBase64,
   rewriteUploadUrlForWpp,
   saveUploadFromData,
@@ -37,10 +44,6 @@ export type FetchMessagesOptions = {
   isGroup?: boolean;
   count?: number;
 };
-
-function digitsOnly(phone: string): string {
-  return phone.replace(/\D/g, "");
-}
 
 /** Extrai ID serializado do WhatsApp (ex.: 120363…@g.us) quando o WPP devolve objeto Wid. */
 export function extractWaId(value: unknown): string {
@@ -127,7 +130,17 @@ function parseChatItem(item: unknown): NormalizedChat | null {
   if (!item || typeof item !== "object") return null;
   const o = item as Record<string, unknown>;
 
+  const peer = canonicalEvolutionChatId({
+    remoteJid: o.remoteJid ?? o.id ?? o.jid ?? o._id ?? o.chatId,
+    remoteJidAlt: o.remoteJidAlt ?? o.remoteJidalt ?? o.pn,
+    participant: o.participant,
+    participantAlt: o.participantAlt
+  });
+
   const rawId =
+    extractWaId(peer) ||
+    extractWaId(o.remoteJidAlt) ||
+    extractWaId(o.remoteJidalt) ||
     extractWaId(o.remoteJid) ||
     extractWaId(o.jid) ||
     extractWaId(o.id) ||
@@ -138,12 +151,24 @@ function parseChatItem(item: unknown): NormalizedChat | null {
   if (!rawId || rawId === "undefined") return null;
 
   const kindHint = detectKind(rawId.includes("@") ? rawId : `${rawId}@c.us`, o);
-  const resolvedId = rawId.includes("@")
-    ? rawId
-    : resolveChatId(rawId, kindHint === "group" || kindHint === "community" || o.isGroup === true);
+  let resolvedId = rawId.includes("@")
+    ? normalizeDirectJid(rawId)
+    : normalizeDirectJid(
+        resolveChatId(rawId, kindHint === "group" || kindHint === "community" || o.isGroup === true)
+      );
   if (!isValidWaId(resolvedId)) return null;
 
-  const phone = chatIdToPhone(resolvedId);
+  const displayName = String(
+    o.pushName ?? o.name ?? o.formattedTitle ?? ""
+  ).trim();
+  if (isLikelyInternalLidJid(resolvedId) && !displayName) return null;
+
+  const phoneDigits = digitsOnly(resolvedId);
+  const phone = isValidWhatsAppPhoneDigits(phoneDigits)
+    ? phoneDigits
+    : displayName
+      ? ""
+      : resolvedId.split("@")[0];
   const contactObj =
     o.contact && typeof o.contact === "object"
       ? (o.contact as Record<string, unknown>)
@@ -284,23 +309,25 @@ function extractArray(raw: unknown): unknown[] {
   return [];
 }
 
-/** Chave única por pessoa (1:1) ou por grupo — evita duplicata entre list-chats / all-contacts / @lid e @c.us */
+/** Chave única por telefone real — evita duplicata @lid vs @s.whatsapp.net */
 function chatDedupeKey(c: NormalizedChat): string {
   if (c.isGroup || c.kind !== "direct") {
     const gid = digitsOnly(c.id) || c.id.replace(/@.*/, "");
     return `g:${gid}`;
   }
-  const digits = digitsOnly(c.phone || c.id);
-  return digits ? `u:${digits}` : `u:${c.id}`;
+  const d = digitsOnly(c.id);
+  if (isValidWhatsAppPhoneDigits(d)) return `p:${d}`;
+  if (c.name && c.name !== d) return `n:${c.name.toLowerCase()}`;
+  return `id:${c.id}`;
 }
 
 function preferChatId(a: string, b: string): string {
   const rank = (id: string) => {
     if (id.endsWith("@g.us")) return 5;
-    if (id.endsWith("@lid")) return 4;
+    if (id.endsWith("@s.whatsapp.net")) return 4;
     if (id.endsWith("@c.us")) return 3;
-    if (id.endsWith("@s.whatsapp.net")) return 2;
-    return 1;
+    if (id.endsWith("@lid")) return 1;
+    return 0;
   };
   const ra = rank(a);
   const rb = rank(b);

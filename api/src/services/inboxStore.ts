@@ -8,6 +8,7 @@ import {
   labelForMediaType,
   mimeFromMessageType
 } from "./mediaText.js";
+import { normalizeDirectJid } from "./waJid.js";
 
 function digitsOnly(s: string): string {
   return s.replace(/\D/g, "");
@@ -230,7 +231,7 @@ export async function saveInboxMessage(params: {
   if (!prisma) return;
 
   const session = (params.sessionName ?? (await getSessionName())).trim().toLowerCase();
-  const chatId = extractWaId(params.chatId) || params.chatId.trim();
+  const chatId = normalizeDirectJid(extractWaId(params.chatId) || params.chatId.trim());
   if (!chatId || chatId.includes("status@broadcast")) return;
 
   const type = params.type ?? "chat";

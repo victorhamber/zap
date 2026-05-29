@@ -1,6 +1,7 @@
 /** Parser de webhooks Evolution API v2 (MESSAGES_UPSERT, etc.) */
 import { extractWaId } from "../inbox.js";
 import { mimeFromMessageType } from "../mediaText.js";
+import { canonicalEvolutionChatId, normalizeDirectJid } from "../waJid.js";
 
 export function getEvolutionWebhookEvent(body: Record<string, unknown>): string {
   return String(body.event ?? body.type ?? "").toLowerCase();
@@ -14,43 +15,6 @@ export function isEvolutionMessageEvent(body: Record<string, unknown>): boolean 
     ev === "send.message" ||
     ev === "send_message"
   );
-}
-
-function pickCanonicalChatId(candidates: string[]): string {
-  const valid = [...new Set(candidates.filter(Boolean))];
-  if (valid.length === 0) return "";
-
-  const rank = (id: string) => {
-    if (id.endsWith("@g.us") || id.includes("@newsletter")) return 5;
-    if (id.endsWith("@c.us") || id.endsWith("@s.whatsapp.net")) return 4;
-    if (id.endsWith("@lid")) return 2;
-    return 1;
-  };
-
-  valid.sort((a, b) => rank(b) - rank(a));
-  return valid[0];
-}
-
-function evolutionPeerChatId(
-  key: Record<string, unknown>,
-  payload: Record<string, unknown>,
-  fromMe: boolean
-): string {
-  const remoteJid = String(key.remoteJid ?? key.remotejid ?? "").trim();
-  const participant = String(
-    key.participant ?? payload.participant ?? payload.sender ?? ""
-  ).trim();
-
-  if (remoteJid.endsWith("@g.us")) {
-    if (fromMe) return remoteJid;
-    return pickCanonicalChatId([participant, remoteJid]);
-  }
-
-  if (fromMe) {
-    return pickCanonicalChatId([remoteJid, participant]);
-  }
-
-  return pickCanonicalChatId([remoteJid, participant]);
 }
 
 function parseMessageContent(msg: Record<string, unknown>): { text: string; type: string } {
@@ -124,7 +88,6 @@ export function parseEvolutionInboundMessage(
   mediaUrl: string | null;
   waMessageId: string | null;
   timestamp: Date;
-  /** Payload completo para download de mídia via API Evolution */
   rawData: Record<string, unknown>;
 } | null {
   const payloads = extractEvolutionMessagePayloads(body);
@@ -154,7 +117,8 @@ export function parseEvolutionMessagePayload(
   if (!remoteJid || remoteJid.includes("status@broadcast")) return null;
 
   const fromMe = key.fromMe === true || key.fromMe === "true";
-  const chatId = extractWaId(evolutionPeerChatId(key, payload, fromMe)) || evolutionPeerChatId(key, payload, fromMe);
+  const peer = canonicalEvolutionChatId(key, payload);
+  const chatId = normalizeDirectJid(extractWaId(peer) || peer);
   if (!chatId) return null;
 
   const msg = (payload.message ?? {}) as Record<string, unknown>;
