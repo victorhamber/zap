@@ -4,6 +4,7 @@ import sensible from "@fastify/sensible";
 import staticPlugin from "@fastify/static";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { existsSync } from "node:fs";
 import { env } from "./env.js";
 import { prisma } from "./prisma.js";
 import { authRoutes } from "./routes/auth.js";
@@ -56,7 +57,10 @@ await app.register(inboxRoutes);
 await ensureUploadDir();
 
 const webDist = path.resolve(__dirname, "../../web/dist");
-await app.register(staticPlugin, { root: webDist, prefix: "/" });
+const webDistExists = existsSync(webDist);
+if (webDistExists) {
+  await app.register(staticPlugin, { root: webDist, prefix: "/" });
+}
 await app.register(staticPlugin, {
   root: UPLOAD_DIR,
   prefix: "/uploads/",
@@ -66,7 +70,10 @@ app.setNotFoundHandler(async (req, reply) => {
   if (req.url.startsWith("/api")) {
     return reply.status(404).send({ error: "Not found" });
   }
-  return reply.sendFile("index.html");
+  if (webDistExists) {
+    return reply.sendFile("index.html");
+  }
+  return reply.status(404).send({ error: "Not found" });
 });
 
 const port = Number(process.env.PORT ?? 3000);
