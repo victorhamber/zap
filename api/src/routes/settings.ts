@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../prisma.js";
 import { requireAuth } from "../middleware/auth.js";
-import { env } from "../env.js";
+import { defaultWhatsAppSession, env } from "../env.js";
 import * as wpp from "../services/whatsapp/index.js";
 import { isEvolution } from "../services/whatsapp/index.js";
 import {
@@ -19,7 +19,7 @@ export async function settingsRoutes(app: FastifyInstance) {
       return {
         provider: isEvolution ? "evolution" : "wppconnect",
         wppBaseUrl: isEvolution ? env.EVOLUTION_BASE_URL : env.WPP_BASE_URL,
-        wppSession: env.WPP_SESSION,
+        wppSession: defaultWhatsAppSession(),
         hasToken: isEvolution ? Boolean(env.EVOLUTION_API_KEY) : false,
         connectionStatus: null
       };
@@ -28,7 +28,7 @@ export async function settingsRoutes(app: FastifyInstance) {
     return {
       provider: isEvolution ? "evolution" : "wppconnect",
       wppBaseUrl: isEvolution ? env.EVOLUTION_BASE_URL : (s?.wppBaseUrl ?? env.WPP_BASE_URL),
-      wppSession: s?.wppSession ?? env.WPP_SESSION,
+      wppSession: s?.wppSession ?? defaultWhatsAppSession(),
       hasToken: isEvolution ? Boolean(env.EVOLUTION_API_KEY) : Boolean(s?.wppToken),
       connectionStatus: s?.connectionStatus
     };
@@ -49,7 +49,7 @@ export async function settingsRoutes(app: FastifyInstance) {
       create: {
         id: "default",
         wppBaseUrl: body.wppBaseUrl ?? env.WPP_BASE_URL,
-        wppSession: wppSession ?? env.WPP_SESSION.toLowerCase()
+        wppSession: wppSession ?? defaultWhatsAppSession()
       }
     });
   });

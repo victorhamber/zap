@@ -1,6 +1,6 @@
 import bcrypt from "bcrypt";
 import { prisma } from "./prisma.js";
-import { env, flags } from "./env.js";
+import { defaultWhatsAppSession, env, flags } from "./env.js";
 import { isEvolution } from "./services/whatsapp/index.js";
 import { defaultHotmartGraph } from "./engine/graph.js";
 import {
@@ -21,7 +21,7 @@ export async function bootstrapDatabase() {
     create: {
       id: "default",
       wppBaseUrl: env.WPP_BASE_URL,
-      wppSession: env.WPP_SESSION
+      wppSession: defaultWhatsAppSession()
     }
   });
 
@@ -36,9 +36,9 @@ export async function bootstrapDatabase() {
   const instanceCount = await prisma.wppInstance.count();
   if (instanceCount === 0) {
     await prisma.wppInstance.create({
-      data: { name: env.WPP_SESSION, label: env.WPP_SESSION }
+      data: { name: defaultWhatsAppSession(), label: defaultWhatsAppSession() }
     });
-    console.log(`[bootstrap] Instância padrão criada: ${env.WPP_SESSION}`);
+    console.log(`[bootstrap] Instância padrão criada: ${defaultWhatsAppSession()}`);
   }
 
   const flows = await prisma.flow.count();

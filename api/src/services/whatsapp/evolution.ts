@@ -2,7 +2,7 @@
  * Provedor Evolution API v2 — substituto do WPPConnect quando WHATSAPP_PROVIDER=evolution
  */
 import { prisma } from "../../prisma.js";
-import { env } from "../../env.js";
+import { defaultWhatsAppSession, env } from "../../env.js";
 import { evolutionApiKey, evolutionBaseUrl } from "./provider.js";
 
 export const MSG_NO_DEVICE =
@@ -80,9 +80,9 @@ export function formatWppError(status: number, body: unknown): string {
 }
 
 async function getInstanceName(): Promise<string> {
-  if (!prisma) return env.WPP_SESSION.trim().toLowerCase();
+  if (!prisma) return defaultWhatsAppSession();
   const s = await prisma.appSettings.findUnique({ where: { id: "default" } });
-  return (s?.wppSession ?? env.WPP_SESSION).trim().toLowerCase();
+  return (s?.wppSession ?? defaultWhatsAppSession()).trim().toLowerCase();
 }
 
 async function evoFetch(path: string, init: RequestInit = {}): Promise<Response> {

@@ -1,6 +1,6 @@
 import bcrypt from "bcrypt";
 import { prisma } from "./prisma.js";
-import { env } from "./env.js";
+import { defaultWhatsAppSession, env } from "./env.js";
 import { defaultHotmartGraph } from "./engine/graph.js";
 
 async function main() {
@@ -22,7 +22,7 @@ async function main() {
     create: {
       id: "default",
       wppBaseUrl: env.WPP_BASE_URL,
-      wppSession: env.WPP_SESSION
+      wppSession: defaultWhatsAppSession()
     }
   });
 

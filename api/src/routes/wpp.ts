@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../prisma.js";
 import { requireAuth } from "../middleware/auth.js";
-import { env } from "../env.js";
+import { defaultWhatsAppSession, env } from "../env.js";
 import * as wpp from "../services/whatsapp/index.js";
 import { resetInboxForSession } from "../services/inboxStore.js";
 import { undismissSession } from "../utils/wppDismissed.js";
@@ -36,7 +36,7 @@ export async function wppRoutes(app: FastifyInstance) {
     if (!prisma) throw new Error("Banco indisponível");
 
     const settings = await prisma.appSettings.findUnique({ where: { id: "default" } });
-    const active = settings?.wppSession ?? env.WPP_SESSION;
+    const active = settings?.wppSession ?? defaultWhatsAppSession();
     const instances = await prisma.wppInstance.findMany({ orderBy: { createdAt: "asc" } });
     const instanceNames = instances.map((i) => i.name);
     const keepNames = buildKeepSessionNames(instanceNames, active);
@@ -185,7 +185,7 @@ export async function wppRoutes(app: FastifyInstance) {
     if (!prisma) return reply.status(503).send({ error: "Banco indisponível" });
 
     const settings = await prisma.appSettings.findUnique({ where: { id: "default" } });
-    const active = settings?.wppSession ?? env.WPP_SESSION;
+    const active = settings?.wppSession ?? defaultWhatsAppSession();
     const instances = await prisma.wppInstance.findMany();
     const keepNames = buildKeepSessionNames(
       instances.map((i) => i.name),

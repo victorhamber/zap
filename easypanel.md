@@ -8,7 +8,10 @@ Repositório: https://github.com/victorhamber/zap
 2. **redis** — Redis
 3. **zap** — App (este repo, `Dockerfile`, porta `3000`)
 4. **zap-worker** — Worker (`Dockerfile.worker`, mesmas envs, sem domínio)
-5. **wppconnect** — WPPConnect (`porta 21465`)
+5. **evolution-api** — Evolution API (`porta 8080`, domínio `evo.trajettu.com`)
+6. **evolution-api-db** / **evolution-api-redis** — dependências da Evolution
+
+(O serviço **wppconnect** foi descontinuado neste deploy.)
 
 ## App `zap` no EasyPanel
 
@@ -26,9 +29,10 @@ Repositório: https://github.com/victorhamber/zap
 
 ## Variáveis (app `zap` e `zap-worker`)
 
+Guia completo Evolution: [`deploy/easypanel-evolution.md`](deploy/easypanel-evolution.md)
+
 ```env
 APP_PUBLIC_URL=https://zap.trajettu.com
-# Rede Docker: hostname do serviço Zap no EasyPanel (WPP chama webhook e baixa uploads por aqui)
 ZAP_INTERNAL_URL=http://zap_zap:3000
 NODE_ENV=production
 PORT=3000
@@ -41,20 +45,15 @@ JWT_EXPIRES_IN=7d
 ADMIN_EMAIL=admin@trajettu.com
 ADMIN_PASSWORD=sua-senha-admin
 
-# URL pública (navegador / documentação)
-WPP_BASE_URL=https://wpp.trajettu.com
-
-# OBRIGATÓRIO em produção: URL interna Docker do serviço WPP (nome do app no EasyPanel)
-WPP_INTERNAL_URL=http://NOME_DO_SERVICO_WPP:21465
-
-WPP_SESSION=autofintech
-WPP_SECRET_KEY=mesma-chave-secretKey-do-wppconnect
+WHATSAPP_PROVIDER=evolution
+WHATSAPP_SESSION=ass
+EVOLUTION_BASE_URL=https://evo.trajettu.com
+EVOLUTION_INTERNAL_URL=http://zap_evolution-api:8080
+EVOLUTION_API_KEY=mesma-chave-AUTHENTICATION_API_KEY-da-evolution
 
 HOTMART_WEBHOOK_SECRET=
 CORS_ORIGIN=https://zap.trajettu.com
 ```
-
-Substitua `NOME_DO_SERVICO_WPP` pelo hostname interno que o EasyPanel mostra (ex: `zap_wppconnect` ou `wpp`).
 
 ## Persistir sessão WhatsApp no deploy (volume no WPP)
 

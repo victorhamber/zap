@@ -21,6 +21,8 @@ const EnvSchema = z.object({
   /** URL rede interna (EasyPanel). Ex: http://nome-servico-wpp:21465 */
   WPP_INTERNAL_URL: z.string().optional(),
   WPP_SESSION: z.string().default("autofintech"),
+  /** Nome da instância WhatsApp (Evolution ou WPPConnect). Preferir em vez de WPP_SESSION. */
+  WHATSAPP_SESSION: z.string().optional(),
   WPP_SECRET_KEY: isProd ? z.string().min(8) : z.string().default("dev-secret-key"),
   /** false desliga reconexão automática em background */
   WPP_AUTO_RECONNECT: z
@@ -41,7 +43,7 @@ const EnvSchema = z.object({
     .transform((v) => v === "true"),
 
   /** Evolution API — https://doc.evolution-api.com */
-  EVOLUTION_BASE_URL: z.string().default("http://localhost:8080"),
+  EVOLUTION_BASE_URL: z.string().default("https://evo.trajettu.com"),
   EVOLUTION_INTERNAL_URL: z.string().optional(),
   EVOLUTION_API_KEY: z.string().default(""),
 
@@ -53,6 +55,12 @@ const EnvSchema = z.object({
 });
 
 export const env = EnvSchema.parse(process.env);
+
+/** Sessão/instância padrão (Evolution: nome da instância). */
+export function defaultWhatsAppSession(): string {
+  return (env.WHATSAPP_SESSION ?? env.WPP_SESSION).trim().toLowerCase();
+}
+
 export const flags = {
   isProd,
   hasDatabase: Boolean(env.DATABASE_URL),
