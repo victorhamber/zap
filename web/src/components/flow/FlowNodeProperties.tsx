@@ -1,5 +1,6 @@
+import { useState } from "react";
 import type { Node } from "@xyflow/react";
-import { NODE_LABELS } from "./nodeMeta";
+import { hotmartWebhookUrl, NODE_LABELS } from "./nodeMeta";
 
 type Props = {
   selectedNode: Node;
@@ -17,6 +18,19 @@ export function FlowNodeProperties({
   onClose
 }: Props) {
   const nodeType = String(selectedNode.data.nodeType);
+  const [copied, setCopied] = useState(false);
+  const webhookUrl = flowId ? hotmartWebhookUrl(flowId) : "";
+
+  async function copyWebhookUrl() {
+    if (!webhookUrl) return;
+    try {
+      await navigator.clipboard.writeText(webhookUrl);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* ignore */
+    }
+  }
 
   return (
     <div className="flex h-full flex-col">
@@ -139,9 +153,14 @@ export function FlowNodeProperties({
         {nodeType === "trigger_hotmart" && (
           <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 text-xs text-zinc-400">
             <p className="font-medium text-zinc-300 mb-1">Webhook Hotmart</p>
-            <code className="break-all text-emerald-400/90">
-              /api/webhooks/hotmart/{flowId}
-            </code>
+            <code className="block break-all text-emerald-400/90 leading-relaxed">{webhookUrl}</code>
+            <button
+              type="button"
+              onClick={() => void copyWebhookUrl()}
+              className="mt-2 rounded-lg border border-zinc-700 px-2.5 py-1 text-[11px] text-zinc-300 hover:bg-zinc-800"
+            >
+              {copied ? "Copiado!" : "Copiar URL"}
+            </button>
             <p className="mt-2">Variáveis: {"{{name}}"}, {"{{phone}}"}, {"{{login}}"}, etc.</p>
           </div>
         )}

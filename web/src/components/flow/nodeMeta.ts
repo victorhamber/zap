@@ -22,6 +22,17 @@ export const PALETTE = [
   { type: "send_audio", label: "Enviar áudio" }
 ];
 
+const DRAG_NODE_TYPE = "application/zap-flow-node";
+
+export function paletteDragType(): string {
+  return DRAG_NODE_TYPE;
+}
+
+export function hotmartWebhookUrl(flowId: string): string {
+  const origin = window.location.origin.replace(/\/$/, "");
+  return `${origin}/api/webhooks/hotmart/${flowId}`;
+}
+
 export function defaultNodeData(type: string): Record<string, unknown> {
   switch (type) {
     case "trigger_hotmart":

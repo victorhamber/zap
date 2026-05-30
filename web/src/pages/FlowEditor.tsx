@@ -18,7 +18,7 @@ import { flowNodeTypes } from "../components/flow/FlowNode";
 import { FlowNodeProperties } from "../components/flow/FlowNodeProperties";
 import { NodeContextMenu } from "../components/flow/NodeContextMenu";
 import { FlowZoomToolbar } from "../components/flow/FlowZoomToolbar";
-import { PALETTE, defaultNodeData, NODE_LABELS } from "../components/flow/nodeMeta";
+import { PALETTE, defaultNodeData, NODE_LABELS, paletteDragType } from "../components/flow/nodeMeta";
 
 const FIT_VIEW_OPTS = { padding: 0.45, maxZoom: 0.72, duration: 280 };
 
@@ -139,23 +139,51 @@ export function FlowEditor() {
     [setEdges]
   );
 
-  function addNode(type: string) {
-    const nid = `n_${Date.now()}`;
-    const data = defaultNodeData(type);
-    setNodes((nds) => [
-      ...nds,
-      {
-        id: nid,
-        type: "flowNode",
-        position: { x: 120 + nds.length * 48, y: 120 + nds.length * 36 },
-        data: {
-          nodeType: type,
-          summary: summaryFor(type, data),
-          config: data
+  const addNodeAt = useCallback(
+    (type: string, position: { x: number; y: number }) => {
+      const nid = `n_${Date.now()}`;
+      const data = defaultNodeData(type);
+      setNodes((nds) => [
+        ...nds,
+        {
+          id: nid,
+          type: "flowNode",
+          position,
+          data: {
+            nodeType: type,
+            summary: summaryFor(type, data),
+            config: data
+          }
         }
-      }
-    ]);
-  }
+      ]);
+      setSelectedId(nid);
+    },
+    [setNodes]
+  );
+
+  const onPaletteDragStart = useCallback((e: React.DragEvent, type: string) => {
+    e.dataTransfer.setData(paletteDragType(), type);
+    e.dataTransfer.effectAllowed = "move";
+  }, []);
+
+  const onCanvasDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  }, []);
+
+  const onCanvasDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      const type = e.dataTransfer.getData(paletteDragType());
+      if (!type || !rfRef.current) return;
+      const position = rfRef.current.screenToFlowPosition({
+        x: e.clientX,
+        y: e.clientY
+      });
+      addNodeAt(type, position);
+    },
+    [addNodeAt]
+  );
 
   function updateSelectedConfig(patch: Record<string, unknown>) {
     if (!selectedNode) return;
@@ -278,18 +306,20 @@ export function FlowEditor() {
             </div>
             <div className="flex-1 overflow-y-auto p-2 space-y-1">
               {PALETTE.map((p) => (
-                <button
+                <div
                   key={p.type}
-                  type="button"
-                  onClick={() => addNode(p.type)}
-                  className="w-full text-left rounded-lg border border-zinc-800 px-2.5 py-2 text-sm text-zinc-200 hover:bg-zinc-900 hover:border-zinc-700"
+                  draggable
+                  onDragStart={(e) => onPaletteDragStart(e, p.type)}
+                  className="w-full cursor-grab active:cursor-grabbing rounded-lg border border-zinc-800 px-2.5 py-2 text-sm text-zinc-200 hover:bg-zinc-900 hover:border-zinc-700 select-none"
+                  role="button"
+                  tabIndex={0}
                 >
                   {p.label}
-                </button>
+                </div>
               ))}
             </div>
             <p className="px-2 pb-2 text-[10px] text-zinc-600">
-              Clique direito no bloco: editar ou excluir. Tecla Delete também remove.
+              Arraste o bloco para o fluxo. Clique direito no bloco: editar ou excluir.
             </p>
           </aside>
         )}
@@ -324,6 +354,8 @@ export function FlowEditor() {
               setContextMenu(null);
               setSelectedId(null);
             }}
+            onDragOver={onCanvasDragOver}
+            onDrop={onCanvasDrop}
             nodeTypes={flowNodeTypes}
             onInit={onFlowInit}
             minZoom={0.15}
