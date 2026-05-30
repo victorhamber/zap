@@ -59,6 +59,9 @@ export const listServerSessions = p.listServerSessions;
 export const getConnectedOwnerDigits = isEvolution
   ? evolution.getConnectedOwnerDigits
   : async (): Promise<string | null> => null;
+export const clearEvolutionInstanceCache = isEvolution
+  ? evolution.clearEvolutionInstanceCache
+  : (): void => {};
 export const getConnectedInstanceProfile = isEvolution
   ? evolution.getConnectedInstanceProfile
   : async () => ({

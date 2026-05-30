@@ -73,16 +73,83 @@ export async function normalizeInboxSessionKeys(): Promise<void> {
 }
 
 async function getCaptureSince(): Promise<Date | null> {
-  if (!prisma) return null;
-  const s = await prisma.appSettings.findUnique({ where: { id: "default" } });
-  return s?.inboxCaptureSince ?? null;
+  const session = await getSessionName();
+  const state = await getSessionInboxState(session);
+  return state.captureSince;
 }
 
 async function getStoredOwnerPhone(): Promise<string | null> {
-  if (!prisma) return null;
-  const s = await prisma.appSettings.findUnique({ where: { id: "default" } });
-  const phone = s?.inboxOwnerPhone?.trim() ?? "";
-  return phone || null;
+  const session = await getSessionName();
+  const state = await getSessionInboxState(session);
+  return state.ownerPhone;
+}
+
+export async function getInboxCaptureSince(): Promise<Date | null> {
+  return getCaptureSince();
+}
+
+type SessionInboxState = { ownerPhone?: string; captureSince?: string };
+
+function parseInboxSessionState(raw: unknown): Record<string, SessionInboxState> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  return raw as Record<string, SessionInboxState>;
+}
+
+async function getSessionInboxState(session: string): Promise<{
+  ownerPhone: string | null;
+  captureSince: Date | null;
+}> {
+  if (!prisma) return { ownerPhone: null, captureSince: null };
+  const norm = session.trim().toLowerCase();
+  const settings = await prisma.appSettings.findUnique({ where: { id: "default" } });
+  if (!settings) return { ownerPhone: null, captureSince: null };
+
+  const map = parseInboxSessionState(settings.inboxSessionState);
+  const entry = map[norm];
+  if (entry?.ownerPhone || entry?.captureSince) {
+    return {
+      ownerPhone: entry.ownerPhone?.trim() || null,
+      captureSince: entry.captureSince ? new Date(entry.captureSince) : null
+    };
+  }
+
+  const active = (settings.wppSession ?? "").trim().toLowerCase();
+  if (active === norm) {
+    return {
+      ownerPhone: settings.inboxOwnerPhone?.trim() || null,
+      captureSince: settings.inboxCaptureSince ?? null
+    };
+  }
+
+  return { ownerPhone: null, captureSince: null };
+}
+
+async function setSessionInboxState(
+  session: string,
+  data: { ownerPhone: string; captureSince: Date }
+): Promise<void> {
+  if (!prisma) return;
+  const norm = session.trim().toLowerCase();
+  const settings = await prisma.appSettings.findUnique({ where: { id: "default" } });
+  const map = parseInboxSessionState(settings?.inboxSessionState);
+  map[norm] = {
+    ownerPhone: data.ownerPhone,
+    captureSince: data.captureSince.toISOString()
+  };
+
+  const active = (settings?.wppSession ?? "").trim().toLowerCase();
+  await prisma.appSettings.update({
+    where: { id: "default" },
+    data: {
+      inboxSessionState: map,
+      ...(active === norm
+        ? {
+            inboxOwnerPhone: data.ownerPhone,
+            inboxCaptureSince: data.captureSince
+          }
+        : {})
+    }
+  });
 }
 
 function ownerPhoneFilter(ownerPhone: string | null): { ownerPhone?: string } {
@@ -104,10 +171,15 @@ export async function ensureInboxOwnerPhone(): Promise<InboxOwnerSyncResult> {
   if (!prisma) return { phone: null, changed: false, previousPhone: null };
 
   const session = await getSessionName();
+  const sessionKey = session.trim().toLowerCase();
   const settings = await prisma.appSettings.findUnique({ where: { id: "default" } });
-  const previousPhone = settings?.inboxOwnerPhone?.trim() || null;
+  const map = parseInboxSessionState(settings?.inboxSessionState);
+  const hadSessionEntry = Boolean(map[sessionKey]);
+  const previous = await getSessionInboxState(session);
+  const previousPhone = previous.ownerPhone;
 
   const wpp = await import("./whatsapp/index.js");
+  wpp.clearEvolutionInstanceCache();
   const check = await wpp.verifyActiveSession();
   if (!check.connected) {
     return { phone: previousPhone, changed: false, previousPhone };
@@ -119,16 +191,17 @@ export async function ensureInboxOwnerPhone(): Promise<InboxOwnerSyncResult> {
   }
 
   if (previousPhone === phone) {
+    if (hadSessionEntry) {
+      return { phone, changed: false, previousPhone };
+    }
+    await setSessionInboxState(session, { ownerPhone: phone, captureSince: new Date() });
+    const { clearWaLidMap } = await import("./waLidMap.js");
+    await clearWaLidMap(session);
     return { phone, changed: false, previousPhone };
   }
 
-  await prisma.appSettings.update({
-    where: { id: "default" },
-    data: {
-      inboxOwnerPhone: phone,
-      inboxCaptureSince: new Date()
-    }
-  });
+  const now = new Date();
+  await setSessionInboxState(session, { ownerPhone: phone, captureSince: now });
 
   const { clearWaLidMap } = await import("./waLidMap.js");
   await clearWaLidMap(session);
@@ -166,11 +239,20 @@ export async function resetInboxCapture(clearMessages = true): Promise<void> {
   if (clearMessages) {
     await prisma.inboxMessage.deleteMany({ where: { session } });
   }
+  const settings = await prisma.appSettings.findUnique({ where: { id: "default" } });
+  const map = parseInboxSessionState(settings?.inboxSessionState);
+  delete map[session.trim().toLowerCase()];
+  const active = (settings?.wppSession ?? "").trim().toLowerCase();
   await prisma.appSettings.update({
     where: { id: "default" },
     data: {
-      inboxCaptureSince: new Date(),
-      inboxOwnerPhone: null
+      inboxSessionState: map,
+      ...(active === session.trim().toLowerCase()
+        ? {
+            inboxCaptureSince: new Date(),
+            inboxOwnerPhone: null
+          }
+        : {})
     }
   });
   const { clearWaLidMap } = await import("./waLidMap.js");

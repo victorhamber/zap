@@ -26,6 +26,7 @@ model AppSettings {
   quickReplies       Json      @default("[]")
   inboxCaptureSince  DateTime?
   inboxOwnerPhone    String?
+  inboxSessionState  Json      @default("{}")
   updatedAt          DateTime  @updatedAt
 }
 

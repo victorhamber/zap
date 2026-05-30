@@ -812,6 +812,11 @@ let cachedProfile: {
   expires: number;
 } | null = null;
 
+export function clearEvolutionInstanceCache(): void {
+  cachedOwnerDigits = null;
+  cachedProfile = null;
+}
+
 function parseInstanceList(raw: unknown): unknown[] {
   if (Array.isArray(raw)) return raw;
   if (raw && typeof raw === "object") {

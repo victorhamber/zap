@@ -686,39 +686,62 @@ export async function fetchChats(): Promise<FetchChatsResult> {
   });
 
   if (check.connected) {
-    const { listStoredChatSummaries } = await import("./inboxStore.js");
+    const { listStoredChatSummaries, getInboxCaptureSince } = await import("./inboxStore.js");
     const stored = await listStoredChatSummaries();
     if (stored.length > 0) {
       mergeChats(map, stored, session);
       sourcesOk.push(`inbox-local (${stored.length})`);
     }
+
+    const captureSince = await getInboxCaptureSince();
+    const captureMs = captureSince?.getTime() ?? 0;
+    const localKeys = new Set(stored.map((c) => chatDedupeKey(c, session)));
+
+    const resolvedChats = [...map.values()].map((c) => {
+      if (c.isGroup || !isLikelyInternalLidJid(c.id)) return c;
+      const mapped = getMappedPhoneJid(session, c.id);
+      if (!mapped) return c;
+      return {
+        ...c,
+        id: mapped,
+        phone: digitsOnly(mapped) || c.phone
+      };
+    });
+
+    const scopedChats =
+      captureMs > 0
+        ? resolvedChats.filter((c) => {
+            const key = chatDedupeKey(c, session);
+            if (localKeys.has(key)) return true;
+            if (c.timestamp <= 0) return false;
+            return c.timestamp >= captureMs - 60_000;
+          })
+        : resolvedChats;
+
+    const chats = mergeContactNames(
+      scopedChats.sort((a, b) => {
+        if (a.timestamp !== b.timestamp) return b.timestamp - a.timestamp;
+        return a.name.localeCompare(b.name, "pt-BR");
+      }),
+      await loadEvolutionContactNames(),
+      wpp.isEvolution ? await wpp.getConnectedOwnerDigits() : null
+    ).map((c) => ({
+      ...c,
+      unreadCount: isChatReadLocally(session, c.id) ? 0 : c.unreadCount
+    }));
+    await flushWaLidMap(session);
+    return {
+      chats,
+      sourcesOk,
+      errors,
+      ownerPhone: ownerSync.phone,
+      ownerPhoneChanged: ownerSync.changed
+    };
   }
 
-  const resolvedChats = [...map.values()].map((c) => {
-    if (c.isGroup || !isLikelyInternalLidJid(c.id)) return c;
-    const mapped = getMappedPhoneJid(session, c.id);
-    if (!mapped) return c;
-    return {
-      ...c,
-      id: mapped,
-      phone: digitsOnly(mapped) || c.phone
-    };
-  });
-
-  const chats = mergeContactNames(
-    resolvedChats.sort((a, b) => {
-      if (a.timestamp !== b.timestamp) return b.timestamp - a.timestamp;
-      return a.name.localeCompare(b.name, "pt-BR");
-    }),
-    await loadEvolutionContactNames(),
-    wpp.isEvolution ? await wpp.getConnectedOwnerDigits() : null
-  ).map((c) => ({
-    ...c,
-    unreadCount: isChatReadLocally(session, c.id) ? 0 : c.unreadCount
-  }));
   await flushWaLidMap(session);
   return {
-    chats,
+    chats: [],
     sourcesOk,
     errors,
     ownerPhone: ownerSync.phone,
