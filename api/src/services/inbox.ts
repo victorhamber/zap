@@ -166,6 +166,62 @@ function detectKind(id: string, o?: Record<string, unknown>): ChatKind {
   return "direct";
 }
 
+/** Evita `[object Object]` quando a Evolution manda nome/subject como objeto. */
+function coerceDisplayText(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "string") {
+    const t = value.trim();
+    return t === "[object Object]" ? "" : t;
+  }
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (typeof value === "object") {
+    const o = value as Record<string, unknown>;
+    for (const key of [
+      "subject",
+      "name",
+      "formattedTitle",
+      "pushName",
+      "notify",
+      "verifiedName",
+      "text",
+      "title",
+      "displayName",
+      "communityName",
+      "groupName"
+    ]) {
+      const nested = coerceDisplayText(o[key]);
+      if (nested) return nested;
+    }
+  }
+  return "";
+}
+
+function pickChatDisplayName(o: Record<string, unknown>, ...extras: unknown[]): string {
+  const contactObj =
+    o.contact && typeof o.contact === "object" ? (o.contact as Record<string, unknown>) : null;
+  const candidates: unknown[] = [
+    o.pushName,
+    o.name,
+    o.formattedTitle,
+    o.subject,
+    o.notify,
+    o.verifiedName,
+    o.communityName,
+    o.groupName,
+    contactObj?.name,
+    contactObj?.pushname,
+    contactObj?.subject,
+    o.pushname,
+    o.shortName,
+    ...extras
+  ];
+  for (const c of candidates) {
+    const text = coerceDisplayText(c);
+    if (text) return text;
+  }
+  return "";
+}
+
 /** Texto da última mensagem no formato Evolution API (Baileys). */
 function evolutionLastPreview(lastMsg: Record<string, unknown>): string {
   const inner =
@@ -245,9 +301,7 @@ function parseChatItem(item: unknown, session?: string): NormalizedChat | null {
     if (mapped) resolvedId = mapped;
   }
 
-  const displayName = String(
-    o.pushName ?? o.name ?? o.formattedTitle ?? o.notify ?? o.verifiedName ?? ""
-  ).trim();
+  const displayName = pickChatDisplayName(o);
   if (isLikelyInternalLidJid(resolvedId) && !displayName) return null;
 
   const phoneDigits = digitsOnly(resolvedId);
@@ -256,29 +310,22 @@ function parseChatItem(item: unknown, session?: string): NormalizedChat | null {
     : displayName
       ? ""
       : resolvedId.split("@")[0];
-  const contactObj =
-    o.contact && typeof o.contact === "object"
-      ? (o.contact as Record<string, unknown>)
-      : null;
   const kind = detectKind(resolvedId, o);
   const lastMsg =
     o.lastMessage && typeof o.lastMessage === "object"
       ? (o.lastMessage as Record<string, unknown>)
       : o;
-  const lastMsgPush = String(lastMsg?.pushName ?? lastMsg?.notify ?? "").trim();
-  let name = String(
-    o.pushName ??
-      o.name ??
-      o.formattedTitle ??
-      o.notify ??
-      o.verifiedName ??
-      contactObj?.name ??
-      contactObj?.pushname ??
-      o.pushname ??
-      o.shortName ??
-      lastMsgPush ??
-      (kind === "direct" ? phone : resolvedId.split("@")[0])
-  ).trim();
+  const lastMsgPush = pickChatDisplayName(lastMsg);
+  let name = pickChatDisplayName(o, lastMsgPush);
+  if (!name && kind === "community") {
+    name = `Comunidade ${resolvedId.split("@")[0]?.slice(-6) || ""}`.trim();
+  }
+  if (!name && kind === "group") {
+    name = `Grupo ${resolvedId.split("@")[0]?.slice(-6) || ""}`.trim();
+  }
+  if (!name && kind === "direct") {
+    name = phone || resolvedId.split("@")[0];
+  }
 
   if (kind === "direct" && isGenericSelfChatName(name)) {
     const phoneDigits = digitsOnly(phone || resolvedId);

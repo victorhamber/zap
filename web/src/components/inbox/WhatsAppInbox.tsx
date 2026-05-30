@@ -9,7 +9,7 @@ import { WhatsAppAvatar } from "./WhatsAppAvatar";
 
 type Tag = { id: string; name: string; color: string };
 type ChatKind = "direct" | "group" | "community";
-type ChatTab = "all" | ChatKind;
+type ChatTab = "all" | "direct" | "group";
 
 type ContactInfo = {
   id: string;
@@ -44,9 +44,29 @@ type FlowOption = { id: string; name: string; inboundTags: string[] };
 const TAB_LABELS: Record<ChatTab, string> = {
   all: "Todas",
   direct: "Conversas",
-  group: "Grupos",
-  community: "Comunidades"
+  group: "Grupos"
 };
+
+function chatKindLabel(kind: ChatKind): string {
+  if (kind === "direct") return "Conversas";
+  return "Grupos";
+}
+
+function chatMatchesTab(kind: ChatKind, tab: ChatTab): boolean {
+  if (tab === "all") return true;
+  if (tab === "direct") return kind === "direct";
+  return kind === "group" || kind === "community";
+}
+
+function sanitizeChatName(name: string, kind: ChatKind): string {
+  const t = name.trim();
+  if (!t || t === "[object Object]") {
+    if (kind === "community") return "Comunidade";
+    if (kind === "group") return "Grupo";
+    return "Contato";
+  }
+  return t;
+}
 
 type SessionProfile = {
   instanceName: string;
@@ -244,7 +264,9 @@ const ChatListRow = memo(function ChatListRow({
       <WhatsAppAvatar chatId={chat.id} isGroup={chat.isGroup} name={chat.name} size={49} />
       <div className="flex-1 min-w-0">
         <div className="flex justify-between gap-2">
-          <span className="font-medium text-[#e9edef] truncate text-[15px]">{chat.name}</span>
+          <span className="font-medium text-[#e9edef] truncate text-[15px]">
+            {sanitizeChatName(chat.name, chat.kind)}
+          </span>
           <span className="text-[11px] text-[#8696a0] shrink-0">{formatTime(chat.timestamp)}</span>
         </div>
         <div className="flex justify-between gap-2 mt-0.5">
@@ -306,6 +328,7 @@ export function WhatsAppInbox() {
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>([]);
   const [search, setSearch] = useState("");
   const [chatTab, setChatTab] = useState<ChatTab>("all");
+  const [filterTagId, setFilterTagId] = useState("");
   const [draft, setDraft] = useState("");
   const [loadingChats, setLoadingChats] = useState(true);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
@@ -516,7 +539,8 @@ export function WhatsAppInbox() {
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return chats.filter((c) => {
-      if (chatTab !== "all" && c.kind !== chatTab) return false;
+      if (!chatMatchesTab(c.kind, chatTab)) return false;
+      if (filterTagId && !c.contact?.tags.some((t) => t.id === filterTagId)) return false;
       if (!q) return true;
       const tagStr = c.contact?.tags.map((t) => t.name).join(" ") ?? "";
       return (
@@ -526,17 +550,21 @@ export function WhatsAppInbox() {
         tagStr.toLowerCase().includes(q)
       );
     });
-  }, [chats, chatTab, search]);
+  }, [chats, chatTab, search, filterTagId]);
 
   const tabCounts = useMemo(
     () => ({
       all: chats.length,
       direct: chats.filter((c) => c.kind === "direct").length,
-      group: chats.filter((c) => c.kind === "group").length,
-      community: chats.filter((c) => c.kind === "community").length
+      group: chats.filter((c) => c.kind === "group" || c.kind === "community").length
     }),
     [chats]
   );
+
+  const tagFilterCount = useMemo(() => {
+    if (!filterTagId) return 0;
+    return chats.filter((c) => c.contact?.tags.some((t) => t.id === filterTagId)).length;
+  }, [chats, filterTagId]);
 
   async function saveContactTags(chat: Chat, tagIds: string[]) {
     const key = chat.isGroup ? chat.id : chat.phone;
@@ -912,7 +940,7 @@ export function WhatsAppInbox() {
           </Link>
         </header>
 
-        <div className="flex gap-1 px-2 py-2 bg-[#111b21] border-b border-[#2a3942]/60 overflow-x-auto">
+        <div className="flex gap-1 px-2 py-2 bg-[#111b21] border-b border-[#2a3942]/60 overflow-x-auto items-center">
           {(Object.keys(TAB_LABELS) as ChatTab[]).map((tab) => (
             <button
               key={tab}
@@ -928,6 +956,27 @@ export function WhatsAppInbox() {
               <span className="ml-1 opacity-70">{tabCounts[tab]}</span>
             </button>
           ))}
+          <select
+            value={filterTagId}
+            onChange={(e) => setFilterTagId(e.target.value)}
+            className={`shrink-0 max-w-[9.5rem] rounded-lg px-2 py-1.5 text-xs border-0 outline-none cursor-pointer transition ${
+              filterTagId
+                ? "bg-[#00a884]/20 text-[#00a884]"
+                : "bg-[#202c33] text-[#8696a0] hover:text-[#e9edef]"
+            }`}
+            title="Filtrar conversas por tag"
+            aria-label="Filtrar por tag"
+          >
+            <option value="">Tag</option>
+            {tags.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+          {filterTagId ? (
+            <span className="shrink-0 text-[10px] text-[#8696a0] tabular-nums">{tagFilterCount}</span>
+          ) : null}
         </div>
 
         <div className="px-3 py-2 bg-[#111b21]">
@@ -1016,9 +1065,9 @@ export function WhatsAppInbox() {
                 size={40}
               />
               <div className="flex-1 min-w-0">
-                <div className="font-medium truncate">{selected.name}</div>
+                <div className="font-medium truncate">{sanitizeChatName(selected.name, selected.kind)}</div>
                 <div className="text-xs text-[#8696a0] truncate">
-                  {TAB_LABELS[selected.kind]}
+                  {chatKindLabel(selected.kind)}
                   {selected.phone ? ` · ${selected.phone}` : ""}
                 </div>
               </div>
