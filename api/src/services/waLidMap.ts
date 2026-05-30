@@ -123,6 +123,18 @@ export async function flushWaLidMap(session: string): Promise<void> {
   await persistWaLidMap(session.trim().toLowerCase()).catch(() => {});
 }
 
+/** Limpa mapeamento @lid ao trocar o número conectado na instância. */
+export async function clearWaLidMap(session: string): Promise<void> {
+  const norm = session.trim().toLowerCase();
+  mem.clear();
+  loadedSession = "";
+  try {
+    await fs.unlink(mapFile(norm));
+  } catch {
+    /* arquivo inexistente */
+  }
+}
+
 export function getMappedPhoneJid(session: string, chatId: string): string | null {
   const norm = session.trim().toLowerCase();
   const id = normalizeDirectJid(chatId.trim());

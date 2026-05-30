@@ -544,6 +544,8 @@ export type FetchChatsResult = {
   chats: NormalizedChat[];
   sourcesOk: string[];
   errors: string[];
+  ownerPhone?: string | null;
+  ownerPhoneChanged?: boolean;
 };
 
 function mergeContactNames(
@@ -592,6 +594,8 @@ export async function fetchChats(): Promise<FetchChatsResult> {
 
   const { defaultWhatsAppSession } = await import("../env.js");
   const session = defaultWhatsAppSession();
+  const { ensureInboxOwnerPhone } = await import("./inboxStore.js");
+  const ownerSync = await ensureInboxOwnerPhone();
   await loadWaLidMap(session);
 
   const map = new Map<string, NormalizedChat>();
@@ -666,7 +670,13 @@ export async function fetchChats(): Promise<FetchChatsResult> {
     unreadCount: isChatReadLocally(session, c.id) ? 0 : c.unreadCount
   }));
   await flushWaLidMap(session);
-  return { chats, sourcesOk, errors };
+  return {
+    chats,
+    sourcesOk,
+    errors,
+    ownerPhone: ownerSync.phone,
+    ownerPhoneChanged: ownerSync.changed
+  };
 }
 
 const INBOX_HINT_EMPTY =
@@ -678,6 +688,8 @@ export async function fetchMessages(
 ): Promise<{ messages: NormalizedMessage[]; hint?: string; captureSince?: string | null }> {
   const { defaultWhatsAppSession } = await import("../env.js");
   const session = defaultWhatsAppSession();
+  const { ensureInboxOwnerPhone } = await import("./inboxStore.js");
+  await ensureInboxOwnerPhone();
   await loadWaLidMap(session);
 
   let chatId = resolveChatId(options.chatId, options.isGroup);

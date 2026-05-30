@@ -25,12 +25,14 @@ model AppSettings {
   dismissedWppSessions Json @default("[]")
   quickReplies       Json      @default("[]")
   inboxCaptureSince  DateTime?
+  inboxOwnerPhone    String?
   updatedAt          DateTime  @updatedAt
 }
 
 model InboxMessage {
   id          String   @id @default(cuid())
   session     String
+  ownerPhone  String   @default("")
   chatId      String
   body        String   @default("")
   fromMe      Boolean  @default(false)
@@ -42,6 +44,7 @@ model InboxMessage {
 
   @@unique([session, waMessageId])
   @@index([session, chatId, timestamp])
+  @@index([session, ownerPhone, chatId, timestamp])
 }
 
 model WppInstance {

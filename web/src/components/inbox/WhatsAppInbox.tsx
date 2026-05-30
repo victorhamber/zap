@@ -341,6 +341,16 @@ export function WhatsAppInbox() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastMsgCountRef = useRef(0);
   const activeChatIdRef = useRef<string | null>(null);
+  const lastOwnerPhoneRef = useRef<string | null>(null);
+
+  const resetInboxForOwnerChange = useCallback(() => {
+    activeChatIdRef.current = null;
+    setSelected(null);
+    setMessages([]);
+    setChats([]);
+    setMsgHint("");
+    setSendError("");
+  }, []);
 
   const loadTags = useCallback(async () => {
     const r = await api<{ tags: Tag[] }>("/api/tags");
@@ -359,12 +369,25 @@ export function WhatsAppInbox() {
 
   const loadSessionProfile = useCallback(async () => {
     try {
-      const r = await api<{ ok: boolean; profile: SessionProfile | null }>("/api/inbox/session-profile");
-      if (r.profile) setSessionProfile(r.profile);
+      const r = await api<{
+        ok: boolean;
+        profile: SessionProfile | null;
+        ownerPhone?: string | null;
+        ownerPhoneChanged?: boolean;
+      }>("/api/inbox/session-profile");
+      if (r.ownerPhoneChanged) {
+        resetInboxForOwnerChange();
+      }
+      if (r.profile) {
+        setSessionProfile(r.profile);
+        lastOwnerPhoneRef.current = r.profile.phone ?? r.ownerPhone ?? null;
+      } else if (r.ownerPhone !== undefined) {
+        lastOwnerPhoneRef.current = r.ownerPhone;
+      }
     } catch {
       /* opcional */
     }
-  }, []);
+  }, [resetInboxForOwnerChange]);
 
   const loadChats = useCallback(async (silent = false) => {
     if (!silent) setLoadingChats(true);
@@ -376,7 +399,19 @@ export function WhatsAppInbox() {
         message?: string;
         sourcesOk?: string[];
         errors?: string[];
+        ownerPhone?: string | null;
+        ownerPhoneChanged?: boolean;
       }>("/api/inbox/chats");
+
+      if (r.ownerPhoneChanged) {
+        resetInboxForOwnerChange();
+      } else if (r.ownerPhone && lastOwnerPhoneRef.current && r.ownerPhone !== lastOwnerPhoneRef.current) {
+        resetInboxForOwnerChange();
+      }
+      if (r.ownerPhone !== undefined) {
+        lastOwnerPhoneRef.current = r.ownerPhone;
+      }
+
       setChats(r.chats ?? []);
       if (r.chats.length === 0) {
         const detail = r.message ?? r.errors?.join(" · ") ?? "Sem conversas no WPP.";
@@ -389,7 +424,7 @@ export function WhatsAppInbox() {
     } finally {
       if (!silent) setLoadingChats(false);
     }
-  }, []);
+  }, [resetInboxForOwnerChange]);
 
   const loadMessages = useCallback(async (chat: Chat, silent = false) => {
     const requestChatId = chat.id;

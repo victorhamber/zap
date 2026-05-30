@@ -103,7 +103,7 @@ export async function inboxRoutes(app: FastifyInstance) {
 
   app.get("/api/inbox/chats", async () => {
     try {
-      const { chats, sourcesOk, errors } = await inbox.fetchChats();
+      const { chats, sourcesOk, errors, ownerPhone, ownerPhoneChanged } = await inbox.fetchChats();
       const contacts = await listContactsWithTags();
       const byKey = new Map<string, ReturnType<typeof contactToJson>>();
       for (const c of contacts) {
@@ -121,6 +121,8 @@ export async function inboxRoutes(app: FastifyInstance) {
 
       return {
         ok: chats.length > 0,
+        ownerPhone,
+        ownerPhoneChanged: ownerPhoneChanged === true,
         chats: chats.map((ch) => {
           const contact = byKey.get(ch.id) ?? byKey.get(ch.phone) ?? null;
           const contactName = contact?.name?.trim();
@@ -152,8 +154,15 @@ export async function inboxRoutes(app: FastifyInstance) {
 
   app.get("/api/inbox/session-profile", async () => {
     try {
+      const { ensureInboxOwnerPhone } = await import("../services/inboxStore.js");
+      const ownerSync = await ensureInboxOwnerPhone();
       const profile = await wpp.getConnectedInstanceProfile();
-      return { ok: true, profile };
+      return {
+        ok: true,
+        profile,
+        ownerPhone: ownerSync.phone,
+        ownerPhoneChanged: ownerSync.changed
+      };
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       return { ok: false, profile: null, message };
