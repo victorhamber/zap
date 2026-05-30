@@ -591,9 +591,13 @@ export type FetchChatsResult = {
   chats: NormalizedChat[];
   sourcesOk: string[];
   errors: string[];
+  connected: boolean;
   ownerPhone?: string | null;
   ownerPhoneChanged?: boolean;
 };
+
+export const INBOX_EMPTY_CONNECTED_HINT =
+  "Nenhuma conversa ainda neste número. Novas mensagens recebidas ou enviadas aparecem aqui automaticamente.";
 
 function mergeContactNames(
   chats: NormalizedChat[],
@@ -634,8 +638,9 @@ export async function fetchChats(): Promise<FetchChatsResult> {
       sourcesOk: [],
       errors: [
         check.message ??
-          "WhatsApp não conectado. Use Conexão / QR e escaneie o código antes de abrir o Inbox."
-      ]
+          "WhatsApp não conectado. Vá em Configurações → Instâncias para conectar."
+      ],
+      connected: false
     };
   }
 
@@ -734,6 +739,7 @@ export async function fetchChats(): Promise<FetchChatsResult> {
       chats,
       sourcesOk,
       errors,
+      connected: true,
       ownerPhone: ownerSync.phone,
       ownerPhoneChanged: ownerSync.changed
     };
@@ -744,6 +750,7 @@ export async function fetchChats(): Promise<FetchChatsResult> {
     chats: [],
     sourcesOk,
     errors,
+    connected: true,
     ownerPhone: ownerSync.phone,
     ownerPhoneChanged: ownerSync.changed
   };

@@ -333,6 +333,8 @@ export function WhatsAppInbox() {
   const [loadingChats, setLoadingChats] = useState(true);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const [error, setError] = useState("");
+  const [emptyHint, setEmptyHint] = useState("");
+  const [waConnected, setWaConnected] = useState<boolean | null>(null);
   const [newTagName, setNewTagName] = useState("");
   const [newTagColor, setNewTagColor] = useState("#25D366");
   const [showTagManager, setShowTagManager] = useState(false);
@@ -403,6 +405,7 @@ export function WhatsAppInbox() {
       }
       if (r.profile) {
         setSessionProfile(r.profile);
+        setWaConnected(r.profile.connected);
         lastOwnerPhoneRef.current = r.profile.phone ?? r.ownerPhone ?? null;
       } else if (r.ownerPhone !== undefined) {
         lastOwnerPhoneRef.current = r.ownerPhone;
@@ -415,9 +418,11 @@ export function WhatsAppInbox() {
   const loadChats = useCallback(async (silent = false) => {
     if (!silent) setLoadingChats(true);
     setError("");
+    setEmptyHint("");
     try {
       const r = await api<{
         ok: boolean;
+        connected?: boolean;
         chats: Chat[];
         message?: string;
         sourcesOk?: string[];
@@ -435,19 +440,33 @@ export function WhatsAppInbox() {
         lastOwnerPhoneRef.current = r.ownerPhone;
       }
 
+      const connected = r.connected ?? sessionProfile?.connected ?? false;
+      setWaConnected(connected);
       setChats(r.chats ?? []);
+
       if (r.chats.length === 0) {
-        const detail = r.message ?? r.errors?.join(" · ") ?? "Sem conversas no WPP.";
-        setError(detail);
+        if (connected) {
+          setEmptyHint(
+            r.message ??
+              "Nenhuma conversa ainda neste número. Novas mensagens aparecem aqui automaticamente."
+          );
+        } else {
+          setError(
+            r.message ??
+              r.errors?.join(" · ") ??
+              "WhatsApp não conectado. Vá em Configurações → Instâncias."
+          );
+        }
       } else if (r.errors?.length) {
         setError("");
       }
     } catch (e: any) {
       setError(e?.message ?? "Erro ao carregar conversas");
+      setWaConnected(null);
     } finally {
       if (!silent) setLoadingChats(false);
     }
-  }, [resetInboxForOwnerChange]);
+  }, [resetInboxForOwnerChange, sessionProfile?.connected]);
 
   const loadMessages = useCallback(async (chat: Chat, silent = false) => {
     const requestChatId = chat.id;
@@ -988,12 +1007,18 @@ export function WhatsAppInbox() {
           />
         </div>
 
-        {error && (
+        {error && !waConnected && (
           <div className="mx-3 mb-2 rounded-lg bg-red-500/10 border border-red-500/30 px-3 py-2 text-xs text-red-200">
             {error}
             <Link to="/settings" className="block mt-1 text-[#00a884] underline">
-              Configurações / QR
+              Configurações → Instâncias
             </Link>
+          </div>
+        )}
+
+        {emptyHint && waConnected && chats.length === 0 && !filterTagId && (
+          <div className="mx-3 mb-2 rounded-lg bg-[#00a884]/10 border border-[#00a884]/25 px-3 py-2 text-xs text-[#aebac1] leading-relaxed">
+            {emptyHint}
           </div>
         )}
 
@@ -1003,13 +1028,27 @@ export function WhatsAppInbox() {
           )}
           {!loadingChats && filtered.length === 0 && (
             <div className="p-4 text-sm text-[#8696a0] space-y-2">
-              <p>Nenhuma conversa nesta aba.</p>
-              {error && (
-                <p className="text-amber-200/90 text-xs leading-relaxed">{error}</p>
+              {filterTagId && chats.length > 0 ? (
+                <p>Nenhuma conversa com esta tag nesta aba.</p>
+              ) : waConnected ? (
+                <>
+                  <p>Nenhuma conversa ainda.</p>
+                  <p className="text-xs leading-relaxed text-[#8696a0]">
+                    {emptyHint ||
+                      "Novas mensagens recebidas ou enviadas neste número aparecem aqui automaticamente."}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p>Nenhuma conversa nesta aba.</p>
+                  {error && (
+                    <p className="text-amber-200/90 text-xs leading-relaxed">{error}</p>
+                  )}
+                  <Link to="/settings" className="text-[#00a884] underline text-xs block">
+                    Abrir Configurações → Instâncias
+                  </Link>
+                </>
               )}
-              <Link to="/settings" className="text-[#00a884] underline text-xs block">
-                Abrir Configurações → Conexão / QR
-              </Link>
             </div>
           )}
           {filtered.map((chat) => (

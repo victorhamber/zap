@@ -103,7 +103,8 @@ export async function inboxRoutes(app: FastifyInstance) {
 
   app.get("/api/inbox/chats", async () => {
     try {
-      const { chats, sourcesOk, errors, ownerPhone, ownerPhoneChanged } = await inbox.fetchChats();
+      const { chats, sourcesOk, errors, ownerPhone, ownerPhoneChanged, connected } =
+        await inbox.fetchChats();
       const contacts = await listContactsWithTags();
       const byKey = new Map<string, ReturnType<typeof contactToJson>>();
       for (const c of contacts) {
@@ -114,13 +115,15 @@ export async function inboxRoutes(app: FastifyInstance) {
 
       const message =
         chats.length === 0
-          ? errors.length > 0
-            ? `Nenhuma conversa retornada. ${errors[0]}`
-            : "Nenhuma conversa no WPP. Confira Conexão/QR em Configurações."
+          ? connected
+            ? inbox.INBOX_EMPTY_CONNECTED_HINT
+            : errors[0] ??
+              "WhatsApp não conectado. Vá em Configurações → Instâncias para conectar."
           : undefined;
 
       return {
-        ok: chats.length > 0,
+        ok: true,
+        connected,
         ownerPhone,
         ownerPhoneChanged: ownerPhoneChanged === true,
         chats: chats.map((ch) => {
