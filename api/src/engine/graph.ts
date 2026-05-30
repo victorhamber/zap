@@ -31,11 +31,11 @@ export function defaultHotmartGraph(): FlowGraph {
         position: { x: 0, y: 0 },
         data: {
           mapping: {
-            phonePath: "$.data.buyer.phone",
+            phonePath: "$.data.buyer.checkout_phone",
             namePath: "$.data.buyer.name",
             emailPath: "$.data.buyer.email",
             productNamePath: "$.data.product.name",
-            purchaseIdPath: "$.data.purchase.id",
+            purchaseIdPath: "$.data.purchase.transaction",
             loginPath: "$.data.access.login",
             passwordPath: "$.data.access.password",
             accessLinkPath: "$.data.access.link"

@@ -35,24 +35,108 @@ function render(template: string, vars: Record<string, unknown>): string {
   return Mustache.render(template, vars);
 }
 
+function hotmartBuyer(payload: unknown): Record<string, unknown> | null {
+  const buyer = getByPath(payload, "$.data.buyer");
+  if (buyer && typeof buyer === "object" && !Array.isArray(buyer)) {
+    return buyer as Record<string, unknown>;
+  }
+  return null;
+}
+
+/** Hotmart v2 usa checkout_phone; versões antigas usam buyer.phone. */
+function resolveHotmartPhone(payload: unknown, mapping: HotmartMapping): string {
+  const seen = new Set<string>();
+  const tryAdd = (raw: string | undefined): string | null => {
+    if (!raw) return null;
+    const norm = normalizePhone(raw);
+    const digits = norm.replace(/\D/g, "");
+    if (digits.length < 10 || seen.has(digits)) return null;
+    seen.add(digits);
+    return norm;
+  };
+
+  const fromMapping = tryAdd(asString(getByPath(payload, mapping.phonePath)));
+  if (fromMapping) return fromMapping;
+
+  const buyer = hotmartBuyer(payload);
+  if (buyer) {
+    for (const key of ["phone", "checkout_phone", "telephone", "cellphone"] as const) {
+      const hit = tryAdd(asString(buyer[key]));
+      if (hit) return hit;
+    }
+    const code = asString(buyer.checkout_phone_code ?? buyer.phone_code);
+    const local = asString(buyer.checkout_phone ?? buyer.phone);
+    if (code && local) {
+      const combined = tryAdd(`${code}${local}`.replace(/\s/g, ""));
+      if (combined) return combined;
+    }
+  }
+
+  for (const path of [
+    "$.data.buyer.checkout_phone",
+    "$.data.buyer.phone",
+    "$.buyer.phone",
+    "$.buyer.checkout_phone"
+  ]) {
+    const hit = tryAdd(asString(getByPath(payload, path)));
+    if (hit) return hit;
+  }
+
+  return "";
+}
+
+function resolveHotmartPurchaseId(payload: unknown, mapping: HotmartMapping): string {
+  const paths = [
+    mapping.purchaseIdPath,
+    "$.data.purchase.transaction",
+    "$.data.purchase.order_id",
+    "$.data.purchase.id",
+    "$.data.purchase.code",
+    "$.id"
+  ];
+
+  for (const path of paths) {
+    if (!path) continue;
+    const v = asString(getByPath(payload, path));
+    if (v) return v;
+  }
+  return "";
+}
+
 export function extractHotmartVariables(
   payload: unknown,
   mapping: HotmartMapping
 ): Record<string, unknown> {
-  const phone = asString(getByPath(payload, mapping.phonePath));
-  const name = asString(getByPath(payload, mapping.namePath)) ?? "Cliente";
-  const purchaseId = asString(getByPath(payload, mapping.purchaseIdPath));
+  const phone = resolveHotmartPhone(payload, mapping);
+  const name =
+    asString(getByPath(payload, mapping.namePath)) ??
+    asString(getByPath(payload, "$.data.buyer.name")) ??
+    asString(getByPath(payload, "$.data.buyer.first_name")) ??
+    "Cliente";
+  const purchaseId = resolveHotmartPurchaseId(payload, mapping);
 
-  if (!phone) throw new Error("Telefone não encontrado no payload Hotmart");
-  if (!purchaseId) throw new Error("purchaseId não encontrado no payload Hotmart");
+  if (!phone) {
+    throw new Error(
+      "Telefone não encontrado no payload Hotmart (tente buyer.checkout_phone ou buyer.phone)"
+    );
+  }
+  if (!purchaseId) {
+    throw new Error(
+      "ID da compra não encontrado no payload Hotmart (tente purchase.transaction)"
+    );
+  }
 
   return {
     phone: normalizePhone(phone),
     name,
     purchaseId,
-    email: asString(mapping.emailPath ? getByPath(payload, mapping.emailPath) : undefined) ?? "",
+    email:
+      asString(mapping.emailPath ? getByPath(payload, mapping.emailPath) : undefined) ??
+      asString(getByPath(payload, "$.data.buyer.email")) ??
+      "",
     productName:
       asString(mapping.productNamePath ? getByPath(payload, mapping.productNamePath) : undefined) ??
+      asString(getByPath(payload, "$.data.product.name")) ??
       "",
     login: asString(mapping.loginPath ? getByPath(payload, mapping.loginPath) : undefined) ?? "",
     password:

@@ -161,7 +161,11 @@ export function FlowNodeProperties({
             >
               {copied ? "Copiado!" : "Copiar URL"}
             </button>
-            <p className="mt-2">Variáveis: {"{{name}}"}, {"{{phone}}"}, {"{{login}}"}, etc.</p>
+            <p className="mt-2">Variáveis: {"{{name}}"}, {"{{phone}}"}, {"{{email}}"}, {"{{productName}}"}, {"{{purchaseId}}"}, etc.</p>
+            <p className="mt-2 text-zinc-600">
+              Hotmart v2: telefone em <code className="text-zinc-500">data.buyer.checkout_phone</code>, compra em{" "}
+              <code className="text-zinc-500">data.purchase.transaction</code>.
+            </p>
           </div>
         )}
 

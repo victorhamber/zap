@@ -38,9 +38,11 @@ export function defaultNodeData(type: string): Record<string, unknown> {
     case "trigger_hotmart":
       return {
         mapping: {
-          phonePath: "$.data.buyer.phone",
+          phonePath: "$.data.buyer.checkout_phone",
           namePath: "$.data.buyer.name",
-          purchaseIdPath: "$.data.purchase.id"
+          emailPath: "$.data.buyer.email",
+          productNamePath: "$.data.product.name",
+          purchaseIdPath: "$.data.purchase.transaction"
         }
       };
     case "trigger_inbound":
