@@ -2,8 +2,9 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { NODE_LABELS } from "./nodeMeta";
 
 /** Alturas fixas — handles calculados em px para alinhar com o nome da oferta. */
-const OFFER_HEADER_H = 52;
-const OFFER_ROW_H = 80;
+const OFFER_HEADER_H = 56;
+const OFFER_ROW_H = 92;
+const OFFER_ROW_PAD_TOP = 12;
 const OFFER_TITLE_LINE_H = 32;
 
 type OfferBranch = {
@@ -21,7 +22,7 @@ function branchCodesPreview(branch: OfferBranch): string {
 }
 
 function handleTopForRow(rowIndex: number): number {
-  return OFFER_HEADER_H + rowIndex * OFFER_ROW_H + OFFER_TITLE_LINE_H / 2;
+  return OFFER_HEADER_H + rowIndex * OFFER_ROW_H + OFFER_ROW_PAD_TOP + OFFER_TITLE_LINE_H / 2;
 }
 
 function OfferOutputRow({
@@ -39,13 +40,13 @@ function OfferOutputRow({
 
   return (
     <div
-      className={`h-[80px] border-b border-zinc-800/70 last:border-b-0 ${
+      className={`border-b border-zinc-700/40 last:border-b-0 ${
         isDefault ? "bg-zinc-900/50" : "bg-emerald-500/[0.05]"
       }`}
+      style={{ height: OFFER_ROW_H, paddingTop: OFFER_ROW_PAD_TOP, paddingBottom: 14 }}
     >
-      {/* Linha do nome — mesma altura em todas as saídas; a bolinha fica alinhada aqui */}
       <div
-        className="flex h-8 items-center gap-2 px-2.5"
+        className="flex items-center gap-2 px-3"
         style={{ height: OFFER_TITLE_LINE_H }}
       >
         <div
@@ -64,20 +65,10 @@ function OfferOutputRow({
         >
           {title}
         </div>
-        <div
-          className={`flex shrink-0 items-center gap-0.5 ${
-            isDefault ? "text-zinc-500" : "text-emerald-400"
-          }`}
-          aria-hidden
-        >
-          <span className={`block h-px w-5 ${isDefault ? "bg-zinc-600" : "bg-emerald-500/50"}`} />
-          <span className="text-base font-bold leading-none">→</span>
-        </div>
-        {/* Espaço reservado para a bolinha (Handle fica no nó pai, posição calculada) */}
-        <div className="w-3 shrink-0" />
+        <div className="w-4 shrink-0" aria-hidden />
       </div>
 
-      <div className="px-2.5 pb-2 pl-[46px]">
+      <div className="mt-2.5 px-3 pl-[46px]">
         {codes ? (
           <div
             className={`truncate font-mono text-[10px] leading-tight ${
@@ -88,7 +79,7 @@ function OfferOutputRow({
             {isDefault ? "Demais códigos" : `cód.: ${codes}`}
           </div>
         ) : !isDefault ? (
-          <div className="text-[10px] text-amber-500/90">configure os códigos →</div>
+          <div className="text-[10px] text-amber-500/90">configure os códigos</div>
         ) : (
           <div className="text-[10px] text-zinc-600">não listados acima</div>
         )}
@@ -140,16 +131,16 @@ export function FlowNodeComponent({ data, selected }: NodeProps) {
         />
 
         <div
-          className="border-b border-zinc-800/80 px-3 py-2.5"
+          className="border-b border-zinc-700/40 px-3 py-3"
           style={{ height: OFFER_HEADER_H }}
         >
           <div className="text-xs font-medium text-zinc-400">{label}</div>
-          <div className="mt-1 text-[10px] leading-snug text-zinc-600">
-            Ligue cada bolinha → na linha do nome da oferta
+          <div className="mt-1.5 text-[10px] leading-snug text-zinc-600">
+            Ligue cada bolinha na linha do nome da oferta
           </div>
         </div>
 
-        {slots.map((slot, index) => (
+        {slots.map((slot) => (
           <OfferOutputRow
             key={slot.key}
             outputNumber={slot.outputNumber}
