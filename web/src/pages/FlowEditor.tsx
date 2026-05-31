@@ -37,7 +37,9 @@ type FlowRecord = {
   };
 };
 
-type ContextMenuState = { x: number; y: number; nodeId: string };
+type ContextMenuState =
+  | { kind: "node"; x: number; y: number; nodeId: string }
+  | { kind: "edge"; x: number; y: number; edgeId: string };
 
 function summaryFor(type: string, data: Record<string, unknown>): string {
   if (type === "send_text") return String(data.text ?? "").slice(0, 40);
@@ -92,6 +94,7 @@ export function FlowEditor() {
   const [status, setStatus] = useState("");
   const [testPhone, setTestPhone] = useState("");
   const [paletteOpen, setPaletteOpen] = useState(true);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const rfRef = useRef<ReactFlowInstance | null>(null);
 
@@ -103,6 +106,14 @@ export function FlowEditor() {
     [nodes, selectedId]
   );
 
+  const selectEdge = useCallback(
+    (edgeId: string | null) => {
+      setSelectedEdgeId(edgeId);
+      setEdges((eds) => eds.map((e) => ({ ...e, selected: edgeId ? e.id === edgeId : false })));
+    },
+    [setEdges]
+  );
+
   const deleteNode = useCallback(
     (nodeId: string) => {
       setNodes((nds) => nds.filter((n) => n.id !== nodeId));
@@ -111,6 +122,15 @@ export function FlowEditor() {
       setStatus("Bloco removido.");
     },
     [setNodes, setEdges]
+  );
+
+  const deleteEdge = useCallback(
+    (edgeId: string) => {
+      setEdges((eds) => eds.filter((e) => e.id !== edgeId));
+      setSelectedEdgeId(null);
+      setStatus("Conexão removida.");
+    },
+    [setEdges]
   );
 
   const onFlowInit = useCallback((instance: ReactFlowInstance) => {
@@ -133,20 +153,28 @@ export function FlowEditor() {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if ((e.key === "Delete" || e.key === "Backspace") && selectedId) {
+      if (e.key === "Delete" || e.key === "Backspace") {
         const tag = (e.target as HTMLElement)?.tagName;
         if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-        e.preventDefault();
-        deleteNode(selectedId);
+        if (selectedEdgeId) {
+          e.preventDefault();
+          deleteEdge(selectedEdgeId);
+          return;
+        }
+        if (selectedId) {
+          e.preventDefault();
+          deleteNode(selectedId);
+        }
       }
       if (e.key === "Escape") {
         setContextMenu(null);
         setSelectedId(null);
+        selectEdge(null);
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedId, deleteNode]);
+  }, [selectedId, selectedEdgeId, deleteNode, deleteEdge, selectEdge]);
 
   const onConnect = useCallback(
     (c: Connection) => setEdges((eds) => addEdge(c, eds)),
@@ -334,7 +362,8 @@ export function FlowEditor() {
               ))}
             </div>
             <p className="px-2 pb-2 text-[10px] text-zinc-600">
-              Arraste o bloco para o fluxo. Clique direito no bloco: editar ou excluir.
+              Arraste blocos para o fluxo. Clique na linha entre blocos e pressione Delete para
+              remover a conexão.
             </p>
           </aside>
         )}
@@ -359,15 +388,28 @@ export function FlowEditor() {
             onNodeClick={(_, n) => {
               setContextMenu(null);
               setSelectedId(n.id);
+              selectEdge(null);
             }}
             onNodeContextMenu={(e, n) => {
               e.preventDefault();
-              setContextMenu({ x: e.clientX, y: e.clientY, nodeId: n.id });
+              setContextMenu({ kind: "node", x: e.clientX, y: e.clientY, nodeId: n.id });
               setSelectedId(n.id);
+              selectEdge(null);
+            }}
+            onEdgeClick={(_, edge) => {
+              setContextMenu(null);
+              setSelectedId(null);
+              selectEdge(edge.id);
+            }}
+            onEdgeContextMenu={(e, edge) => {
+              e.preventDefault();
+              selectEdge(edge.id);
+              setContextMenu({ kind: "edge", x: e.clientX, y: e.clientY, edgeId: edge.id });
             }}
             onPaneClick={() => {
               setContextMenu(null);
               setSelectedId(null);
+              selectEdge(null);
             }}
             onDragOver={onCanvasDragOver}
             onDrop={onCanvasDrop}
@@ -377,13 +419,22 @@ export function FlowEditor() {
             maxZoom={1.75}
             defaultViewport={{ x: 0, y: 0, zoom: 0.65 }}
             deleteKeyCode={null}
+            defaultEdgeOptions={{
+              interactionWidth: 24,
+              style: { stroke: "#52525b", strokeWidth: 1.5 }
+            }}
             className="flow-editor-canvas"
             proOptions={{ hideAttribution: true }}
           >
             <Background color="#3f3f46" gap={20} />
             <FlowZoomToolbar panelOpen={panelOpen} />
             <Panel position="top-right" className="!m-3 pointer-events-none">
-              {selectedNode && (
+              {selectedEdgeId && (
+                <span className="rounded-lg bg-zinc-900/90 border border-emerald-700/50 px-2 py-1 text-xs text-emerald-400">
+                  Conexão selecionada · Delete para remover
+                </span>
+              )}
+              {!selectedEdgeId && selectedNode && (
                 <span className="rounded-lg bg-zinc-900/90 border border-zinc-700 px-2 py-1 text-xs text-zinc-400">
                   {NODE_LABELS[String(selectedNode.data.nodeType)] ?? selectedNode.data.nodeType}
                 </span>
@@ -392,12 +443,22 @@ export function FlowEditor() {
           </ReactFlow>
         </div>
 
-        {contextMenu && (
+        {contextMenu?.kind === "node" && (
           <NodeContextMenu
             x={contextMenu.x}
             y={contextMenu.y}
             onEdit={() => setSelectedId(contextMenu.nodeId)}
             onDelete={() => deleteNode(contextMenu.nodeId)}
+            onClose={() => setContextMenu(null)}
+          />
+        )}
+
+        {contextMenu?.kind === "edge" && (
+          <NodeContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            deleteLabel="Remover conexão"
+            onDelete={() => deleteEdge(contextMenu.edgeId)}
             onClose={() => setContextMenu(null)}
           />
         )}

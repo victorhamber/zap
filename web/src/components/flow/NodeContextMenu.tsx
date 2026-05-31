@@ -1,12 +1,13 @@
 type Props = {
   x: number;
   y: number;
-  onEdit: () => void;
+  onEdit?: () => void;
   onDelete: () => void;
+  deleteLabel?: string;
   onClose: () => void;
 };
 
-export function NodeContextMenu({ x, y, onEdit, onDelete, onClose }: Props) {
+export function NodeContextMenu({ x, y, onEdit, onDelete, deleteLabel, onClose }: Props) {
   return (
     <>
       <div className="fixed inset-0 z-[60]" onClick={onClose} onContextMenu={(e) => e.preventDefault()} />
@@ -15,16 +16,18 @@ export function NodeContextMenu({ x, y, onEdit, onDelete, onClose }: Props) {
         style={{ left: x, top: y }}
         onContextMenu={(e) => e.preventDefault()}
       >
-        <button
-          type="button"
-          className="w-full px-4 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800"
-          onClick={() => {
-            onEdit();
-            onClose();
-          }}
-        >
-          Editar propriedades
-        </button>
+        {onEdit && (
+          <button
+            type="button"
+            className="w-full px-4 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800"
+            onClick={() => {
+              onEdit();
+              onClose();
+            }}
+          >
+            Editar propriedades
+          </button>
+        )}
         <button
           type="button"
           className="w-full px-4 py-2 text-left text-sm text-red-300 hover:bg-red-950/50"
@@ -33,7 +36,7 @@ export function NodeContextMenu({ x, y, onEdit, onDelete, onClose }: Props) {
             onClose();
           }}
         >
-          Excluir bloco
+          {deleteLabel ?? "Excluir bloco"}
         </button>
       </div>
     </>

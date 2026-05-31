@@ -100,6 +100,15 @@ body {
   background: #09090b !important;
 }
 
+.flow-editor-canvas .react-flow__edge.selected .react-flow__edge-path {
+  stroke: #34d399 !important;
+  stroke-width: 2.5 !important;
+}
+
+.flow-editor-canvas .react-flow__edge:hover .react-flow__edge-path {
+  stroke: #a1a1aa;
+}
+
 /* Esconde controles padrão do React Flow (ficavam à esquerda, sem contraste) */
 .flow-editor-canvas .react-flow__controls {
   display: none !important;
