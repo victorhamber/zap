@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useState } from "react";
+import { LinkifyText } from "./LinkifyText";
 
 type Props = {
   src: string;
@@ -87,7 +88,9 @@ export const WaMediaViewer = memo(function WaMediaViewer({ src, kind, caption }:
               />
             )}
             {caption && (
-              <p className="text-sm text-[#e9edef] text-center max-w-lg whitespace-pre-wrap">{caption}</p>
+              <p className="text-sm text-[#e9edef] text-center max-w-lg whitespace-pre-wrap">
+                <LinkifyText text={caption} />
+              </p>
             )}
           </div>
         </div>

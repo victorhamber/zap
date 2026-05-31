@@ -6,6 +6,7 @@ import type { QuickReply, QuickReplyKind } from "../../types/quickReply";
 import { WaAudioPlayer } from "./WaAudioPlayer";
 import { WaMediaViewer } from "./WaMediaViewer";
 import { WhatsAppAvatar } from "./WhatsAppAvatar";
+import { LinkifyText } from "./LinkifyText";
 
 type Tag = { id: string; name: string; color: string };
 type ChatKind = "direct" | "group" | "community";
@@ -176,7 +177,11 @@ const InboxMessageContent = memo(function InboxMessageContent({
     return (
       <div className="space-y-1 -mx-0.5">
         <WaMediaViewer src={url} kind={m.type === "sticker" ? "sticker" : "image"} caption={caption} />
-        {showCaption && <p className="text-sm whitespace-pre-wrap px-0.5">{m.body}</p>}
+        {showCaption && (
+          <p className="text-sm whitespace-pre-wrap px-0.5">
+            <LinkifyText text={m.body} />
+          </p>
+        )}
       </div>
     );
   }
@@ -185,7 +190,11 @@ const InboxMessageContent = memo(function InboxMessageContent({
     return (
       <div className="space-y-1 -mx-0.5">
         <WaMediaViewer src={url} kind="video" caption={caption} />
-        {showCaption && <p className="text-sm whitespace-pre-wrap px-0.5">{m.body}</p>}
+        {showCaption && (
+          <p className="text-sm whitespace-pre-wrap px-0.5">
+            <LinkifyText text={m.body} />
+          </p>
+        )}
       </div>
     );
   }
@@ -193,7 +202,11 @@ const InboxMessageContent = memo(function InboxMessageContent({
     return (
       <div className="space-y-1">
         <WaAudioPlayer src={url} fromMe={m.fromMe} />
-        {showCaption && <p className="text-sm whitespace-pre-wrap">{m.body}</p>}
+        {showCaption && (
+          <p className="text-sm whitespace-pre-wrap">
+            <LinkifyText text={m.body} />
+          </p>
+        )}
       </div>
     );
   }
@@ -207,12 +220,20 @@ const InboxMessageContent = memo(function InboxMessageContent({
           className="flex items-center gap-2 text-sm text-[#53bdeb] hover:underline"
         >
           <span aria-hidden>📎</span>
-          {m.body && !m.body.startsWith("📎") ? m.body : "Abrir documento"}
+          {m.body && !m.body.startsWith("📎") ? (
+            <LinkifyText text={m.body} linkClassName="hover:underline break-all" />
+          ) : (
+            "Abrir documento"
+          )}
         </a>
       </div>
     );
   }
-  return <p className="text-sm whitespace-pre-wrap">{m.body || "—"}</p>;
+  return (
+    <p className="text-sm whitespace-pre-wrap">
+      <LinkifyText text={m.body || "—"} />
+    </p>
+  );
 });
 
 function mergePendingMessages(server: Message[], pending: Message[]): Message[] {
