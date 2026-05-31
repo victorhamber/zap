@@ -2,6 +2,9 @@ export type NodeType =
   | "trigger_hotmart"
   | "trigger_inbound"
   | "trigger_manual"
+  | "condition_offer_code"
+  | "tag_action"
+  | "start_flow"
   | "delay"
   | "schedule_at"
   | "send_text"
@@ -13,6 +16,8 @@ export type FlowEdge = {
   id: string;
   source: string;
   target: string;
+  /** Saída do nó (ex.: id da branch ou "default" para outros códigos). */
+  sourceHandle?: string;
 };
 
 export type FlowNode = {
@@ -34,9 +39,30 @@ export type HotmartMapping = {
   emailPath?: string;
   productNamePath?: string;
   purchaseIdPath: string;
+  offerCodePath?: string;
   loginPath?: string;
   passwordPath?: string;
   accessLinkPath?: string;
+};
+
+export type OfferCodeBranch = {
+  id: string;
+  label: string;
+  codes: string[];
+};
+
+export type ConditionOfferCodeData = {
+  branches: OfferCodeBranch[];
+};
+
+export type TagActionData = {
+  mode: "add" | "remove";
+  tagNames: string[];
+};
+
+export type StartFlowData = {
+  targetFlowId: string;
+  targetFlowName?: string;
 };
 
 export type DelayUnit = "minutes" | "hours" | "days";

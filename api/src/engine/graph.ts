@@ -13,7 +13,22 @@ export function findTriggerNode(graph: FlowGraph, triggerType: NodeType): FlowNo
 }
 
 export function getNextNodeId(graph: FlowGraph, currentNodeId: string): string | null {
-  const edge = graph.edges.find((e) => e.source === currentNodeId);
+  const outgoing = graph.edges.filter((e) => e.source === currentNodeId);
+  if (outgoing.length === 0) return null;
+  const linear = outgoing.find((e) => !e.sourceHandle);
+  if (linear) return linear.target;
+  if (outgoing.length === 1) return outgoing[0].target;
+  return null;
+}
+
+export function getNextNodeIdByHandle(
+  graph: FlowGraph,
+  currentNodeId: string,
+  handleId: string
+): string | null {
+  const edge = graph.edges.find(
+    (e) => e.source === currentNodeId && (e.sourceHandle ?? "default") === handleId
+  );
   return edge?.target ?? null;
 }
 

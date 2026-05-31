@@ -2,6 +2,9 @@ export const NODE_LABELS: Record<string, string> = {
   trigger_hotmart: "Hotmart",
   trigger_inbound: "Msg recebida",
   trigger_manual: "Manual",
+  condition_offer_code: "Código da oferta",
+  tag_action: "Tag",
+  start_flow: "Iniciar fluxo",
   delay: "Aguardar",
   schedule_at: "Data/hora",
   send_text: "Texto",
@@ -14,6 +17,9 @@ export const PALETTE = [
   { type: "trigger_hotmart", label: "Gatilho Hotmart" },
   { type: "trigger_inbound", label: "Mensagem recebida" },
   { type: "trigger_manual", label: "Teste manual" },
+  { type: "condition_offer_code", label: "Código da oferta" },
+  { type: "tag_action", label: "Adicionar / remover tag" },
+  { type: "start_flow", label: "Iniciar outro fluxo" },
   { type: "delay", label: "Aguardar tempo" },
   { type: "schedule_at", label: "Agendar data" },
   { type: "send_text", label: "Enviar texto" },
@@ -47,6 +53,20 @@ export function defaultNodeData(type: string): Record<string, unknown> {
       };
     case "trigger_inbound":
       return { keyword: "", tags: [] as string[] };
+    case "condition_offer_code":
+      return {
+        branches: [
+          {
+            id: `branch_${Date.now()}`,
+            label: "Oferta 1",
+            codes: [] as string[]
+          }
+        ]
+      };
+    case "tag_action":
+      return { mode: "add", tagNames: [] as string[] };
+    case "start_flow":
+      return { targetFlowId: "", targetFlowName: "" };
     case "delay":
       return { value: 2, unit: "days" };
     case "schedule_at":

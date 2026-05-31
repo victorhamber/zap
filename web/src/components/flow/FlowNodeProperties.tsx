@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Node } from "@xyflow/react";
+import { api } from "../../api/client";
 import { hotmartWebhookUrl, NODE_LABELS } from "./nodeMeta";
 
 type Props = {
@@ -8,6 +9,24 @@ type Props = {
   config: Record<string, unknown>;
   onUpdate: (patch: Record<string, unknown>) => void;
   onClose: () => void;
+};
+
+type OfferBranch = {
+  id: string;
+  label: string;
+  codes: string[];
+};
+
+type TagRecord = {
+  id: string;
+  name: string;
+  color: string;
+};
+
+type FlowRecord = {
+  id: string;
+  name: string;
+  enabled: boolean;
 };
 
 export function FlowNodeProperties({
@@ -19,7 +38,84 @@ export function FlowNodeProperties({
 }: Props) {
   const nodeType = String(selectedNode.data.nodeType);
   const [copied, setCopied] = useState(false);
+  const [allTags, setAllTags] = useState<TagRecord[]>([]);
+  const [allFlows, setAllFlows] = useState<FlowRecord[]>([]);
+  const [newTagName, setNewTagName] = useState("");
+  const [creatingTag, setCreatingTag] = useState(false);
   const webhookUrl = flowId ? hotmartWebhookUrl(flowId) : "";
+  const offerBranches = (config.branches as OfferBranch[] | undefined) ?? [];
+  const selectedTagNames = (config.tagNames as string[] | undefined) ?? [];
+
+  useEffect(() => {
+    if (nodeType !== "tag_action") return;
+    api<{ tags: TagRecord[] }>("/api/tags")
+      .then((res) => setAllTags(res.tags ?? []))
+      .catch(() => setAllTags([]));
+  }, [nodeType]);
+
+  useEffect(() => {
+    if (nodeType !== "start_flow") return;
+    api<FlowRecord[]>("/api/flows")
+      .then(setAllFlows)
+      .catch(() => setAllFlows([]));
+  }, [nodeType]);
+
+  function toggleTagName(name: string) {
+    const normalized = name.trim();
+    if (!normalized) return;
+    const next = selectedTagNames.includes(normalized)
+      ? selectedTagNames.filter((n) => n !== normalized)
+      : [...selectedTagNames, normalized];
+    onUpdate({ tagNames: next });
+  }
+
+  async function createAndSelectTag() {
+    const name = newTagName.trim();
+    if (!name || creatingTag) return;
+    setCreatingTag(true);
+    try {
+      const res = await api<{ tag: TagRecord }>("/api/tags", {
+        method: "POST",
+        body: JSON.stringify({ name })
+      });
+      const tag = res.tag ?? ({ id: `local_${Date.now()}`, name, color: "#25D366" } as TagRecord);
+      setAllTags((prev) => {
+        if (prev.some((t) => t.name === tag.name)) return prev;
+        return [...prev, tag].sort((a, b) => a.name.localeCompare(b.name));
+      });
+      if (!selectedTagNames.includes(tag.name)) {
+        onUpdate({ tagNames: [...selectedTagNames, tag.name] });
+      }
+      setNewTagName("");
+    } finally {
+      setCreatingTag(false);
+    }
+  }
+
+  function updateOfferBranches(next: OfferBranch[]) {
+    onUpdate({ branches: next });
+  }
+
+  function addOfferBranch() {
+    updateOfferBranches([
+      ...offerBranches,
+      {
+        id: `branch_${Date.now()}`,
+        label: `Oferta ${offerBranches.length + 1}`,
+        codes: []
+      }
+    ]);
+  }
+
+  function removeOfferBranch(branchId: string) {
+    updateOfferBranches(offerBranches.filter((b) => b.id !== branchId));
+  }
+
+  function patchOfferBranch(branchId: string, patch: Partial<OfferBranch>) {
+    updateOfferBranches(
+      offerBranches.map((b) => (b.id === branchId ? { ...b, ...patch } : b))
+    );
+  }
 
   async function copyWebhookUrl() {
     if (!webhookUrl) return;
@@ -150,6 +246,187 @@ export function FlowNodeProperties({
           </>
         )}
 
+        {nodeType === "condition_offer_code" && (
+          <>
+            <p className="text-xs text-zinc-500">
+              Compara o código da oferta Hotmart (<code className="text-zinc-600">purchase.offer.code</code>)
+              e segue pela saída correspondente. Use a saída <span className="text-zinc-400">Outros</span>{" "}
+              para códigos não listados. Opcional: ligue direto do gatilho Hotmart para enviar a todos.
+            </p>
+            <p className="text-xs text-zinc-600">
+              Variável nas mensagens: {"{{offerCode}}"}, {"{{offerName}}"}
+            </p>
+            <div className="space-y-3">
+              {offerBranches.map((branch) => (
+                <div key={branch.id} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="text-xs text-zinc-500">Nome da saída</label>
+                    {offerBranches.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeOfferBranch(branch.id)}
+                        className="text-[11px] text-red-400 hover:text-red-300"
+                      >
+                        Remover
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    value={branch.label}
+                    onChange={(e) => patchOfferBranch(branch.id, { label: e.target.value })}
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
+                    placeholder="Ex.: Teste Pago"
+                  />
+                  <label className="text-xs text-zinc-500">Códigos da oferta</label>
+                  <input
+                    value={branch.codes.join(", ")}
+                    onChange={(e) =>
+                      patchOfferBranch(branch.id, {
+                        codes: e.target.value
+                          .split(",")
+                          .map((s) => s.trim())
+                          .filter(Boolean)
+                      })
+                    }
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm font-mono text-white"
+                    placeholder="f7x5lf5w, promo2024"
+                  />
+                  <p className="text-[10px] text-zinc-600">
+                    Conecte a bolinha verde desta saída no canvas à mensagem desejada.
+                  </p>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={addOfferBranch}
+              className="w-full rounded-lg border border-dashed border-zinc-700 px-3 py-2 text-sm text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+            >
+              + Adicionar oferta
+            </button>
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 px-3 py-2 text-xs text-zinc-500">
+              Saída <span className="text-zinc-400">Outros</span> (bolinha cinza): qualquer código que não
+              esteja nas listas acima.
+            </div>
+          </>
+        )}
+
+        {nodeType === "tag_action" && (
+          <>
+            <p className="text-xs text-zinc-500">
+              Aplica tags ao contato do fluxo (mesmas tags do inbox). Tags inexistentes são criadas
+              automaticamente na execução.
+            </p>
+            <label className="text-xs text-zinc-500">Ação</label>
+            <select
+              value={String(config.mode ?? "add")}
+              onChange={(e) => onUpdate({ mode: e.target.value })}
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-white"
+            >
+              <option value="add">Adicionar tags</option>
+              <option value="remove">Remover tags</option>
+            </select>
+
+            {selectedTagNames.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {selectedTagNames.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => toggleTagName(name)}
+                    className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-300 hover:bg-emerald-500/20"
+                  >
+                    {name} ×
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <label className="text-xs text-zinc-500">Tags existentes</label>
+            <div className="max-h-40 overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-900/40 p-2 space-y-1">
+              {allTags.length === 0 ? (
+                <p className="text-xs text-zinc-600 px-1 py-2">Nenhuma tag criada ainda.</p>
+              ) : (
+                allTags.map((tag) => (
+                  <label
+                    key={tag.id}
+                    className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-zinc-800/60 cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedTagNames.includes(tag.name)}
+                      onChange={() => toggleTagName(tag.name)}
+                      className="rounded"
+                    />
+                    <span
+                      className="h-2.5 w-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: tag.color }}
+                    />
+                    <span className="text-sm text-zinc-200">{tag.name}</span>
+                  </label>
+                ))
+              )}
+            </div>
+
+            <label className="text-xs text-zinc-500">Criar nova tag</label>
+            <div className="flex gap-2">
+              <input
+                value={newTagName}
+                onChange={(e) => setNewTagName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void createAndSelectTag();
+                }}
+                className="min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
+                placeholder="Nome da tag"
+              />
+              <button
+                type="button"
+                onClick={() => void createAndSelectTag()}
+                disabled={!newTagName.trim() || creatingTag}
+                className="shrink-0 rounded-xl border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 disabled:opacity-40"
+              >
+                Criar
+              </button>
+            </div>
+          </>
+        )}
+
+        {nodeType === "start_flow" && (
+          <>
+            <p className="text-xs text-zinc-500">
+              Inicia outro fluxo para o mesmo contato, herdando as variáveis atuais (nome, telefone,
+              oferta, etc.). Coloque no final do fluxo para encadear automações.
+            </p>
+            <label className="text-xs text-zinc-500">Fluxo destino</label>
+            <select
+              value={String(config.targetFlowId ?? "")}
+              onChange={(e) => {
+                const targetFlowId = e.target.value;
+                const picked = allFlows.find((f) => f.id === targetFlowId);
+                onUpdate({
+                  targetFlowId,
+                  targetFlowName: picked?.name ?? ""
+                });
+              }}
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-white"
+            >
+              <option value="">Selecione um fluxo</option>
+              {allFlows
+                .filter((f) => f.id !== flowId)
+                .map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                    {!f.enabled ? " (inativo)" : ""}
+                  </option>
+                ))}
+            </select>
+            <p className="text-xs text-zinc-600">
+              O fluxo destino precisa estar ativo. O fluxo atual continua após este bloco, se houver
+              próximo passo conectado.
+            </p>
+          </>
+        )}
+
         {nodeType === "trigger_hotmart" && (
           <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 text-xs text-zinc-400">
             <p className="font-medium text-zinc-300 mb-1">Webhook Hotmart</p>
@@ -161,9 +438,11 @@ export function FlowNodeProperties({
             >
               {copied ? "Copiado!" : "Copiar URL"}
             </button>
-            <p className="mt-2">Variáveis: {"{{name}}"}, {"{{phone}}"}, {"{{email}}"}, {"{{productName}}"}, {"{{purchaseId}}"}, etc.</p>
+            <p className="mt-2">Variáveis: {"{{name}}"}, {"{{phone}}"}, {"{{email}}"}, {"{{productName}}"}, {"{{purchaseId}}"}, {"{{offerCode}}"}, {"{{offerName}}"}, etc.</p>
             <p className="mt-2 text-zinc-600">
-              Hotmart v2: telefone em <code className="text-zinc-500">data.buyer.checkout_phone</code>, compra em{" "}
+              Hotmart v2: país em <code className="text-zinc-500">data.purchase.checkout_country.iso</code> (DDI automático),
+              DDD em <code className="text-zinc-500">data.buyer.checkout_phone_code</code>, número em{" "}
+              <code className="text-zinc-500">data.buyer.checkout_phone</code>, compra em{" "}
               <code className="text-zinc-500">data.purchase.transaction</code>.
             </p>
           </div>

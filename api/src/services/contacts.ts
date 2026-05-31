@@ -74,3 +74,54 @@ export function contactToJson(
     }))
   };
 }
+
+export async function ensureContact(phone: string, name?: string) {
+  if (!prisma) throw new Error("Banco indisponível");
+  const normalized = toStoragePhone(phone);
+  return prisma.contact.upsert({
+    where: { phone: normalized },
+    update: name !== undefined && name.trim() ? { name: name.trim() } : {},
+    create: { phone: normalized, name: name?.trim() || undefined }
+  });
+}
+
+export async function ensureTagsByNames(names: string[]) {
+  if (!prisma) throw new Error("Banco indisponível");
+  const tags = [];
+  for (const raw of names) {
+    const name = raw.trim();
+    if (!name) continue;
+    const tag = await prisma.tag.upsert({
+      where: { name },
+      create: { name },
+      update: {}
+    });
+    tags.push(tag);
+  }
+  return tags;
+}
+
+export async function addContactTagsByNames(phone: string, tagNames: string[], contactName?: string) {
+  const contact = await ensureContact(phone, contactName);
+  const tags = await ensureTagsByNames(tagNames);
+  if (tags.length === 0) return contact;
+  await prisma!.contactTag.createMany({
+    data: tags.map((tag) => ({ contactId: contact.id, tagId: tag.id })),
+    skipDuplicates: true
+  });
+  return contact;
+}
+
+export async function removeContactTagsByNames(phone: string, tagNames: string[]) {
+  if (!prisma) return;
+  const normalized = toStoragePhone(phone);
+  const contact = await prisma.contact.findUnique({ where: { phone: normalized } });
+  if (!contact) return;
+  const names = tagNames.map((n) => n.trim()).filter(Boolean);
+  if (names.length === 0) return;
+  const tags = await prisma.tag.findMany({ where: { name: { in: names } } });
+  if (tags.length === 0) return;
+  await prisma.contactTag.deleteMany({
+    where: { contactId: contact.id, tagId: { in: tags.map((t) => t.id) } }
+  });
+}

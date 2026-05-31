@@ -81,6 +81,8 @@ export async function flowRoutes(app: FastifyInstance) {
       email: "teste@email.com",
       productName: "Produto Teste",
       purchaseId: `test_${Date.now()}`,
+      offerCode: "",
+      offerName: "Oferta Teste",
       login: "user",
       password: "pass",
       accessLink: "https://exemplo.com",

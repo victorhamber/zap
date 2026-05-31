@@ -33,7 +33,7 @@ type FlowRecord = {
       position: { x: number; y: number };
       data: Record<string, unknown>;
     }>;
-    edges: Array<{ id: string; source: string; target: string }>;
+    edges: Array<{ id: string; source: string; target: string; sourceHandle?: string }>;
   };
 };
 
@@ -45,6 +45,19 @@ function summaryFor(type: string, data: Record<string, unknown>): string {
   if (type === "schedule_at") return String(data.datetime ?? "").slice(0, 16);
   if (type.startsWith("send_")) return String(data.url ?? "").slice(0, 30);
   if (type === "trigger_inbound" && data.keyword) return `Palavra: ${data.keyword}`;
+  if (type === "condition_offer_code") {
+    const branches = (data.branches as Array<{ label?: string }> | undefined) ?? [];
+    return branches.length ? `${branches.length} oferta(s) + outros` : "Sem regras";
+  }
+  if (type === "tag_action") {
+    const mode = data.mode === "remove" ? "Remover" : "Adicionar";
+    const names = (data.tagNames as string[] | undefined) ?? [];
+    return names.length ? `${mode}: ${names.join(", ")}` : mode;
+  }
+  if (type === "start_flow") {
+    const name = String(data.targetFlowName ?? "").trim();
+    return name || "Selecione um fluxo";
+  }
   return type;
 }
 
@@ -65,7 +78,8 @@ function toReactFlowEdges(graphEdges: FlowRecord["graphJson"]["edges"]): Edge[] 
   return graphEdges.map((e) => ({
     id: e.id,
     source: e.source,
-    target: e.target
+    target: e.target,
+    sourceHandle: e.sourceHandle ?? null
   }));
 }
 
@@ -219,7 +233,8 @@ export function FlowEditor() {
       edges: edges.map((e) => ({
         id: e.id,
         source: e.source,
-        target: e.target
+        target: e.target,
+        ...(e.sourceHandle ? { sourceHandle: e.sourceHandle } : {})
       }))
     };
     await api(`/api/flows/${id}`, {
