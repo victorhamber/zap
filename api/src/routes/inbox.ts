@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { isGenericSelfChatName } from "../services/waJid.js";
-import { expandPhoneLookupKeys } from "../utils/phone.js";
+import { expandPhoneLookupKeys, canonicalBrazilPhone } from "../utils/phone.js";
 import { prisma } from "../prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import * as inbox from "../services/inbox.js";
@@ -144,21 +144,28 @@ export async function inboxRoutes(app: FastifyInstance) {
         ownerPhone,
         ownerPhoneChanged: ownerPhoneChanged === true,
         chats: chats.map((ch) => {
-          const contact = resolveChatContact(ch);
+          const phone =
+            ch.kind === "direct" && ch.phone ? canonicalBrazilPhone(ch.phone) : ch.phone;
+          const contact = resolveChatContact({ ...ch, phone });
           const contactName = contact?.name?.trim();
           const looksLikePhone =
             !ch.name ||
             ch.name === ch.phone ||
+            ch.name === phone ||
             isGenericSelfChatName(ch.name) ||
             /^\d{8,}$/.test(ch.name.replace(/\D/g, ""));
-          const name =
+          let name =
             contactName && contactName !== contact?.phone
               ? contactName
               : looksLikePhone && contactName
                 ? contactName
                 : ch.name;
+          if (ch.kind === "direct" && /^\d{8,}$/.test(String(name).replace(/\D/g, ""))) {
+            name = canonicalBrazilPhone(String(name));
+          }
           return {
             ...ch,
+            phone,
             name,
             contact
           };

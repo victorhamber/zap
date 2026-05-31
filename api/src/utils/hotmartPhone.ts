@@ -1,6 +1,7 @@
 import { getByPath, asString } from "./jsonPathLite.js";
 import {
   dialCodeFromCountryIso,
+  ensureBrazilMobileNineDigits,
   isLikelySandboxPhone,
   phoneDigits
 } from "./phone.js";
@@ -36,18 +37,6 @@ export function resolveHotmartCountryIso(payload: unknown): string {
   return "BR";
 }
 
-/** Celular BR antigo (DDD + 8 dígitos) → insere o 9 após o DDD. */
-function ensureBrazilMobileNine(national: string): string {
-  const d = phoneDigits(national);
-  if (d.length !== 10) return d;
-  const ddd = d.slice(0, 2);
-  const subscriber = d.slice(2);
-  if (subscriber.length === 8 && /^[6-9]/.test(subscriber)) {
-    return `${ddd}9${subscriber}`;
-  }
-  return d;
-}
-
 function buildNationalNumber(local: string, areaCode: string): string {
   const digits = phoneDigits(local);
   const ddd = phoneDigits(areaCode);
@@ -78,7 +67,7 @@ function buildInternationalPhone(national: string, countryIso: string): string {
   if (!local) return "";
 
   if (iso === "BR") {
-    local = ensureBrazilMobileNine(local);
+    local = ensureBrazilMobileNineDigits(local);
   }
 
   if (local.startsWith(dial)) return local;

@@ -11,6 +11,7 @@ import {
   isValidWhatsAppPhoneDigits,
   normalizeDirectJid
 } from "./waJid.js";
+import { canonicalBrazilPhone } from "../utils/phone.js";
 import {
   expandChatIdVariants,
   extractEvolutionKeyFields,
@@ -149,7 +150,13 @@ function isValidWaId(id: string): boolean {
 
 function chatIdToPhone(id: string): string {
   const base = id.replace(/@.*/, "");
-  return digitsOnly(base) || base;
+  const digits = digitsOnly(base) || base;
+  return isValidWhatsAppPhoneDigits(digitsOnly(digits)) ? canonicalBrazilPhone(digits) : digits;
+}
+
+function isPhoneLikeText(text: string): boolean {
+  const d = digitsOnly(text);
+  return d.length >= 10 && d.length <= 15 && /^\d+$/.test(d);
 }
 
 function resolveChatId(chatId: string, isGroup?: boolean): string {
@@ -346,10 +353,18 @@ function parseChatItem(item: unknown, session?: string): NormalizedChat | null {
 
   const isGroup = kind === "group" || kind === "community";
 
+  let normalizedPhone = phone;
+  if (kind === "direct" && phone && isValidWhatsAppPhoneDigits(digitsOnly(phone))) {
+    normalizedPhone = canonicalBrazilPhone(phone);
+  }
+  if (kind === "direct" && isPhoneLikeText(name)) {
+    name = canonicalBrazilPhone(name);
+  }
+
   return {
     id: resolvedId,
-    phone,
-    name: name || phone || "Contato",
+    phone: normalizedPhone,
+    name: name || normalizedPhone || "Contato",
     lastMessage: lastBody.slice(0, 120),
     timestamp: ts,
     isGroup,

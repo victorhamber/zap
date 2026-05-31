@@ -96,7 +96,39 @@ export function assertValidBrazilWhatsAppPhone(phone: string): string {
   if (ddd < 11 || ddd > 99) {
     throw new Error(`DDD inválido no telefone: ${local.slice(0, 2)}`);
   }
-  return digits;
+  return ensureBrazilMobileNineDigits(digits);
+}
+
+/** Insere o 9 do celular BR (só quando o assinante parece móvel: inicia em 6–9). */
+export function ensureBrazilMobileNineDigits(digits: string): string {
+  const d = digits.replace(/\D/g, "");
+  if (!d) return d;
+
+  if (d.startsWith("55")) {
+    const local = d.slice(2);
+    if (local.length === 11 && local[2] === "9") return d;
+    if (local.length === 10) {
+      const subscriber = local.slice(2);
+      if (subscriber.length === 8 && /^[6-9]/.test(subscriber)) {
+        return `55${local.slice(0, 2)}9${subscriber}`;
+      }
+    }
+    return d;
+  }
+
+  if (d.length === 11 && d[2] === "9") return d;
+  if (d.length === 10) {
+    const subscriber = d.slice(2);
+    if (subscriber.length === 8 && /^[6-9]/.test(subscriber)) {
+      return `${d.slice(0, 2)}9${subscriber}`;
+    }
+  }
+  return d;
+}
+
+/** Formato canônico para CRM e exibição (BR móvel com nono dígito quando couber). */
+export function canonicalBrazilPhone(phone: string): string {
+  return ensureBrazilMobileNineDigits(phoneDigits(phone));
 }
 
 /** Variantes BR com/sem nono dígito do celular (WhatsApp vs Hotmart). */

@@ -66,6 +66,10 @@ function sanitizeChatName(name: string, kind: ChatKind): string {
     if (kind === "group") return "Grupo";
     return "Contato";
   }
+  const digits = t.replace(/\D/g, "");
+  if (kind === "direct" && digits.length >= 10 && digits.length <= 15 && /^\d+$/.test(digits)) {
+    return formatPhoneDisplay(digits);
+  }
   return t;
 }
 
@@ -77,9 +81,23 @@ type SessionProfile = {
   connected: boolean;
 };
 
+function canonicalBrazilPhone(d: string): string {
+  const digits = d.replace(/\D/g, "");
+  if (!digits.startsWith("55")) return digits;
+  const local = digits.slice(2);
+  if (local.length === 11 && local[2] === "9") return digits;
+  if (local.length === 10) {
+    const subscriber = local.slice(2);
+    if (subscriber.length === 8 && /^[6-9]/.test(subscriber)) {
+      return `55${local.slice(0, 2)}9${subscriber}`;
+    }
+  }
+  return digits;
+}
+
 function formatPhoneDisplay(phone: string | null | undefined): string {
   if (!phone) return "";
-  const d = phone.replace(/\D/g, "");
+  const d = canonicalBrazilPhone(phone);
   if (d.length === 13 && d.startsWith("55")) {
     return `+${d.slice(0, 2)} ${d.slice(2, 4)} ${d.slice(4, 9)}-${d.slice(9)}`;
   }
@@ -1128,7 +1146,7 @@ export function WhatsAppInbox() {
                 <div className="font-medium truncate">{sanitizeChatName(selected.name, selected.kind)}</div>
                 <div className="text-xs text-[#8696a0] truncate">
                   {chatKindLabel(selected.kind)}
-                  {selected.phone ? ` · ${selected.phone}` : ""}
+                  {selected.phone ? ` · ${formatPhoneDisplay(selected.phone)}` : ""}
                 </div>
               </div>
               <button

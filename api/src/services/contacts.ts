@@ -1,10 +1,10 @@
 import { prisma } from "../prisma.js";
-import { expandPhoneLookupKeys, firstNameFromFullName, normalizePhone } from "../utils/phone.js";
+import { expandPhoneLookupKeys, firstNameFromFullName, canonicalBrazilPhone } from "../utils/phone.js";
 import { dispatchTagTriggerFlows } from "./tagFlowTrigger.js";
 
 function toStoragePhone(phone: string): string {
   if (phone.includes("@g.us")) return phone.trim();
-  return normalizePhone(phone.replace(/[^\d+]/g, ""));
+  return canonicalBrazilPhone(phone);
 }
 
 type ContactWithTags = Awaited<ReturnType<typeof listContactsWithTags>>[number];
