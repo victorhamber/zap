@@ -268,23 +268,35 @@ export function FlowNodeProperties({
               para códigos não listados. Opcional: ligue direto do gatilho Hotmart para enviar a todos.
             </p>
             <p className="text-xs text-zinc-600">
-              Variável nas mensagens: {"{{offerCode}}"}, {"{{offerName}}"}
+              Variáveis: {"{{offerCode}}"}, {"{{offerName}}"} · Cada linha no bloco = uma saída (bolinha verde).
+              A saída <span className="text-zinc-400">Outros</span> (cinza) cobre códigos fora das listas.
             </p>
             <div className="space-y-3">
-              {offerBranches.map((branch) => (
-                <div key={branch.id} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 space-y-2">
+              {offerBranches.map((branch, index) => (
+                <div
+                  key={branch.id}
+                  className="rounded-xl border border-emerald-500/25 border-l-[3px] border-l-emerald-500 bg-zinc-900/40 p-3 space-y-2"
+                >
                   <div className="flex items-center justify-between gap-2">
-                    <label className="text-xs text-zinc-500">Nome da saída</label>
+                    <div>
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-emerald-400">
+                        Saída {index + 1} · bolinha verde
+                      </div>
+                      <div className="text-[10px] text-zinc-600 mt-0.5">
+                        No canvas, conecte esta oferta na linha &quot;Saída {index + 1}&quot;
+                      </div>
+                    </div>
                     {offerBranches.length > 1 && (
                       <button
                         type="button"
                         onClick={() => removeOfferBranch(branch.id)}
-                        className="text-[11px] text-red-400 hover:text-red-300"
+                        className="text-[11px] text-red-400 hover:text-red-300 shrink-0"
                       >
                         Remover
                       </button>
                     )}
                   </div>
+                  <label className="text-xs text-zinc-500">Nome desta saída (aparece no bloco)</label>
                   <input
                     value={branch.label}
                     onChange={(e) => patchOfferBranch(branch.id, { label: e.target.value })}
@@ -312,7 +324,7 @@ export function FlowNodeProperties({
                     placeholder="f7x5lf5w, promo2024"
                   />
                   <p className="text-[10px] text-zinc-600">
-                    Vários códigos na mesma saída: separe com vírgula. Conecte a bolinha verde no canvas.
+                    Vários códigos na mesma saída: separe com vírgula.
                   </p>
                 </div>
               ))}
@@ -322,11 +334,16 @@ export function FlowNodeProperties({
               onClick={addOfferBranch}
               className="w-full rounded-lg border border-dashed border-zinc-700 px-3 py-2 text-sm text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
             >
-              + Adicionar oferta
+              + Adicionar oferta (nova saída numerada)
             </button>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 px-3 py-2 text-xs text-zinc-500">
-              Saída <span className="text-zinc-400">Outros</span> (bolinha cinza): qualquer código que não
-              esteja nas listas acima.
+            <div className="rounded-xl border border-zinc-700 border-l-[3px] border-l-zinc-500 bg-zinc-900/30 px-3 py-2 text-xs text-zinc-500">
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
+                Saída {offerBranches.length + 1} · bolinha cinza · Outros
+              </div>
+              <p className="mt-1">
+                Sempre existe no bloco, sem configurar aqui. Conecte na linha &quot;Saída{" "}
+                {offerBranches.length + 1} — Outros&quot; para compras com código fora das listas.
+              </p>
             </div>
           </>
         )}
