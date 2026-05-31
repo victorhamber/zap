@@ -109,6 +109,15 @@ body {
   stroke: #a1a1aa;
 }
 
+/* Bolinhas do bloco Código da oferta — posição fixa alinhada ao nome */
+.flow-offer-node .flow-offer-handle {
+  transform: translateY(-50%);
+}
+
+.flow-offer-node .react-flow__handle-right {
+  transform: translateY(-50%);
+}
+
 /* Esconde controles padrão do React Flow (ficavam à esquerda, sem contraste) */
 .flow-editor-canvas .react-flow__controls {
   display: none !important;
