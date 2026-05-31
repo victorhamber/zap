@@ -99,6 +99,49 @@ export function assertValidBrazilWhatsAppPhone(phone: string): string {
   return digits;
 }
 
+/** Variantes BR com/sem nono dígito do celular (WhatsApp vs Hotmart). */
+export function brazilPhoneVariants(digits: string): string[] {
+  const d = digits.replace(/\D/g, "");
+  if (!d.startsWith("55") || d.length < 12) return [d];
+
+  const variants = new Set<string>([d]);
+  const local = d.slice(2);
+
+  if (local.length === 11 && local[2] === "9") {
+    variants.add(`55${local.slice(0, 2)}${local.slice(3)}`);
+  }
+  if (local.length === 10) {
+    variants.add(`55${local.slice(0, 2)}9${local.slice(2)}`);
+  }
+
+  return [...variants];
+}
+
+/** Chaves para cruzar contato CRM ↔ chat WhatsApp. */
+export function expandPhoneLookupKeys(phone: string): string[] {
+  const digits = phoneDigits(phone);
+  if (!digits) return [];
+
+  const keys = new Set<string>([digits]);
+  for (const variant of brazilPhoneVariants(digits)) {
+    keys.add(variant);
+  }
+
+  const base = phone.trim();
+  if (base.includes("@")) {
+    keys.add(base);
+    keys.add(base.split("@")[0] ?? "");
+  }
+
+  return [...keys].filter(Boolean);
+}
+
+export function firstNameFromFullName(fullName: string, fallback = "Cliente"): string {
+  const trimmed = fullName.trim();
+  if (!trimmed) return fallback;
+  return trimmed.split(/\s+/)[0] ?? fallback;
+}
+
 export function assertValidWhatsAppPhone(phone: string, countryIso = "BR"): string {
   const iso = countryIso.toUpperCase();
   const digits = phoneDigits(phone);

@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { isGenericSelfChatName } from "../services/waJid.js";
+import { expandPhoneLookupKeys } from "../utils/phone.js";
 import { prisma } from "../prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import * as inbox from "../services/inbox.js";
@@ -109,8 +110,24 @@ export async function inboxRoutes(app: FastifyInstance) {
       const byKey = new Map<string, ReturnType<typeof contactToJson>>();
       for (const c of contacts) {
         const j = contactToJson(c);
-        byKey.set(c.phone, j);
-        if (c.phone.includes("@")) byKey.set(c.phone.split("@")[0], j);
+        for (const key of expandPhoneLookupKeys(c.phone)) {
+          byKey.set(key, j);
+        }
+      }
+
+      function resolveChatContact(ch: { id: string; phone: string }) {
+        const keys = [
+          ch.id,
+          ch.phone,
+          ch.id.replace(/@.*/, ""),
+          ...expandPhoneLookupKeys(ch.phone),
+          ...expandPhoneLookupKeys(ch.id)
+        ];
+        for (const key of keys) {
+          const hit = byKey.get(key);
+          if (hit) return hit;
+        }
+        return null;
       }
 
       const message =
@@ -127,7 +144,7 @@ export async function inboxRoutes(app: FastifyInstance) {
         ownerPhone,
         ownerPhoneChanged: ownerPhoneChanged === true,
         chats: chats.map((ch) => {
-          const contact = byKey.get(ch.id) ?? byKey.get(ch.phone) ?? null;
+          const contact = resolveChatContact(ch);
           const contactName = contact?.name?.trim();
           const looksLikePhone =
             !ch.name ||

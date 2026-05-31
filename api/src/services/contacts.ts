@@ -1,5 +1,5 @@
 import { prisma } from "../prisma.js";
-import { normalizePhone } from "../utils/phone.js";
+import { expandPhoneLookupKeys, firstNameFromFullName, normalizePhone } from "../utils/phone.js";
 import { dispatchTagTriggerFlows } from "./tagFlowTrigger.js";
 
 function toStoragePhone(phone: string): string {
@@ -7,13 +7,34 @@ function toStoragePhone(phone: string): string {
   return normalizePhone(phone.replace(/[^\d+]/g, ""));
 }
 
+type ContactWithTags = Awaited<ReturnType<typeof listContactsWithTags>>[number];
+
+async function findContactByPhoneLoose(phone: string): Promise<ContactWithTags | null> {
+  if (!prisma) return null;
+
+  const keys = expandPhoneLookupKeys(toStoragePhone(phone));
+  if (keys.length === 0) return null;
+
+  const matches = await prisma.contact.findMany({
+    where: { phone: { in: keys } },
+    include: { tags: { include: { tag: true } } },
+    orderBy: { updatedAt: "desc" }
+  });
+
+  if (matches.length === 0) return null;
+  if (matches.length === 1) return matches[0];
+
+  // Mesmo contato salvo com/sem nono dígito — usa o registro mais completo.
+  return matches.sort((a, b) => {
+    const score = (c: typeof a) =>
+      (c.tags.length > 0 ? 10 : 0) + (c.name?.trim() ? 5 : 0) + c.phone.length;
+    return score(b) - score(a);
+  })[0];
+}
+
 export async function getContactTagNames(phone: string): Promise<string[]> {
   if (!prisma) return [];
-  const normalized = toStoragePhone(phone);
-  const contact = await prisma.contact.findUnique({
-    where: { phone: normalized },
-    include: { tags: { include: { tag: true } } }
-  });
+  const contact = await findContactByPhoneLoose(phone);
   return contact?.tags.map((t) => t.tag.name) ?? [];
 }
 
@@ -23,18 +44,27 @@ export async function upsertContact(
 ) {
   if (!prisma) throw new Error("Banco indisponível");
   const normalized = toStoragePhone(phone);
+  const existing = await findContactByPhoneLoose(normalized);
 
-  const contact = await prisma.contact.upsert({
-    where: { phone: normalized },
-    update: {
-      ...(data.name !== undefined ? { name: data.name } : {}),
-      ...(data.notes !== undefined ? { notes: data.notes } : {})
-    },
-    create: {
-      phone: normalized,
-      name: data.name
-    }
-  });
+  const contact = existing
+    ? await prisma.contact.update({
+        where: { id: existing.id },
+        data: {
+          ...(data.name !== undefined ? { name: data.name } : {}),
+          ...(data.notes !== undefined ? { notes: data.notes } : {})
+        }
+      })
+    : await prisma.contact.upsert({
+        where: { phone: normalized },
+        update: {
+          ...(data.name !== undefined ? { name: data.name } : {}),
+          ...(data.notes !== undefined ? { notes: data.notes } : {})
+        },
+        create: {
+          phone: normalized,
+          name: data.name
+        }
+      });
 
   if (data.tagIds) {
     const before = await prisma.contact.findUnique({
@@ -56,7 +86,7 @@ export async function upsertContact(
       const addedTags = await prisma.tag.findMany({ where: { id: { in: addedIds } } });
       if (addedTags.length > 0) {
         await dispatchTagTriggerFlows({
-          phone: normalized,
+          phone: contact.phone,
           addedTagNames: addedTags.map((t) => t.name),
           contactName: contact.name ?? undefined
         }).catch(() => {});
@@ -97,10 +127,25 @@ export function contactToJson(
 export async function ensureContact(phone: string, name?: string) {
   if (!prisma) throw new Error("Banco indisponível");
   const normalized = toStoragePhone(phone);
+  const existing = await findContactByPhoneLoose(normalized);
+
+  if (existing) {
+    if (name !== undefined && name.trim()) {
+      return prisma.contact.update({
+        where: { id: existing.id },
+        data: { name: firstNameFromFullName(name, name.trim()) }
+      });
+    }
+    return existing;
+  }
+
   return prisma.contact.upsert({
     where: { phone: normalized },
-    update: name !== undefined && name.trim() ? { name: name.trim() } : {},
-    create: { phone: normalized, name: name?.trim() || undefined }
+    update: name !== undefined && name.trim() ? { name: firstNameFromFullName(name, name.trim()) } : {},
+    create: {
+      phone: normalized,
+      name: name?.trim() ? firstNameFromFullName(name, name.trim()) : undefined
+    }
   });
 }
 
@@ -130,7 +175,12 @@ export async function addContactTagsByNames(phone: string, tagNames: string[], c
   });
   const existingIds = new Set(existing.map((row) => row.tagId));
   const newTags = tags.filter((tag) => !existingIds.has(tag.id));
-  if (newTags.length === 0) return contact;
+  if (newTags.length === 0) {
+    return prisma!.contact.findUnique({
+      where: { id: contact.id },
+      include: { tags: { include: { tag: true } } }
+    });
+  }
 
   await prisma!.contactTag.createMany({
     data: newTags.map((tag) => ({ contactId: contact.id, tagId: tag.id })),
@@ -151,8 +201,7 @@ export async function addContactTagsByNames(phone: string, tagNames: string[], c
 
 export async function removeContactTagsByNames(phone: string, tagNames: string[]) {
   if (!prisma) return;
-  const normalized = toStoragePhone(phone);
-  const contact = await prisma.contact.findUnique({ where: { phone: normalized } });
+  const contact = await findContactByPhoneLoose(phone);
   if (!contact) return;
   const names = tagNames.map((n) => n.trim()).filter(Boolean);
   if (names.length === 0) return;
@@ -162,3 +211,5 @@ export async function removeContactTagsByNames(phone: string, tagNames: string[]
     where: { contactId: contact.id, tagId: { in: tags.map((t) => t.id) } }
   });
 }
+
+export { findContactByPhoneLoose };

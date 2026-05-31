@@ -3,7 +3,7 @@ import { prisma } from "../prisma.js";
 import { enqueueFlowJob } from "../queue.js";
 import { getByPath, asString } from "../utils/jsonPathLite.js";
 import { resolveHotmartCountryIso, resolveHotmartPhone } from "../utils/hotmartPhone.js";
-import { assertValidWhatsAppPhone } from "../utils/phone.js";
+import { assertValidWhatsAppPhone, firstNameFromFullName } from "../utils/phone.js";
 import {
   addContactTagsByNames,
   removeContactTagsByNames
@@ -91,11 +91,12 @@ export function extractHotmartVariables(
 ): Record<string, unknown> {
   const countryIso = resolveHotmartCountryIso(payload);
   const phone = resolveHotmartPhone(payload, mapping.phonePath);
-  const name =
+  const fullName =
     asString(getByPath(payload, mapping.namePath)) ??
     asString(getByPath(payload, "$.data.buyer.name")) ??
     asString(getByPath(payload, "$.data.buyer.first_name")) ??
     "Cliente";
+  const name = firstNameFromFullName(fullName);
   const purchaseId = resolveHotmartPurchaseId(payload, mapping);
 
   if (!phone) {
@@ -115,6 +116,7 @@ export function extractHotmartVariables(
     phone: normalizedPhone,
     countryIso,
     name,
+    fullName,
     purchaseId,
     email:
       asString(mapping.emailPath ? getByPath(payload, mapping.emailPath) : undefined) ??
