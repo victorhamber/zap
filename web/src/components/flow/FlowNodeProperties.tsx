@@ -15,7 +15,21 @@ type OfferBranch = {
   id: string;
   label: string;
   codes: string[];
+  /** Texto bruto do input — permite digitar vírgulas entre códigos. */
+  codesText?: string;
 };
+
+function offerCodesInputValue(branch: OfferBranch): string {
+  if (typeof branch.codesText === "string") return branch.codesText;
+  return branch.codes.join(", ");
+}
+
+function parseOfferCodes(raw: string): string[] {
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
 
 type TagRecord = {
   id: string;
@@ -279,20 +293,26 @@ export function FlowNodeProperties({
                   />
                   <label className="text-xs text-zinc-500">Códigos da oferta</label>
                   <input
-                    value={branch.codes.join(", ")}
-                    onChange={(e) =>
+                    value={offerCodesInputValue(branch)}
+                    onChange={(e) => {
+                      const raw = e.target.value;
                       patchOfferBranch(branch.id, {
-                        codes: e.target.value
-                          .split(",")
-                          .map((s) => s.trim())
-                          .filter(Boolean)
-                      })
-                    }
+                        codesText: raw,
+                        codes: parseOfferCodes(raw)
+                      });
+                    }}
+                    onBlur={() => {
+                      const parsed = parseOfferCodes(offerCodesInputValue(branch));
+                      patchOfferBranch(branch.id, {
+                        codes: parsed,
+                        codesText: parsed.join(", ")
+                      });
+                    }}
                     className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm font-mono text-white"
                     placeholder="f7x5lf5w, promo2024"
                   />
                   <p className="text-[10px] text-zinc-600">
-                    Conecte a bolinha verde desta saída no canvas à mensagem desejada.
+                    Vários códigos na mesma saída: separe com vírgula. Conecte a bolinha verde no canvas.
                   </p>
                 </div>
               ))}
