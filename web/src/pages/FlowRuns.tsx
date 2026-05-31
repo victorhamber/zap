@@ -46,8 +46,8 @@ export function FlowRuns() {
 
   return (
     <div>
-      <Link to="/flows" className="text-sm text-emerald-400 hover:underline">
-        ← Voltar aos fluxos
+      <Link to={flowId ? "/flows" : "/"} className="text-sm text-emerald-400 hover:underline">
+        ← {flowId ? "Voltar aos fluxos" : "Voltar ao dashboard"}
       </Link>
       <h1 className="text-2xl font-semibold mt-2">Execuções</h1>
 

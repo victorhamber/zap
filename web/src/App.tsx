@@ -38,6 +38,7 @@ export function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/flows" element={<FlowsList />} />
           <Route path="/flows/:id/runs" element={<FlowRuns />} />
+          <Route path="/runs" element={<FlowRuns />} />
           <Route path="/whatsapp" element={<WhatsApp />} />
           <Route path="/media" element={<MediaLibrary />} />
           <Route path="/settings" element={<Settings />} />
