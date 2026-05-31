@@ -18,7 +18,7 @@ import { flowNodeTypes } from "../components/flow/FlowNode";
 import { FlowNodeProperties } from "../components/flow/FlowNodeProperties";
 import { NodeContextMenu } from "../components/flow/NodeContextMenu";
 import { FlowZoomToolbar } from "../components/flow/FlowZoomToolbar";
-import { PALETTE, defaultNodeData, NODE_LABELS, paletteDragType } from "../components/flow/nodeMeta";
+import { PALETTE_GROUPS, defaultNodeData, NODE_LABELS, paletteDragType } from "../components/flow/nodeMeta";
 
 const FIT_VIEW_OPTS = { padding: 0.45, maxZoom: 0.72, duration: 280 };
 
@@ -47,6 +47,10 @@ function summaryFor(type: string, data: Record<string, unknown>): string {
   if (type === "schedule_at") return String(data.datetime ?? "").slice(0, 16);
   if (type.startsWith("send_")) return String(data.url ?? "").slice(0, 30);
   if (type === "trigger_inbound" && data.keyword) return `Palavra: ${data.keyword}`;
+  if (type === "trigger_inbound" || type === "trigger_tag") {
+    const tags = (data.tags as string[] | undefined) ?? [];
+    if (tags.length) return tags.join(", ");
+  }
   if (type === "condition_offer_code") {
     const branches = (data.branches as Array<{ label?: string }> | undefined) ?? [];
     return branches.length ? `${branches.length} oferta(s) + outros` : "Sem regras";
@@ -83,6 +87,17 @@ function toReactFlowEdges(graphEdges: FlowRecord["graphJson"]["edges"]): Edge[] 
     target: e.target,
     sourceHandle: e.sourceHandle ?? null
   }));
+}
+
+function cloneNodeConfig(nodeType: string, config: Record<string, unknown>): Record<string, unknown> {
+  const cloned = structuredClone(config);
+  if (nodeType === "condition_offer_code" && Array.isArray(cloned.branches)) {
+    cloned.branches = (cloned.branches as Array<Record<string, unknown>>).map((branch) => ({
+      ...branch,
+      id: `branch_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+    }));
+  }
+  return cloned;
 }
 
 export function FlowEditor() {
@@ -131,6 +146,36 @@ export function FlowEditor() {
       setStatus("Conexão removida.");
     },
     [setEdges]
+  );
+
+  const duplicateNode = useCallback(
+    (nodeId: string) => {
+      const source = nodes.find((n) => n.id === nodeId);
+      if (!source) return;
+      const nodeType = String(source.data.nodeType);
+      const config = cloneNodeConfig(nodeType, (source.data.config ?? {}) as Record<string, unknown>);
+      const newId = `n_${Date.now()}`;
+      setNodes((nds) => [
+        ...nds,
+        {
+          id: newId,
+          type: "flowNode",
+          position: {
+            x: source.position.x + 48,
+            y: source.position.y + 48
+          },
+          data: {
+            nodeType,
+            summary: summaryFor(nodeType, config),
+            config
+          }
+        }
+      ]);
+      setSelectedId(newId);
+      selectEdge(null);
+      setStatus("Bloco duplicado.");
+    },
+    [nodes, setNodes, selectEdge]
   );
 
   const onFlowInit = useCallback((instance: ReactFlowInstance) => {
@@ -347,23 +392,32 @@ export function FlowEditor() {
                 Ocultar
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto p-2 space-y-1">
-              {PALETTE.map((p) => (
-                <div
-                  key={p.type}
-                  draggable
-                  onDragStart={(e) => onPaletteDragStart(e, p.type)}
-                  className="w-full cursor-grab active:cursor-grabbing rounded-lg border border-zinc-800 px-2.5 py-2 text-sm text-zinc-200 hover:bg-zinc-900 hover:border-zinc-700 select-none"
-                  role="button"
-                  tabIndex={0}
-                >
-                  {p.label}
+            <div className="flex-1 overflow-y-auto p-2 space-y-3">
+              {PALETTE_GROUPS.map((group) => (
+                <div key={group.id}>
+                  <div className="px-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                    {group.label}
+                  </div>
+                  <div className="space-y-1">
+                    {group.items.map((p) => (
+                      <div
+                        key={p.type}
+                        draggable
+                        onDragStart={(e) => onPaletteDragStart(e, p.type)}
+                        className="w-full cursor-grab active:cursor-grabbing rounded-lg border border-zinc-800 px-2.5 py-2 text-sm text-zinc-200 hover:bg-zinc-900 hover:border-zinc-700 select-none"
+                        role="button"
+                        tabIndex={0}
+                      >
+                        {p.label}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
             <p className="px-2 pb-2 text-[10px] text-zinc-600">
-              Arraste blocos para o fluxo. Clique na linha entre blocos e pressione Delete para
-              remover a conexão.
+              Arraste blocos para o fluxo. Clique direito: duplicar ou excluir. Clique na linha entre
+              blocos e pressione Delete para remover a conexão.
             </p>
           </aside>
         )}
@@ -447,7 +501,7 @@ export function FlowEditor() {
           <NodeContextMenu
             x={contextMenu.x}
             y={contextMenu.y}
-            onEdit={() => setSelectedId(contextMenu.nodeId)}
+            onDuplicate={() => duplicateNode(contextMenu.nodeId)}
             onDelete={() => deleteNode(contextMenu.nodeId)}
             onClose={() => setContextMenu(null)}
           />

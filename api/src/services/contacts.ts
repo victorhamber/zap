@@ -1,5 +1,6 @@
 import { prisma } from "../prisma.js";
 import { normalizePhone } from "../utils/phone.js";
+import { dispatchTagTriggerFlows } from "./tagFlowTrigger.js";
 
 function toStoragePhone(phone: string): string {
   if (phone.includes("@g.us")) return phone.trim();
@@ -36,12 +37,30 @@ export async function upsertContact(
   });
 
   if (data.tagIds) {
+    const before = await prisma.contact.findUnique({
+      where: { id: contact.id },
+      include: { tags: { include: { tag: true } } }
+    });
+    const beforeIds = new Set(before?.tags.map((t) => t.tagId) ?? []);
+
     await prisma.contactTag.deleteMany({ where: { contactId: contact.id } });
     if (data.tagIds.length > 0) {
       await prisma.contactTag.createMany({
         data: data.tagIds.map((tagId) => ({ contactId: contact.id, tagId })),
         skipDuplicates: true
       });
+    }
+
+    const addedIds = data.tagIds.filter((id) => !beforeIds.has(id));
+    if (addedIds.length > 0) {
+      const addedTags = await prisma.tag.findMany({ where: { id: { in: addedIds } } });
+      if (addedTags.length > 0) {
+        await dispatchTagTriggerFlows({
+          phone: normalized,
+          addedTagNames: addedTags.map((t) => t.name),
+          contactName: contact.name ?? undefined
+        }).catch(() => {});
+      }
     }
   }
 
@@ -105,11 +124,29 @@ export async function addContactTagsByNames(phone: string, tagNames: string[], c
   const contact = await ensureContact(phone, contactName);
   const tags = await ensureTagsByNames(tagNames);
   if (tags.length === 0) return contact;
+
+  const existing = await prisma!.contactTag.findMany({
+    where: { contactId: contact.id, tagId: { in: tags.map((t) => t.id) } }
+  });
+  const existingIds = new Set(existing.map((row) => row.tagId));
+  const newTags = tags.filter((tag) => !existingIds.has(tag.id));
+  if (newTags.length === 0) return contact;
+
   await prisma!.contactTag.createMany({
-    data: tags.map((tag) => ({ contactId: contact.id, tagId: tag.id })),
+    data: newTags.map((tag) => ({ contactId: contact.id, tagId: tag.id })),
     skipDuplicates: true
   });
-  return contact;
+
+  await dispatchTagTriggerFlows({
+    phone: contact.phone,
+    addedTagNames: newTags.map((t) => t.name),
+    contactName: contact.name ?? contactName
+  }).catch(() => {});
+
+  return prisma!.contact.findUnique({
+    where: { id: contact.id },
+    include: { tags: { include: { tag: true } } }
+  });
 }
 
 export async function removeContactTagsByNames(phone: string, tagNames: string[]) {

@@ -1,5 +1,6 @@
 export const NODE_LABELS: Record<string, string> = {
   trigger_hotmart: "Hotmart",
+  trigger_tag: "Gatilho tag",
   trigger_inbound: "Msg recebida",
   trigger_manual: "Manual",
   condition_offer_code: "Código da oferta",
@@ -13,20 +14,54 @@ export const NODE_LABELS: Record<string, string> = {
   send_audio: "Áudio"
 };
 
-export const PALETTE = [
-  { type: "trigger_hotmart", label: "Gatilho Hotmart" },
-  { type: "trigger_inbound", label: "Mensagem recebida" },
-  { type: "trigger_manual", label: "Teste manual" },
-  { type: "condition_offer_code", label: "Código da oferta" },
-  { type: "tag_action", label: "Adicionar / remover tag" },
-  { type: "start_flow", label: "Iniciar outro fluxo" },
-  { type: "delay", label: "Aguardar tempo" },
-  { type: "schedule_at", label: "Agendar data" },
-  { type: "send_text", label: "Enviar texto" },
-  { type: "send_image", label: "Enviar imagem" },
-  { type: "send_video", label: "Enviar vídeo" },
-  { type: "send_audio", label: "Enviar áudio" }
+export type PaletteItem = { type: string; label: string };
+
+export type PaletteGroup = {
+  id: string;
+  label: string;
+  items: PaletteItem[];
+};
+
+export const PALETTE_GROUPS: PaletteGroup[] = [
+  {
+    id: "triggers",
+    label: "Gatilhos",
+    items: [
+      { type: "trigger_hotmart", label: "Hotmart (compra)" },
+      { type: "trigger_tag", label: "Tag do contato" },
+      { type: "trigger_inbound", label: "Mensagem recebida" },
+      { type: "trigger_manual", label: "Teste manual" }
+    ]
+  },
+  {
+    id: "messages",
+    label: "Mensagens",
+    items: [
+      { type: "send_text", label: "Enviar texto" },
+      { type: "send_image", label: "Enviar imagem" },
+      { type: "send_video", label: "Enviar vídeo" },
+      { type: "send_audio", label: "Enviar áudio" }
+    ]
+  },
+  {
+    id: "logic",
+    label: "Lógica e fluxo",
+    items: [
+      { type: "condition_offer_code", label: "Código da oferta" },
+      { type: "start_flow", label: "Iniciar outro fluxo" },
+      { type: "delay", label: "Aguardar tempo" },
+      { type: "schedule_at", label: "Agendar data" }
+    ]
+  },
+  {
+    id: "contacts",
+    label: "Contato",
+    items: [{ type: "tag_action", label: "Adicionar / remover tag" }]
+  }
 ];
+
+/** Lista plana (compatibilidade). */
+export const PALETTE = PALETTE_GROUPS.flatMap((g) => g.items);
 
 const DRAG_NODE_TYPE = "application/zap-flow-node";
 
@@ -51,6 +86,8 @@ export function defaultNodeData(type: string): Record<string, unknown> {
           purchaseIdPath: "$.data.purchase.transaction"
         }
       };
+    case "trigger_tag":
+      return { tags: [] as string[] };
     case "trigger_inbound":
       return { keyword: "", tags: [] as string[] };
     case "condition_offer_code":

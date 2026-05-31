@@ -46,6 +46,7 @@ function render(template: string, vars: Record<string, unknown>): string {
 export function resolveFlowTriggerType(graph: FlowGraph): string {
   if (graph.nodes.some((n) => n.type === "trigger_manual")) return "trigger_manual";
   if (graph.nodes.some((n) => n.type === "trigger_hotmart")) return "trigger_hotmart";
+  if (graph.nodes.some((n) => n.type === "trigger_tag")) return "trigger_tag";
   if (graph.nodes.some((n) => n.type === "trigger_inbound")) return "trigger_inbound";
   return "trigger_manual";
 }

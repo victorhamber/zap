@@ -1,5 +1,6 @@
 export type NodeType =
   | "trigger_hotmart"
+  | "trigger_tag"
   | "trigger_inbound"
   | "trigger_manual"
   | "condition_offer_code"
@@ -93,6 +94,11 @@ export type TriggerInboundData = {
   keyword?: string;
   /** Nomes das tags do contato (qualquer uma dispara o fluxo) */
   tags?: string[];
+};
+
+export type TriggerTagData = {
+  /** Dispara quando o contato recebe uma dessas tags */
+  tags: string[];
 };
 
 export type FlowJobPayload = {

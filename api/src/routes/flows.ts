@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { prisma } from "../prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import { defaultHotmartGraph } from "../engine/graph.js";
-import { startFlowRun } from "../engine/executor.js";
+import { resolveFlowTriggerType, startFlowRun } from "../engine/executor.js";
 import { parseGraph } from "../engine/graph.js";
 import type { FlowGraph } from "../types/flow.js";
 
@@ -92,11 +92,7 @@ export async function flowRoutes(app: FastifyInstance) {
     const flow = await prisma.flow.findUnique({ where: { id } });
     if (!flow) return reply.status(404).send({ error: "Fluxo não encontrado" });
     const graph = parseGraph(flow.graphJson);
-    const triggerType = graph.nodes.some((n) => n.type === "trigger_manual")
-      ? "trigger_manual"
-      : graph.nodes.some((n) => n.type === "trigger_hotmart")
-        ? "trigger_hotmart"
-        : graph.nodes[0]?.type ?? "trigger_manual";
+    const triggerType = resolveFlowTriggerType(graph);
 
     const result = await startFlowRun({
       flowId: id,

@@ -1,13 +1,13 @@
 type Props = {
   x: number;
   y: number;
-  onEdit?: () => void;
+  onDuplicate?: () => void;
   onDelete: () => void;
   deleteLabel?: string;
   onClose: () => void;
 };
 
-export function NodeContextMenu({ x, y, onEdit, onDelete, deleteLabel, onClose }: Props) {
+export function NodeContextMenu({ x, y, onDuplicate, onDelete, deleteLabel, onClose }: Props) {
   return (
     <>
       <div className="fixed inset-0 z-[60]" onClick={onClose} onContextMenu={(e) => e.preventDefault()} />
@@ -16,16 +16,16 @@ export function NodeContextMenu({ x, y, onEdit, onDelete, deleteLabel, onClose }
         style={{ left: x, top: y }}
         onContextMenu={(e) => e.preventDefault()}
       >
-        {onEdit && (
+        {onDuplicate && (
           <button
             type="button"
             className="w-full px-4 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800"
             onClick={() => {
-              onEdit();
+              onDuplicate();
               onClose();
             }}
           >
-            Editar propriedades
+            Duplicar
           </button>
         )}
         <button

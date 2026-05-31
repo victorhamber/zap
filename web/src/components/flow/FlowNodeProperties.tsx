@@ -59,9 +59,10 @@ export function FlowNodeProperties({
   const webhookUrl = flowId ? hotmartWebhookUrl(flowId) : "";
   const offerBranches = (config.branches as OfferBranch[] | undefined) ?? [];
   const selectedTagNames = (config.tagNames as string[] | undefined) ?? [];
+  const triggerTags = (config.tags as string[] | undefined) ?? [];
 
   useEffect(() => {
-    if (nodeType !== "tag_action") return;
+    if (nodeType !== "tag_action" && nodeType !== "trigger_tag") return;
     api<{ tags: TagRecord[] }>("/api/tags")
       .then((res) => setAllTags(res.tags ?? []))
       .catch(() => setAllTags([]));
@@ -83,7 +84,16 @@ export function FlowNodeProperties({
     onUpdate({ tagNames: next });
   }
 
-  async function createAndSelectTag() {
+  function toggleTriggerTag(name: string) {
+    const normalized = name.trim();
+    if (!normalized) return;
+    const next = triggerTags.includes(normalized)
+      ? triggerTags.filter((n) => n !== normalized)
+      : [...triggerTags, normalized];
+    onUpdate({ tags: next });
+  }
+
+  async function createAndSelectTag(forTrigger = false) {
     const name = newTagName.trim();
     if (!name || creatingTag) return;
     setCreatingTag(true);
@@ -97,7 +107,9 @@ export function FlowNodeProperties({
         if (prev.some((t) => t.name === tag.name)) return prev;
         return [...prev, tag].sort((a, b) => a.name.localeCompare(b.name));
       });
-      if (!selectedTagNames.includes(tag.name)) {
+      if (forTrigger) {
+        if (!triggerTags.includes(tag.name)) onUpdate({ tags: [...triggerTags, tag.name] });
+      } else if (!selectedTagNames.includes(tag.name)) {
         onUpdate({ tagNames: [...selectedTagNames, tag.name] });
       }
       setNewTagName("");
@@ -223,6 +235,74 @@ export function FlowNodeProperties({
               onChange={(e) => onUpdate({ datetime: e.target.value })}
               className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-white"
             />
+          </>
+        )}
+
+        {nodeType === "trigger_tag" && (
+          <>
+            <p className="text-xs text-zinc-500">
+              Dispara o fluxo quando o contato receber uma dessas tags — no inbox, em outro fluxo
+              (bloco Adicionar tag) ou manualmente.
+            </p>
+            {triggerTags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {triggerTags.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => toggleTriggerTag(name)}
+                    className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-300 hover:bg-emerald-500/20"
+                  >
+                    {name} ×
+                  </button>
+                ))}
+              </div>
+            )}
+            <label className="text-xs text-zinc-500">Tags que disparam este fluxo</label>
+            <div className="max-h-40 overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-900/40 p-2 space-y-1">
+              {allTags.length === 0 ? (
+                <p className="text-xs text-zinc-600 px-1 py-2">Nenhuma tag criada ainda.</p>
+              ) : (
+                allTags.map((tag) => (
+                  <label
+                    key={tag.id}
+                    className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-zinc-800/60 cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={triggerTags.includes(tag.name)}
+                      onChange={() => toggleTriggerTag(tag.name)}
+                      className="rounded"
+                    />
+                    <span
+                      className="h-2.5 w-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: tag.color }}
+                    />
+                    <span className="text-sm text-zinc-200">{tag.name}</span>
+                  </label>
+                ))
+              )}
+            </div>
+            <label className="text-xs text-zinc-500">Criar nova tag</label>
+            <div className="flex gap-2">
+              <input
+                value={newTagName}
+                onChange={(e) => setNewTagName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void createAndSelectTag(true);
+                }}
+                className="min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
+                placeholder="Nome da tag"
+              />
+              <button
+                type="button"
+                onClick={() => void createAndSelectTag(true)}
+                disabled={!newTagName.trim() || creatingTag}
+                className="shrink-0 rounded-xl border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 disabled:opacity-40"
+              >
+                Criar
+              </button>
+            </div>
           </>
         )}
 
@@ -411,14 +491,14 @@ export function FlowNodeProperties({
                 value={newTagName}
                 onChange={(e) => setNewTagName(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") void createAndSelectTag();
+                  if (e.key === "Enter") void createAndSelectTag(false);
                 }}
                 className="min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
                 placeholder="Nome da tag"
               />
               <button
                 type="button"
-                onClick={() => void createAndSelectTag()}
+                onClick={() => void createAndSelectTag(false)}
                 disabled={!newTagName.trim() || creatingTag}
                 className="shrink-0 rounded-xl border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 disabled:opacity-40"
               >
