@@ -4,13 +4,16 @@ import { enqueueFlowJob } from "../queue.js";
 import { getByPath, asString } from "../utils/jsonPathLite.js";
 import { resolveHotmartCountryIso, resolveHotmartPhone } from "../utils/hotmartPhone.js";
 import { assertValidWhatsAppPhone, firstNameFromFullName } from "../utils/phone.js";
+import { hotmartEventName, hotmartPurchaseStatus } from "../utils/hotmartEvents.js";
 import {
   addContactTagsByNames,
+  getContactTagNames,
   removeContactTagsByNames
 } from "../services/contacts.js";
 import * as wpp from "../services/whatsapp/index.js";
 import { getNextNodeId, getNextNodeIdByHandle, getNode, parseGraph } from "./graph.js";
 import type {
+  ConditionContactTagData,
   ConditionOfferCodeData,
   DelayNodeData,
   DelayUnit,
@@ -45,6 +48,9 @@ function render(template: string, vars: Record<string, unknown>): string {
 
 export function resolveFlowTriggerType(graph: FlowGraph): string {
   if (graph.nodes.some((n) => n.type === "trigger_manual")) return "trigger_manual";
+  if (graph.nodes.some((n) => n.type === "trigger_hotmart_pending")) {
+    return "trigger_hotmart_pending";
+  }
   if (graph.nodes.some((n) => n.type === "trigger_hotmart")) return "trigger_hotmart";
   if (graph.nodes.some((n) => n.type === "trigger_tag")) return "trigger_tag";
   if (graph.nodes.some((n) => n.type === "trigger_inbound")) return "trigger_inbound";
@@ -136,6 +142,20 @@ export function extractHotmartVariables(
       asString(mapping.passwordPath ? getByPath(payload, mapping.passwordPath) : undefined) ?? "",
     accessLink:
       asString(mapping.accessLinkPath ? getByPath(payload, mapping.accessLinkPath) : undefined) ??
+      "",
+    hotmartEvent: hotmartEventName(payload),
+    purchaseStatus: hotmartPurchaseStatus(payload),
+    paymentType:
+      asString(getByPath(payload, "$.data.purchase.payment.type")) ??
+      asString(getByPath(payload, "$.purchase.payment.type")) ??
+      "",
+    pixCode:
+      asString(getByPath(payload, "$.data.purchase.payment.pix_code")) ??
+      asString(getByPath(payload, "$.data.purchase.payment.pixCode")) ??
+      "",
+    pixQrCode:
+      asString(getByPath(payload, "$.data.purchase.payment.pix_qrcode")) ??
+      asString(getByPath(payload, "$.data.purchase.payment.pixQrcode")) ??
       ""
   };
 }
@@ -206,6 +226,51 @@ async function executeNode(
     );
 
     const nextId = getNextNodeIdByHandle(graph, nodeId, matchedHandle);
+    if (!nextId) {
+      await finishRun(flowRunId, "completed");
+      return;
+    }
+
+    if (prisma) {
+      await prisma.flowRun.update({
+        where: { id: flowRunId },
+        data: { currentNodeId: nextId, status: "running" }
+      });
+    }
+
+    await executeNode(graph, flowRunId, nextId, vars);
+    return;
+  }
+
+  if (node.type === "condition_contact_tag") {
+    const data = node.data as unknown as ConditionContactTagData;
+    const required = (data.tagNames ?? []).map((t) => String(t).trim().toLowerCase()).filter(Boolean);
+    const contactTags = (await getContactTagNames(phone)).map((t) => t.toLowerCase());
+
+    let hasTag = false;
+    if (required.length > 0) {
+      if (data.matchMode === "all") {
+        hasTag = required.every((t) => contactTags.includes(t));
+      } else {
+        hasTag = required.some((t) => contactTags.includes(t));
+      }
+    }
+
+    const handle = hasTag ? "yes" : "no";
+    const label = hasTag ? "Tem a tag" : "Não tem a tag";
+
+    await logStep(
+      flowRunId,
+      nodeId,
+      node.type,
+      "ok",
+      required.length
+        ? `${label}: ${required.join(", ")} (contato: ${contactTags.join(", ") || "nenhuma"})`
+        : "Nenhuma tag configurada → Não",
+      { required, contactTags, branch: handle }
+    );
+
+    const nextId = getNextNodeIdByHandle(graph, nodeId, handle);
     if (!nextId) {
       await finishRun(flowRunId, "completed");
       return;
@@ -532,8 +597,16 @@ export function matchInboundFlows(
   return messageText.toLowerCase().includes(data.keyword.toLowerCase());
 }
 
+export function getHotmartTriggerFromGraph(graph: FlowGraph) {
+  const pending = graph.nodes.find((n) => n.type === "trigger_hotmart_pending");
+  if (pending) return { node: pending, triggerType: "trigger_hotmart_pending" as const };
+  const purchase = graph.nodes.find((n) => n.type === "trigger_hotmart");
+  if (purchase) return { node: purchase, triggerType: "trigger_hotmart" as const };
+  return null;
+}
+
 export function getHotmartMappingFromGraph(graph: FlowGraph): HotmartMapping {
-  const trigger = graph.nodes.find((n) => n.type === "trigger_hotmart");
-  if (!trigger) throw new Error("trigger_hotmart não configurado");
-  return (trigger.data as unknown as TriggerHotmartData).mapping;
+  const trigger = getHotmartTriggerFromGraph(graph);
+  if (!trigger) throw new Error("Gatilho Hotmart não configurado no fluxo");
+  return (trigger.node.data as unknown as TriggerHotmartData).mapping;
 }

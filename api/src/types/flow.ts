@@ -1,9 +1,11 @@
 export type NodeType =
   | "trigger_hotmart"
+  | "trigger_hotmart_pending"
   | "trigger_tag"
   | "trigger_inbound"
   | "trigger_manual"
   | "condition_offer_code"
+  | "condition_contact_tag"
   | "tag_action"
   | "start_flow"
   | "delay"
@@ -56,6 +58,12 @@ export type ConditionOfferCodeData = {
   branches: OfferCodeBranch[];
 };
 
+export type ConditionContactTagData = {
+  /** Se o contato tem alguma dessas tags (padrão) ou todas */
+  matchMode?: "any" | "all";
+  tagNames: string[];
+};
+
 export type TagActionData = {
   mode: "add" | "remove";
   tagNames: string[];
@@ -87,6 +95,10 @@ export type SendMediaNodeData = {
 };
 
 export type TriggerHotmartData = {
+  mapping: HotmartMapping;
+};
+
+export type TriggerHotmartPendingData = {
   mapping: HotmartMapping;
 };
 

@@ -4,9 +4,11 @@ import { env } from "../env.js";
 import {
   extractHotmartVariables,
   getHotmartMappingFromGraph,
+  getHotmartTriggerFromGraph,
   matchInboundFlows,
   startFlowRun
 } from "../engine/executor.js";
+import { hotmartEventName, matchHotmartTrigger } from "../utils/hotmartEvents.js";
 import { parseGraph } from "../engine/graph.js";
 import { asString } from "../utils/jsonPathLite.js";
 import { normalizePhone } from "../utils/phone.js";
@@ -43,18 +45,37 @@ export async function webhookRoutes(app: FastifyInstance) {
 
     const payload = req.body;
     const graph = parseGraph(flow.graphJson);
+    const hotmartTrigger = getHotmartTriggerFromGraph(graph);
+    if (!hotmartTrigger) {
+      return reply.status(400).send({
+        error: "Este fluxo não tem gatilho Hotmart (compra ou aguardando pagamento)."
+      });
+    }
+
+    const event = hotmartEventName(payload);
+    if (!matchHotmartTrigger(payload, hotmartTrigger.triggerType)) {
+      return {
+        skipped: true,
+        reason: "event_not_matched",
+        event,
+        expectedTrigger: hotmartTrigger.triggerType
+      };
+    }
+
     const mapping = getHotmartMappingFromGraph(graph);
     const vars = extractHotmartVariables(payload, mapping);
+    const externalSuffix =
+      hotmartTrigger.triggerType === "trigger_hotmart_pending" ? "pending" : "approved";
 
     const result = await startFlowRun({
       flowId,
-      triggerType: "trigger_hotmart",
+      triggerType: hotmartTrigger.triggerType,
       contactPhone: String(vars.phone),
       variables: vars,
-      externalId: String(vars.purchaseId)
+      externalId: `${String(vars.purchaseId)}_${externalSuffix}`
     });
 
-    return result;
+    return { ...result, event, triggerType: hotmartTrigger.triggerType };
   });
 
   app.get("/api/webhooks/wppconnect", async () => {

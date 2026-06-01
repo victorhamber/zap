@@ -1,9 +1,11 @@
 export const NODE_LABELS: Record<string, string> = {
   trigger_hotmart: "Hotmart",
+  trigger_hotmart_pending: "Aguardando pagamento",
   trigger_tag: "Gatilho tag",
   trigger_inbound: "Msg recebida",
   trigger_manual: "Manual",
   condition_offer_code: "Código da oferta",
+  condition_contact_tag: "Contato tem tag?",
   tag_action: "Tag",
   start_flow: "Iniciar fluxo",
   delay: "Aguardar",
@@ -27,7 +29,8 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
     id: "triggers",
     label: "Gatilhos",
     items: [
-      { type: "trigger_hotmart", label: "Hotmart (compra)" },
+      { type: "trigger_hotmart", label: "Hotmart (compra aprovada)" },
+      { type: "trigger_hotmart_pending", label: "Hotmart (aguardando pagamento)" },
       { type: "trigger_tag", label: "Tag do contato" },
       { type: "trigger_inbound", label: "Mensagem recebida" },
       { type: "trigger_manual", label: "Teste manual" }
@@ -48,6 +51,7 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
     label: "Lógica e fluxo",
     items: [
       { type: "condition_offer_code", label: "Código da oferta" },
+      { type: "condition_contact_tag", label: "Contato tem tag?" },
       { type: "start_flow", label: "Iniciar outro fluxo" },
       { type: "delay", label: "Aguardar tempo" },
       { type: "schedule_at", label: "Agendar data" }
@@ -77,6 +81,7 @@ export function hotmartWebhookUrl(flowId: string): string {
 export function defaultNodeData(type: string): Record<string, unknown> {
   switch (type) {
     case "trigger_hotmart":
+    case "trigger_hotmart_pending":
       return {
         mapping: {
           phonePath: "$.data.buyer.checkout_phone",
@@ -86,6 +91,8 @@ export function defaultNodeData(type: string): Record<string, unknown> {
           purchaseIdPath: "$.data.purchase.transaction"
         }
       };
+    case "condition_contact_tag":
+      return { matchMode: "any", tagNames: [] as string[] };
     case "trigger_tag":
       return { tags: [] as string[] };
     case "trigger_inbound":

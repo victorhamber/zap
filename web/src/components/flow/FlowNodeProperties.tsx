@@ -62,7 +62,13 @@ export function FlowNodeProperties({
   const triggerTags = (config.tags as string[] | undefined) ?? [];
 
   useEffect(() => {
-    if (nodeType !== "tag_action" && nodeType !== "trigger_tag") return;
+    if (
+      nodeType !== "tag_action" &&
+      nodeType !== "trigger_tag" &&
+      nodeType !== "condition_contact_tag"
+    ) {
+      return;
+    }
     api<{ tags: TagRecord[] }>("/api/tags")
       .then((res) => setAllTags(res.tags ?? []))
       .catch(() => setAllTags([]));
@@ -544,7 +550,7 @@ export function FlowNodeProperties({
           </>
         )}
 
-        {nodeType === "trigger_hotmart" && (
+        {(nodeType === "trigger_hotmart" || nodeType === "trigger_hotmart_pending") && (
           <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 text-xs text-zinc-400">
             <p className="font-medium text-zinc-300 mb-1">Webhook Hotmart</p>
             <code className="block break-all text-emerald-400/90 leading-relaxed">{webhookUrl}</code>
@@ -555,14 +561,95 @@ export function FlowNodeProperties({
             >
               {copied ? "Copiado!" : "Copiar URL"}
             </button>
-            <p className="mt-2">Variáveis: {"{{name}}"}, {"{{phone}}"}, {"{{email}}"}, {"{{productName}}"}, {"{{purchaseId}}"}, {"{{offerCode}}"}, {"{{offerName}}"}, etc.</p>
+            {nodeType === "trigger_hotmart_pending" ? (
+              <p className="mt-2 text-amber-200/90">
+                Dispara quando o cliente <strong className="font-medium">gera PIX ou boleto</strong> (ex.: evento{" "}
+                <code className="text-zinc-400">PURCHASE_BILLET_PRINTED</code>, status{" "}
+                <code className="text-zinc-400">BILLET_PRINTED</code>). Ideal para recuperação de carrinho.
+              </p>
+            ) : (
+              <p className="mt-2 text-emerald-200/80">
+                Dispara só em <strong className="font-medium">compra aprovada</strong> (ex.:{" "}
+                <code className="text-zinc-400">PURCHASE_APPROVED</code>). Não dispara em PIX pendente.
+              </p>
+            )}
+            <p className="mt-2">
+              Variáveis: {"{{name}}"}, {"{{phone}}"}, {"{{pixCode}}"}, {"{{pixQrCode}}"}, {"{{offerCode}}"}, etc.
+            </p>
             <p className="mt-2 text-zinc-600">
-              Hotmart v2: país em <code className="text-zinc-500">data.purchase.checkout_country.iso</code> (DDI automático),
-              DDD em <code className="text-zinc-500">data.buyer.checkout_phone_code</code>, número em{" "}
-              <code className="text-zinc-500">data.buyer.checkout_phone</code>, compra em{" "}
-              <code className="text-zinc-500">data.purchase.transaction</code>.
+              Na Hotmart, marque o evento de <strong>aguardando pagamento / boleto impresso</strong> ou{" "}
+              <strong>compra aprovada</strong> conforme o gatilho deste fluxo.
             </p>
           </div>
+        )}
+
+        {nodeType === "condition_contact_tag" && (
+          <>
+            <p className="text-xs text-zinc-500">
+              Verifica as tags do contato <strong>no momento da execução</strong>. Use após um &quot;Aguardar&quot;
+              para não enviar recuperação a quem já recebeu a tag Comprador.
+            </p>
+            <label className="text-xs text-zinc-500">Condição</label>
+            <select
+              value={String(config.matchMode ?? "any")}
+              onChange={(e) => onUpdate({ matchMode: e.target.value })}
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-white"
+            >
+              <option value="any">Tem alguma destas tags</option>
+              <option value="all">Tem todas estas tags</option>
+            </select>
+
+            {selectedTagNames.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {selectedTagNames.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => toggleTagName(name)}
+                    className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-300 hover:bg-emerald-500/20"
+                  >
+                    {name} ×
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <label className="text-xs text-zinc-500">Tags a verificar</label>
+            <div className="max-h-40 overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-900/40 p-2 space-y-1">
+              {allTags.length === 0 ? (
+                <p className="text-xs text-zinc-600 px-1 py-2">Nenhuma tag criada ainda.</p>
+              ) : (
+                allTags.map((tag) => (
+                  <label
+                    key={tag.id}
+                    className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-zinc-800/60 cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedTagNames.includes(tag.name)}
+                      onChange={() => toggleTagName(tag.name)}
+                      className="rounded"
+                    />
+                    <span
+                      className="h-2.5 w-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: tag.color }}
+                    />
+                    <span className="text-sm text-zinc-200">{tag.name}</span>
+                  </label>
+                ))
+              )}
+            </div>
+
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 text-[11px] text-zinc-500 space-y-1">
+              <p>
+                <span className="text-emerald-400">Saída 1 — Tem a tag:</span> conecte a mensagem de recuperação
+              </p>
+              <p>
+                <span className="text-zinc-400">Saída 2 — Não tem a tag:</span> encerre ou outro caminho (ex. já
+                comprou)
+              </p>
+            </div>
+          </>
         )}
 
         {nodeType === "trigger_manual" && (

@@ -97,6 +97,86 @@ export function FlowNodeComponent({ data, selected }: NodeProps) {
       ? ((config.branches as OfferBranch[] | undefined) ?? [])
       : [];
 
+  const tagConditionNames =
+    type === "condition_contact_tag"
+      ? ((config.tagNames as string[] | undefined) ?? [])
+      : [];
+
+  if (type === "condition_contact_tag") {
+    const slots = [
+      {
+        key: "yes",
+        handleId: "yes",
+        variant: "offer" as const,
+        outputNumber: 1,
+        title: "Tem a tag",
+        codes: tagConditionNames.join(", ") || undefined
+      },
+      {
+        key: "no",
+        handleId: "no",
+        variant: "default" as const,
+        outputNumber: 2,
+        title: "Não tem a tag",
+        codes: undefined
+      }
+    ];
+
+    return (
+      <div
+        className={`flow-offer-node relative w-[260px] overflow-visible rounded-xl border text-sm shadow-lg ${
+          selected ? "border-emerald-400 bg-zinc-900" : "border-zinc-700 bg-zinc-950"
+        }`}
+      >
+        <Handle
+          type="target"
+          position={Position.Left}
+          className="!bg-emerald-400"
+          style={{ top: OFFER_HEADER_H / 2 }}
+        />
+
+        <div
+          className="border-b border-zinc-700/40 px-3 py-3"
+          style={{ height: OFFER_HEADER_H }}
+        >
+          <div className="text-xs font-medium text-zinc-400">{label}</div>
+          <div className="mt-1.5 text-[10px] leading-snug text-zinc-600">
+            Saída 1 = tem tag · Saída 2 = não tem
+          </div>
+        </div>
+
+        {slots.map((slot) => (
+          <OfferOutputRow
+            key={slot.key}
+            outputNumber={slot.outputNumber}
+            title={slot.title}
+            codes={slot.codes}
+            variant={slot.variant}
+          />
+        ))}
+
+        {slots.map((slot, index) => {
+          const isDefault = slot.variant === "default";
+          return (
+            <Handle
+              key={`handle-${slot.handleId}`}
+              type="source"
+              position={Position.Right}
+              id={slot.handleId}
+              className={`flow-offer-handle !h-3.5 !w-3.5 !border-2 !border-zinc-950 ${
+                isDefault ? "!bg-zinc-400" : "!bg-emerald-400"
+              }`}
+              style={{
+                top: handleTopForRow(index),
+                right: -7
+              }}
+            />
+          );
+        })}
+      </div>
+    );
+  }
+
   if (type === "condition_offer_code") {
     const slots = [
       ...branches.map((branch, index) => ({

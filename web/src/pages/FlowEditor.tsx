@@ -55,6 +55,11 @@ function summaryFor(type: string, data: Record<string, unknown>): string {
     const branches = (data.branches as Array<{ label?: string }> | undefined) ?? [];
     return branches.length ? `${branches.length} oferta(s) + outros` : "Sem regras";
   }
+  if (type === "condition_contact_tag") {
+    const names = (data.tagNames as string[] | undefined) ?? [];
+    return names.length ? `Tag: ${names.join(", ")}` : "Configure tags";
+  }
+  if (type === "trigger_hotmart_pending") return "PIX / boleto gerado";
   if (type === "tag_action") {
     const mode = data.mode === "remove" ? "Remover" : "Adicionar";
     const names = (data.tagNames as string[] | undefined) ?? [];
