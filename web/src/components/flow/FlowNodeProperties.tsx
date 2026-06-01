@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Node } from "@xyflow/react";
 import { api } from "../../api/client";
 import { hotmartWebhookUrl, NODE_LABELS } from "./nodeMeta";
+import { TemplateVariablesHelp } from "./TemplateVariablesHelp";
 
 type Props = {
   selectedNode: Node;
@@ -179,13 +180,17 @@ export function FlowNodeProperties({
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3 text-sm">
         {nodeType === "send_text" && (
-          <textarea
-            rows={8}
-            value={String(config.text ?? "")}
-            onChange={(e) => onUpdate({ text: e.target.value })}
-            className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-mono text-white"
-            placeholder="Use {{name}}, {{phone}}, etc."
-          />
+          <>
+            <TemplateVariablesHelp />
+            <label className="text-xs text-zinc-500">Mensagem</label>
+            <textarea
+              rows={8}
+              value={String(config.text ?? "")}
+              onChange={(e) => onUpdate({ text: e.target.value })}
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-mono text-white"
+              placeholder="Olá {{name}}! Seu PIX: {{pixCode}}"
+            />
+          </>
         )}
 
         {(nodeType === "send_image" || nodeType === "send_video" || nodeType === "send_audio") && (
@@ -198,11 +203,13 @@ export function FlowNodeProperties({
             />
             {nodeType !== "send_audio" && (
               <>
+                <TemplateVariablesHelp compact />
                 <label className="text-xs text-zinc-500">Legenda</label>
                 <input
                   value={String(config.caption ?? "")}
                   onChange={(e) => onUpdate({ caption: e.target.value })}
-                  className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-white"
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-mono text-white"
+                  placeholder="{{name}}"
                 />
               </>
             )}
