@@ -10,6 +10,12 @@ function formatDuration(sec: number): string {
 const BAR_COUNT = 32;
 const BAR_HEIGHTS = [3, 5, 4, 6, 3, 5, 7, 4, 6, 3, 5, 4, 6, 3, 5, 8, 4, 5, 3, 6, 4, 5, 7, 3, 5, 4, 6, 3, 5, 4, 6, 5];
 
+const PLAYBACK_SPEEDS = [1, 1.5, 2] as const;
+
+function formatSpeed(rate: number): string {
+  return rate === 1 ? "1×" : `${rate}×`.replace(".", ",");
+}
+
 type Props = {
   src: string;
   fromMe?: boolean;
@@ -22,8 +28,14 @@ export const WaAudioPlayer = memo(function WaAudioPlayer({ src, fromMe }: Props)
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [current, setCurrent] = useState(0);
+  const [speed, setSpeed] = useState<(typeof PLAYBACK_SPEEDS)[number]>(1);
 
   const bars = useMemo(() => BAR_HEIGHTS.slice(0, BAR_COUNT), []);
+
+  useEffect(() => {
+    const el = audioRef.current;
+    if (el) el.playbackRate = speed;
+  }, [speed, src]);
 
   useEffect(() => {
     const el = audioRef.current;
@@ -82,6 +94,14 @@ export const WaAudioPlayer = memo(function WaAudioPlayer({ src, fromMe }: Props)
     if (!el) return;
     if (el.paused) void el.play();
     else el.pause();
+  };
+
+  const cycleSpeed = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSpeed((prev) => {
+      const idx = PLAYBACK_SPEEDS.indexOf(prev);
+      return PLAYBACK_SPEEDS[(idx + 1) % PLAYBACK_SPEEDS.length];
+    });
   };
 
   const seek = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -144,9 +164,26 @@ export const WaAudioPlayer = memo(function WaAudioPlayer({ src, fromMe }: Props)
             );
           })}
         </div>
-        <div className="flex justify-between text-[10px] text-[#8696a0] mt-0.5 tabular-nums">
+        <div className="flex items-center justify-between gap-2 text-[10px] text-[#8696a0] mt-0.5 tabular-nums">
           <span>{formatDuration(current)}</span>
-          <span>{formatDuration(duration)}</span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={cycleSpeed}
+              className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold tabular-nums transition ${
+                speed > 1
+                  ? fromMe
+                    ? "bg-[#d9fdd3]/20 text-[#d9fdd3]"
+                    : "bg-[#00a884]/20 text-[#00a884]"
+                  : "text-[#8696a0] hover:bg-[#ffffff0a]"
+              }`}
+              title="Velocidade de reprodução (clique para alternar)"
+              aria-label={`Velocidade ${formatSpeed(speed)}`}
+            >
+              {formatSpeed(speed)}
+            </button>
+            <span>{formatDuration(duration)}</span>
+          </div>
         </div>
       </div>
     </div>
