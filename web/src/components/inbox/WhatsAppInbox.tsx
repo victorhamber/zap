@@ -769,6 +769,7 @@ export function WhatsAppInbox() {
         method: "POST",
         body: JSON.stringify({
           chatId: selected.id,
+          phone: selected.phone,
           flowId,
           name: selected.name,
           isGroup: selected.isGroup

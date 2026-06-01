@@ -11,6 +11,7 @@ import {
   listContactsWithTags,
   upsertContact
 } from "../services/contacts.js";
+import { firstNameFromFullName } from "../utils/phone.js";
 import { startFlowRun } from "../engine/executor.js";
 import { parseGraph } from "../engine/graph.js";
 import * as wpp from "../services/whatsapp/index.js";
@@ -286,25 +287,56 @@ export async function inboxRoutes(app: FastifyInstance) {
 
   app.post("/api/inbox/start-flow", async (req, reply) => {
     if (!prisma) return reply.status(503).send({ error: "Banco indisponível" });
-    const body = req.body as { chatId?: string; flowId?: string; name?: string; isGroup?: boolean };
+    const body = req.body as {
+      chatId?: string;
+      flowId?: string;
+      name?: string;
+      phone?: string;
+      isGroup?: boolean;
+    };
     if (!body.flowId || !body.chatId) {
       return reply.status(400).send({ error: "flowId e chatId obrigatórios" });
     }
+    if (body.isGroup) {
+      return reply.status(400).send({ error: "Não é possível iniciar fluxo em grupo." });
+    }
 
-    const contact = await upsertContact(body.chatId, { name: body.name });
-    const result = await startFlowRun({
-      flowId: body.flowId,
-      triggerType: "trigger_manual",
-      contactPhone: contact!.phone,
-      variables: {
-        phone: contact!.phone,
-        name: contact!.name ?? body.name ?? contact!.phone,
-        message: ""
-      },
-      externalId: `manual_${contact!.phone}_${Date.now()}`
-    });
+    try {
+      const phoneKey = (body.phone ?? body.chatId).trim();
+      const displayName = body.name?.trim() || undefined;
+      const contact = await upsertContact(phoneKey, { name: displayName });
+      if (!contact) {
+        return reply.status(500).send({ ok: false, error: "Não foi possível salvar o contato." });
+      }
 
-    return { ok: true, result };
+      const contactName = contact.name ?? displayName ?? "Contato";
+      const result = await startFlowRun({
+        flowId: body.flowId,
+        triggerType: "trigger_manual",
+        contactPhone: contact.phone,
+        manualStart: true,
+        variables: {
+          phone: contact.phone,
+          name: firstNameFromFullName(contactName, contactName),
+          fullName: contactName,
+          message: ""
+        },
+        externalId: `manual_${contact.phone}_${Date.now()}`
+      });
+
+      if (result.skipped) {
+        return {
+          ok: false,
+          error: result.reason === "disabled" ? "Fluxo inativo." : "Execução já existente ou ignorada.",
+          result
+        };
+      }
+
+      return { ok: true, result };
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return reply.status(400).send({ ok: false, error: message });
+    }
   });
 
   app.get("/api/inbox/quick-replies", async () => {

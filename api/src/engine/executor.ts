@@ -11,7 +11,13 @@ import {
   removeContactTagsByNames
 } from "../services/contacts.js";
 import * as wpp from "../services/whatsapp/index.js";
-import { getNextNodeId, getNextNodeIdByHandle, getNode, parseGraph } from "./graph.js";
+import {
+  findFlowTriggerNode,
+  getNextNodeId,
+  getNextNodeIdByHandle,
+  getNode,
+  parseGraph
+} from "./graph.js";
 import type {
   ConditionContactTagData,
   ConditionOfferCodeData,
@@ -521,6 +527,8 @@ export async function startFlowRun(params: {
   variables: Record<string, unknown>;
   externalId?: string;
   startFromNodeId?: string;
+  /** Início pelo inbox ou teste: usa o gatilho do fluxo só como ponto de entrada, sem webhook. */
+  manualStart?: boolean;
 }) {
   if (!prisma) throw new Error("DATABASE_URL obrigatório");
 
@@ -539,16 +547,27 @@ export async function startFlowRun(params: {
 
   const graph = parseGraph(flow.graphJson);
   let startNodeId = params.startFromNodeId;
+  let recordedTriggerType = params.triggerType;
+
   if (!startNodeId) {
-    const trigger = graph.nodes.find((n) => n.type === params.triggerType);
-    if (!trigger) throw new Error(`Gatilho ${params.triggerType} não encontrado no fluxo`);
-    startNodeId = trigger.id;
+    if (params.manualStart) {
+      const trigger = findFlowTriggerNode(graph);
+      if (!trigger) {
+        throw new Error("Este fluxo não tem gatilho. Adicione um bloco de gatilho no editor.");
+      }
+      startNodeId = trigger.id;
+      recordedTriggerType = trigger.type;
+    } else {
+      const trigger = graph.nodes.find((n) => n.type === params.triggerType);
+      if (!trigger) throw new Error(`Gatilho ${params.triggerType} não encontrado no fluxo`);
+      startNodeId = trigger.id;
+    }
   }
 
   const run = await prisma.flowRun.create({
     data: {
       flowId: params.flowId,
-      triggerType: params.triggerType,
+      triggerType: recordedTriggerType,
       contactPhone: params.contactPhone,
       variables: params.variables as object,
       externalId: params.externalId,
@@ -564,7 +583,8 @@ export async function startFlowRun(params: {
   }
 
   try {
-    await logStep(run.id, startNodeId, params.triggerType, "ok", "Início");
+    const startLabel = params.manualStart ? "Início manual (gatilho ignorado)" : "Início";
+    await logStep(run.id, startNodeId, recordedTriggerType, "ok", startLabel);
     await executeNode(graph, run.id, firstActionId, params.variables);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

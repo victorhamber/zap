@@ -12,6 +12,29 @@ export function findTriggerNode(graph: FlowGraph, triggerType: NodeType): FlowNo
   return graph.nodes.find((n) => n.type === triggerType);
 }
 
+const FLOW_TRIGGER_TYPES: NodeType[] = [
+  "trigger_hotmart",
+  "trigger_hotmart_pending",
+  "trigger_tag",
+  "trigger_inbound",
+  "trigger_manual"
+];
+
+/** Primeiro gatilho do fluxo (para início manual pelo inbox). */
+export function findFlowTriggerNode(graph: FlowGraph): FlowNode | undefined {
+  for (const type of FLOW_TRIGGER_TYPES) {
+    const node = graph.nodes.find((n) => n.type === type);
+    if (node) return node;
+  }
+  return undefined;
+}
+
+export function getFirstActionAfterTrigger(graph: FlowGraph): string | null {
+  const trigger = findFlowTriggerNode(graph);
+  if (!trigger) return null;
+  return getNextNodeId(graph, trigger.id);
+}
+
 export function getNextNodeId(graph: FlowGraph, currentNodeId: string): string | null {
   const outgoing = graph.edges.filter((e) => e.source === currentNodeId);
   if (outgoing.length === 0) return null;

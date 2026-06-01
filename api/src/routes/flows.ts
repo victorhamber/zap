@@ -99,7 +99,8 @@ export async function flowRoutes(app: FastifyInstance) {
       triggerType,
       contactPhone: phone,
       variables: vars,
-      externalId: `manual_${Date.now()}`
+      externalId: `manual_${Date.now()}`,
+      manualStart: true
     });
 
     return result;
