@@ -28,10 +28,15 @@ export function getFlowQueue(): Queue<FlowJobPayload> {
   return flowQueue;
 }
 
+/** BullMQ não aceita ":" em jobId customizado (delimitador interno no Redis). */
+export function sanitizeQueueJobId(id: string): string {
+  return id.replace(/:/g, "_");
+}
+
 export async function enqueueFlowJob(payload: FlowJobPayload, delayMs: number, jobId?: string) {
   const queue = getFlowQueue();
   return queue.add("continue", payload, {
     delay: Math.max(0, delayMs),
-    jobId
+    ...(jobId ? { jobId: sanitizeQueueJobId(jobId) } : {})
   });
 }

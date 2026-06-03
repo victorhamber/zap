@@ -372,7 +372,7 @@ async function executeNode(
       return;
     }
     const runAt = new Date(Date.now() + ms);
-    const jobId = `${flowRunId}:${nextId}`;
+    const jobId = `${flowRunId}_${nextId}_delay`;
     const job = await enqueueFlowJob({ flowRunId, nodeId: nextId }, ms, jobId);
     if (prisma) {
       await prisma.scheduledJob.create({
@@ -402,7 +402,7 @@ async function executeNode(
       await finishRun(flowRunId, "completed");
       return;
     }
-    const jobId = `${flowRunId}:${nextId}:at`;
+    const jobId = `${flowRunId}_${nextId}_at`;
     const job = await enqueueFlowJob({ flowRunId, nodeId: nextId }, ms, jobId);
     if (prisma) {
       await prisma.scheduledJob.create({
