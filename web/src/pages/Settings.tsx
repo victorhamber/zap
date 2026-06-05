@@ -29,7 +29,7 @@ export function Settings() {
             onClick={() => setTab(t.id)}
             className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition ${
               tab === t.id
-                ? "bg-zap-orange-muted text-zap-orange border border-zap-orange/25 shadow-sm"
+                ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 shadow-sm"
                 : "text-zinc-400 hover:text-zinc-200 border border-transparent"
             }`}
           >

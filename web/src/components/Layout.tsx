@@ -33,17 +33,17 @@ export function Layout() {
 
   return (
     <div
-      className={`flex bg-zap-panel ${isInbox ? "h-screen overflow-hidden" : "min-h-screen"}`}
+      className={`flex bg-zinc-950 ${isInbox ? "h-screen overflow-hidden" : "min-h-screen"}`}
     >
       <aside
-        className={`shrink-0 border-r border-zap-border bg-zap-panel flex flex-col transition-[width] duration-200 ${
-          collapsed ? "w-[68px]" : "w-64"
+        className={`shrink-0 border-r border-zinc-800/80 bg-zinc-950/90 backdrop-blur flex flex-col transition-[width] duration-200 ${
+          collapsed ? "w-[68px]" : "w-60"
         }`}
       >
-        <div className={`border-b border-zap-border ${collapsed ? "p-3" : "px-5 py-4"}`}>
+        <div className={`border-b border-zinc-800/80 ${collapsed ? "p-3" : "p-5"}`}>
           <div className={`flex items-center ${collapsed ? "justify-center" : "gap-3"}`}>
             <div
-              className={`flex items-center justify-center rounded-xl bg-zap-orange font-bold text-white shrink-0 shadow-sm ${
+              className={`flex items-center justify-center rounded-xl bg-emerald-500/15 border border-emerald-500/25 font-bold text-emerald-400 shrink-0 ${
                 collapsed ? "h-11 w-11 text-xl" : "h-10 w-10 text-lg"
               }`}
             >
@@ -51,13 +51,13 @@ export function Layout() {
             </div>
             {!collapsed && (
               <div className="min-w-0">
-                <div className="font-semibold text-white tracking-tight">Zap</div>
-                <div className="text-xs text-zap-muted">Automação WhatsApp</div>
+                <div className="font-semibold text-white">Zap</div>
+                <div className="text-xs text-zinc-500">Automação WhatsApp</div>
               </div>
             )}
           </div>
         </div>
-        <nav className={`flex-1 space-y-0.5 ${collapsed ? "p-2" : "p-3"}`}>
+        <nav className={`flex-1 space-y-1 ${collapsed ? "p-2" : "p-3"}`}>
           {links.map((l) => {
             const active =
               loc.pathname === l.to ||
@@ -68,14 +68,14 @@ export function Layout() {
                 key={l.to}
                 to={l.to}
                 title={collapsed ? l.label : undefined}
-                className={`flex items-center rounded-lg transition ${
+                className={`flex items-center rounded-xl transition ${
                   collapsed
                     ? "justify-center min-h-[48px] w-full py-2"
                     : "gap-3 px-3 py-2.5 text-sm"
                 } ${
                   active
-                    ? "bg-zap-orange-muted text-zap-orange border border-zap-orange/25 font-medium"
-                    : "text-neutral-400 hover:bg-zap-surface hover:text-neutral-200 border border-transparent"
+                    ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/20"
+                    : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200 border border-transparent"
                 }`}
               >
                 <span
@@ -93,11 +93,11 @@ export function Layout() {
             );
           })}
         </nav>
-        <div className={`border-t border-zap-border ${collapsed ? "p-2" : "p-3"} space-y-0.5`}>
+        <div className={`border-t border-zinc-800/80 ${collapsed ? "p-2" : "p-3"} space-y-1`}>
           <button
             type="button"
             onClick={() => setCollapsed((v) => !v)}
-            className={`w-full rounded-lg text-zap-muted hover:bg-zap-surface hover:text-neutral-300 transition ${
+            className={`w-full rounded-xl text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300 transition ${
               collapsed
                 ? "flex min-h-[48px] items-center justify-center text-2xl font-semibold leading-none"
                 : "px-3 py-2.5 text-left text-sm"
@@ -112,7 +112,7 @@ export function Layout() {
               clearToken();
               window.location.href = "/login";
             }}
-            className={`w-full rounded-lg text-zap-muted hover:bg-zap-surface hover:text-neutral-300 transition ${
+            className={`w-full rounded-xl text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300 transition ${
               collapsed
                 ? "flex min-h-[48px] items-center justify-center text-xl leading-none"
                 : "px-3 py-2.5 text-left text-sm"

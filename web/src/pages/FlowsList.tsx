@@ -50,7 +50,10 @@ export function FlowsList() {
           <h1 className="text-2xl font-semibold">Fluxos</h1>
           <p className="text-sm text-zinc-400 mt-1">Automações visuais</p>
         </div>
-        <button onClick={createFlow} className="zap-btn-primary px-4 py-2 text-sm">
+        <button
+          onClick={createFlow}
+          className="rounded-xl bg-emerald-400 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-300"
+        >
           + Novo fluxo
         </button>
       </div>
@@ -59,7 +62,7 @@ export function FlowsList() {
         {flows.map((f) => (
           <div
             key={f.id}
-            className="zap-card p-4 flex items-center justify-between gap-4 hover:border-zap-orange/20 transition"
+            className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4 flex items-center justify-between gap-4"
           >
             <div>
               <div className="font-medium">{f.name}</div>
@@ -74,23 +77,21 @@ export function FlowsList() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => toggle(f.id, f.enabled)}
-                className={`text-xs rounded-full px-3 py-1 font-medium ${
-                  f.enabled
-                    ? "bg-zap-orange-muted text-zap-orange"
-                    : "bg-zap-surface text-zap-muted border border-zap-border"
+                className={`text-xs rounded-full px-3 py-1 ${
+                  f.enabled ? "bg-emerald-500/20 text-emerald-300" : "bg-zinc-800 text-zinc-400"
                 }`}
               >
-                {f.enabled ? "● Publicado" : "Rascunho"}
+                {f.enabled ? "Ativo" : "Pausado"}
               </button>
               <Link
                 to={`/flows/${f.id}/edit`}
-                className="zap-btn-ghost px-3 py-1.5 text-sm"
+                className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-900"
               >
                 Editar
               </Link>
               <Link
                 to={`/flows/${f.id}/runs`}
-                className="zap-btn-ghost px-3 py-1.5 text-sm"
+                className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-900"
               >
                 Logs
               </Link>

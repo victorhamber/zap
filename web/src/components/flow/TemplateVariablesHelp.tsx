@@ -7,32 +7,44 @@ type Props = {
 
 export function TemplateVariablesHelp({ compact, onInsert }: Props) {
   return (
-    <div className={`zap-card ${compact ? "p-2.5" : "p-3"}`}>
-      <p className="text-[11px] font-medium text-neutral-300 mb-2">
-        Variáveis — clique para inserir no texto
+    <div
+      className={`rounded-xl border border-zinc-800 bg-zinc-900/50 ${
+        compact ? "p-2.5" : "p-3"
+      }`}
+    >
+      <p className="text-[11px] font-medium text-zinc-300 mb-2">
+        {onInsert ? "Variáveis — clique para inserir no texto" : "Variáveis no texto — use entre chaves duplas"}
       </p>
-      <div className={`flex flex-wrap gap-1.5 ${compact ? "max-h-28" : "max-h-40"} overflow-y-auto`}>
-        {FLOW_TEMPLATE_VARIABLES.map((v) => (
-          <button
-            key={v.key}
-            type="button"
-            onClick={() => onInsert?.(mustacheSnippet(v.key))}
-            className="zap-var-chip"
-            title={v.label}
-          >
-            {mustacheSnippet(v.key)}
-          </button>
-        ))}
-      </div>
-      {!compact && (
-        <ul className="mt-3 space-y-1 max-h-32 overflow-y-auto pr-1 border-t border-zap-border pt-2">
+      {onInsert ? (
+        <div className={`flex flex-wrap gap-1.5 ${compact ? "max-h-28" : "max-h-40"} overflow-y-auto`}>
           {FLOW_TEMPLATE_VARIABLES.map((v) => (
-            <li key={`desc-${v.key}`} className="text-[10px] text-zap-muted leading-snug">
-              <span className="text-zap-purple font-mono">{mustacheSnippet(v.key)}</span>
-              <span> — {v.label}</span>
-            </li>
+            <button
+              key={v.key}
+              type="button"
+              onClick={() => onInsert(mustacheSnippet(v.key))}
+              className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-mono text-[11px] text-emerald-300 hover:bg-emerald-500/20"
+              title={v.label}
+            >
+              {mustacheSnippet(v.key)}
+            </button>
           ))}
-        </ul>
+        </div>
+      ) : null}
+      <ul
+        className={`space-y-1.5 ${onInsert ? "mt-3 max-h-32 border-t border-zinc-800 pt-2" : compact ? "max-h-36" : "max-h-52"} overflow-y-auto pr-1`}
+      >
+        {FLOW_TEMPLATE_VARIABLES.map((v) => (
+          <li key={v.key} className="text-[11px] leading-snug">
+            <code className="text-emerald-400/95 font-mono">{mustacheSnippet(v.key)}</code>
+            <span className="text-zinc-500"> — {v.label}</span>
+          </li>
+        ))}
+      </ul>
+      {!compact && (
+        <p className="mt-2 text-[10px] text-zinc-600 leading-relaxed">
+          Preenchidas automaticamente no fluxo Hotmart. Em teste manual ou outros gatilhos, campos sem
+          valor ficam vazios.
+        </p>
       )}
     </div>
   );

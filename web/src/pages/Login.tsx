@@ -35,7 +35,7 @@ export function Login() {
     <div className="min-h-full flex items-center justify-center p-6">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-zap-orange text-2xl font-bold text-white shadow-lg">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-2xl font-bold text-emerald-400">
             Z
           </div>
           <h1 className="text-2xl font-semibold tracking-tight text-white">Zap Automação</h1>
@@ -44,7 +44,7 @@ export function Login() {
 
         <form
           onSubmit={submit}
-          className="zap-card p-6 shadow-2xl shadow-black/40"
+          className="rounded-2xl border border-zinc-800/80 bg-zinc-950/80 p-6 shadow-2xl shadow-black/40 backdrop-blur"
         >
           {error && (
             <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-sm text-red-200">
@@ -57,7 +57,7 @@ export function Login() {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="zap-input mb-4 w-full px-3 py-2.5 text-sm"
+            className="mb-4 w-full rounded-xl border border-zinc-700 bg-zinc-900/80 px-3 py-2.5 text-sm text-white outline-none transition focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/20"
             required
             autoComplete="email"
           />
@@ -67,7 +67,7 @@ export function Login() {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="zap-input mb-6 w-full px-3 py-2.5 text-sm"
+            className="mb-6 w-full rounded-xl border border-zinc-700 bg-zinc-900/80 px-3 py-2.5 text-sm text-white outline-none transition focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/20"
             required
             autoComplete="current-password"
           />
@@ -75,7 +75,7 @@ export function Login() {
           <button
             type="submit"
             disabled={loading}
-            className="zap-btn-primary w-full py-2.5 text-sm disabled:opacity-50"
+            className="w-full rounded-xl bg-emerald-500 py-2.5 text-sm font-semibold text-zinc-950 transition hover:bg-emerald-400 disabled:opacity-50"
           >
             {loading ? "Entrando…" : "Entrar"}
           </button>

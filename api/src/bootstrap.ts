@@ -11,6 +11,7 @@ import {
   ensureInboxCaptureStarted,
   normalizeInboxSessionKeys
 } from "./services/inboxStore.js";
+import { startFlowScheduler } from "./services/flowScheduler.js";
 
 export async function bootstrapDatabase() {
   if (!prisma) return;
@@ -87,4 +88,5 @@ export async function bootstrapDatabase() {
 
   void tryRestoreSessionAfterDeploy();
   startWppReconnectWatchdog();
+  startFlowScheduler();
 }

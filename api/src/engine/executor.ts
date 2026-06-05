@@ -501,14 +501,16 @@ export async function continueFlowRun(flowRunId: string, startNodeId: string) {
   if (!run) throw new Error("FlowRun não encontrado");
   if (run.status === "completed" || run.status === "failed") return;
 
+  const claimed = await prisma.flowRun.updateMany({
+    where: { id: flowRunId, status: "waiting" },
+    data: { status: "running" }
+  });
+  if (claimed.count === 0) return;
+
   const graph = parseGraph(run.flow.graphJson);
   const vars = run.variables as Record<string, unknown>;
 
   try {
-    await prisma.flowRun.update({
-      where: { id: flowRunId },
-      data: { status: "running" }
-    });
     await executeNode(graph, flowRunId, startNodeId, vars);
   } catch (err: any) {
     await prisma.flowRun.update({

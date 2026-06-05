@@ -183,7 +183,7 @@ export function FlowNodeProperties({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-zap-border px-4 py-3">
+      <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
         <div>
           <div className="text-sm font-semibold text-white">Propriedades</div>
           <div className="text-xs text-zinc-500">{NODE_LABELS[nodeType] ?? nodeType}</div>
@@ -202,13 +202,13 @@ export function FlowNodeProperties({
         {nodeType === "send_text" && (
           <>
             <TemplateVariablesHelp onInsert={(s) => insertVariable(s, "text")} />
-            <label className="text-xs text-zap-muted">Mensagem</label>
+            <label className="text-xs text-zinc-500">Mensagem</label>
             <textarea
               ref={textRef}
               rows={8}
               value={String(config.text ?? "")}
               onChange={(e) => onUpdate({ text: e.target.value })}
-              className="zap-input w-full px-3 py-2 text-xs font-mono"
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-mono text-white"
               placeholder="Olá {{name}}! Seu PIX: {{pixCode}}"
             />
           </>
@@ -228,12 +228,12 @@ export function FlowNodeProperties({
                   compact
                   onInsert={(s) => insertVariable(s, "caption")}
                 />
-                <label className="text-xs text-zap-muted">Legenda</label>
+                <label className="text-xs text-zinc-500">Legenda</label>
                 <input
                   ref={captionRef}
                   value={String(config.caption ?? "")}
                   onChange={(e) => onUpdate({ caption: e.target.value })}
-                  className="zap-input w-full px-3 py-2 text-xs font-mono"
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-mono text-white"
                   placeholder="{{name}}"
                 />
               </>
@@ -289,7 +289,7 @@ export function FlowNodeProperties({
                     key={name}
                     type="button"
                     onClick={() => toggleTriggerTag(name)}
-                    className="rounded-full border border-zap-purple/40 bg-zap-purple-muted px-2.5 py-1 text-xs text-zap-purple hover:bg-zap-purple/25"
+                    className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-300 hover:bg-emerald-500/20"
                   >
                     {name} ×
                   </button>
@@ -393,11 +393,11 @@ export function FlowNodeProperties({
               {offerBranches.map((branch, index) => (
                 <div
                   key={branch.id}
-                  className="rounded-xl border border-zap-orange/25 border-l-[3px] border-l-zap-orange bg-zap-surface p-3 space-y-2"
+                  className="rounded-xl border border-emerald-500/25 border-l-[3px] border-l-emerald-500 bg-zinc-900/40 p-3 space-y-2"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div>
-                      <div className="text-[10px] font-semibold uppercase tracking-wide text-zap-orange">
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-emerald-400">
                         Saída {index + 1} · bolinha verde
                       </div>
                       <div className="text-[10px] text-zinc-600 mt-0.5">
@@ -489,7 +489,7 @@ export function FlowNodeProperties({
                     key={name}
                     type="button"
                     onClick={() => toggleTagName(name)}
-                    className="rounded-full border border-zap-purple/40 bg-zap-purple-muted px-2.5 py-1 text-xs text-zap-purple hover:bg-zap-purple/25"
+                    className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-300 hover:bg-emerald-500/20"
                   >
                     {name} ×
                   </button>
@@ -585,7 +585,7 @@ export function FlowNodeProperties({
         {(nodeType === "trigger_hotmart" || nodeType === "trigger_hotmart_pending") && (
           <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 text-xs text-zinc-400">
             <p className="font-medium text-zinc-300 mb-1">Webhook Hotmart</p>
-            <code className="block break-all text-zap-orange leading-relaxed">{webhookUrl}</code>
+            <code className="block break-all text-emerald-400 leading-relaxed">{webhookUrl}</code>
             <button
               type="button"
               onClick={() => void copyWebhookUrl()}
@@ -600,7 +600,7 @@ export function FlowNodeProperties({
                 <code className="text-zinc-400">BILLET_PRINTED</code>). Ideal para recuperação de carrinho.
               </p>
             ) : (
-              <p className="mt-2 text-emerald-200/80">
+              <p className="mt-2 text-emerald-400/90">
                 Dispara só em <strong className="font-medium">compra aprovada</strong> (ex.:{" "}
                 <code className="text-zinc-400">PURCHASE_APPROVED</code>). Não dispara em PIX pendente.
               </p>
@@ -638,7 +638,7 @@ export function FlowNodeProperties({
                     key={name}
                     type="button"
                     onClick={() => toggleTagName(name)}
-                    className="rounded-full border border-zap-purple/40 bg-zap-purple-muted px-2.5 py-1 text-xs text-zap-purple hover:bg-zap-purple/25"
+                    className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-300 hover:bg-emerald-500/20"
                   >
                     {name} ×
                   </button>
@@ -674,7 +674,7 @@ export function FlowNodeProperties({
 
             <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 text-[11px] text-zinc-500 space-y-1">
               <p>
-                <span className="text-zap-orange">Saída 1 — Tem a tag:</span> conecte a mensagem de recuperação
+                <span className="text-emerald-400">Saída 1 — Tem a tag:</span> conecte a mensagem de recuperação
               </p>
               <p>
                 <span className="text-zinc-400">Saída 2 — Não tem a tag:</span> encerre ou outro caminho (ex. já

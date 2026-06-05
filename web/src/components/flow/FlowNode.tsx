@@ -41,7 +41,7 @@ function OfferOutputRow({
   return (
     <div
       className={`border-b border-zinc-700/40 last:border-b-0 ${
-        isDefault ? "bg-zinc-900/50" : "bg-zap-orange-muted"
+        isDefault ? "bg-zinc-900/50" : "bg-emerald-500/[0.05]"
       }`}
       style={{ height: OFFER_ROW_H, paddingTop: OFFER_ROW_PAD_TOP, paddingBottom: 14 }}
     >
@@ -53,7 +53,7 @@ function OfferOutputRow({
           className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[11px] font-bold ${
             isDefault
               ? "bg-zinc-800 text-zinc-400 ring-1 ring-zinc-600/50"
-              : "bg-zap-orange-muted text-zap-orange ring-1 ring-zap-orange/30"
+              : "bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/30"
           }`}
         >
           {outputNumber}
@@ -72,7 +72,7 @@ function OfferOutputRow({
         {codes ? (
           <div
             className={`truncate font-mono text-[10px] leading-tight ${
-              isDefault ? "text-zinc-500" : "text-zap-orange/75"
+              isDefault ? "text-zinc-500" : "text-emerald-400/75"
             }`}
             title={codes}
           >
@@ -125,13 +125,13 @@ export function FlowNodeComponent({ data, selected }: NodeProps) {
     return (
       <div
         className={`flow-offer-node relative w-[260px] overflow-visible rounded-xl border text-sm shadow-lg ${
-          selected ? "border-zap-orange-soft bg-zinc-900" : "border-zinc-700 bg-zinc-950"
+          selected ? "border-emerald-400 bg-zinc-900" : "border-zinc-700 bg-zinc-950"
         }`}
       >
         <Handle
           type="target"
           position={Position.Left}
-          className="!bg-zap-orange"
+          className="!bg-emerald-400"
           style={{ top: OFFER_HEADER_H / 2 }}
         />
 
@@ -164,7 +164,7 @@ export function FlowNodeComponent({ data, selected }: NodeProps) {
               position={Position.Right}
               id={slot.handleId}
               className={`flow-offer-handle !h-3.5 !w-3.5 !border-2 !border-zinc-950 ${
-                isDefault ? "!bg-zinc-400" : "!bg-zap-orange"
+                isDefault ? "!bg-zinc-400" : "!bg-emerald-400"
               }`}
               style={{
                 top: handleTopForRow(index),
@@ -200,13 +200,13 @@ export function FlowNodeComponent({ data, selected }: NodeProps) {
     return (
       <div
         className={`flow-offer-node relative w-[260px] overflow-visible rounded-xl border text-sm shadow-lg ${
-          selected ? "border-zap-orange-soft bg-zinc-900" : "border-zinc-700 bg-zinc-950"
+          selected ? "border-emerald-400 bg-zinc-900" : "border-zinc-700 bg-zinc-950"
         }`}
       >
         <Handle
           type="target"
           position={Position.Left}
-          className="!bg-zap-orange"
+          className="!bg-emerald-400"
           style={{ top: OFFER_HEADER_H / 2 }}
         />
 
@@ -239,7 +239,7 @@ export function FlowNodeComponent({ data, selected }: NodeProps) {
               position={Position.Right}
               id={slot.handleId}
               className={`flow-offer-handle !h-3.5 !w-3.5 !border-2 !border-zinc-950 ${
-                isDefault ? "!bg-zinc-400" : "!bg-zap-orange"
+                isDefault ? "!bg-zinc-400" : "!bg-emerald-400"
               }`}
               style={{
                 top: handleTopForRow(index),
@@ -255,13 +255,13 @@ export function FlowNodeComponent({ data, selected }: NodeProps) {
   return (
     <div
       className={`min-w-[140px] rounded-xl border px-3 py-2 text-sm shadow-lg ${
-        selected ? "border-zap-orange-soft bg-zinc-900" : "border-zinc-700 bg-zinc-950"
+        selected ? "border-emerald-400 bg-zinc-900" : "border-zinc-700 bg-zinc-950"
       }`}
     >
-      <Handle type="target" position={Position.Left} className="!bg-zap-orange" />
+      <Handle type="target" position={Position.Left} className="!bg-emerald-400" />
       <div className="text-xs text-zinc-500">{label}</div>
       <div className="font-medium truncate">{String(data.summary ?? "")}</div>
-      <Handle type="source" position={Position.Right} className="!bg-zap-orange" />
+      <Handle type="source" position={Position.Right} className="!bg-emerald-400" />
     </div>
   );
 }
