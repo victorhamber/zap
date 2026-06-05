@@ -40,7 +40,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  completed: "bg-emerald-500",
+  completed: "bg-zap-orange",
   failed: "bg-red-500",
   running: "bg-sky-500",
   waiting: "bg-amber-500"
@@ -79,19 +79,19 @@ function StatCard({
     return (
       <Link
         to={to}
-        className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4 block hover:border-emerald-500/30 transition"
+        className="zap-card p-4 block hover:border-zap-orange/30 transition"
       >
         {inner}
       </Link>
     );
   }
 
-  return <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">{inner}</div>;
+  return <div className="zap-card p-4">{inner}</div>;
 }
 
 function BarChart({
   data,
-  color = "bg-emerald-500"
+  color = "bg-zap-orange"
 }: {
   data: { date: string; count: number }[];
   color?: string;
@@ -151,7 +151,7 @@ function DistributionList({
             </div>
             <div className="h-2 rounded-full bg-zinc-800 overflow-hidden">
               <div
-                className={`h-full rounded-full ${colors?.[key] ?? "bg-emerald-500"}`}
+                className={`h-full rounded-full ${colors?.[key] ?? "bg-zap-orange"}`}
                 style={{ width: `${pct}%` }}
               />
             </div>
@@ -193,7 +193,7 @@ export function Dashboard() {
         </div>
         <Link
           to="/runs"
-          className="text-xs text-emerald-400 hover:underline"
+          className="text-xs text-zap-orange hover:underline"
         >
           Ver execuções detalhadas →
         </Link>
@@ -211,7 +211,7 @@ export function Dashboard() {
           value={wppStatus}
           hint="Status da conexão"
           to="/whatsapp"
-          accent={wppStatus === "Conectado" ? "text-emerald-300" : "text-zinc-300"}
+          accent={wppStatus === "Conectado" ? "text-zap-orange" : "text-zinc-300"}
         />
         <StatCard
           label="Execuções hoje"
@@ -242,19 +242,19 @@ export function Dashboard() {
       </div>
 
       <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-5">
+        <div className="zap-card p-5">
           <h2 className="text-sm font-semibold text-zinc-200">Execuções — últimos 7 dias</h2>
           <p className="text-xs text-zinc-500 mt-1">Fluxos disparados por dia</p>
           <div className="mt-4">
             {stats ? (
-              <BarChart data={stats.runs.daily} color="bg-emerald-500" />
+              <BarChart data={stats.runs.daily} color="bg-zap-orange" />
             ) : (
               <p className="text-sm text-zinc-600 py-8">Carregando…</p>
             )}
           </div>
         </div>
 
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-5">
+        <div className="zap-card p-5">
           <h2 className="text-sm font-semibold text-zinc-200">Mensagens enviadas — 7 dias</h2>
           <p className="text-xs text-zinc-500 mt-1">Pelo inbox / automações</p>
           <div className="mt-4">
@@ -268,7 +268,7 @@ export function Dashboard() {
       </div>
 
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-5">
+        <div className="zap-card p-5">
           <h2 className="text-sm font-semibold text-zinc-200">Por gatilho</h2>
           <p className="text-xs text-zinc-500 mt-1">Como os fluxos foram iniciados</p>
           <div className="mt-4">
@@ -285,7 +285,7 @@ export function Dashboard() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-5">
+        <div className="zap-card p-5">
           <h2 className="text-sm font-semibold text-zinc-200">Por status</h2>
           <p className="text-xs text-zinc-500 mt-1">Resultado das execuções</p>
           <div className="mt-4">
@@ -304,13 +304,13 @@ export function Dashboard() {
         </div>
       </div>
 
-      <div className="mt-6 rounded-2xl border border-zinc-800 bg-zinc-950/60 p-5">
+      <div className="mt-6 zap-card p-5">
         <div className="flex items-center justify-between gap-4">
           <div>
             <h2 className="text-sm font-semibold text-zinc-200">Fluxos mais executados</h2>
             <p className="text-xs text-zinc-500 mt-1">Ranking geral</p>
           </div>
-          <Link to="/flows" className="text-xs text-emerald-400 hover:underline shrink-0">
+          <Link to="/flows" className="text-xs text-zap-orange hover:underline shrink-0">
             Gerenciar fluxos
           </Link>
         </div>

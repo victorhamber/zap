@@ -17,12 +17,12 @@ export function FlowZoomToolbar({ panelOpen }: Props) {
       className={`flow-bottom-toolbar !m-3 ${panelOpen ? "flow-bottom-toolbar--panel-open" : ""}`}
     >
       <div className="flex items-end gap-2">
-        <div className="flex flex-col overflow-hidden rounded-xl border border-zinc-600 bg-zinc-900 shadow-xl">
+        <div className="flex flex-col overflow-hidden rounded-xl border border-zap-border bg-zap-surface shadow-xl">
           <button
             type="button"
             title="Aumentar zoom"
             onClick={() => zoomIn({ duration: 150 })}
-            className="flow-zoom-btn border-b border-zinc-700"
+            className="flow-zoom-btn border-b border-zap-border"
           >
             +
           </button>
@@ -30,7 +30,7 @@ export function FlowZoomToolbar({ panelOpen }: Props) {
             type="button"
             title="Diminuir zoom"
             onClick={() => zoomOut({ duration: 150 })}
-            className="flow-zoom-btn border-b border-zinc-700"
+            className="flow-zoom-btn border-b border-zap-border"
           >
             −
           </button>
@@ -47,8 +47,8 @@ export function FlowZoomToolbar({ panelOpen }: Props) {
         <MiniMap
           pannable
           zoomable
-          className="flow-minimap-inner !static !m-0 !rounded-xl !border-zinc-600 !bg-zinc-900"
-          nodeColor={() => "#34d399"}
+          className="flow-minimap-inner !static !m-0 !rounded-xl !border-zap-border !bg-zap-surface"
+          nodeColor={() => "#FF5924"}
           maskColor="rgba(9, 9, 11, 0.8)"
           style={{ width: 180, height: 120 }}
         />

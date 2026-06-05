@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   ReactFlow,
-  Background,
   Panel,
   addEdge,
   useEdgesState,
@@ -114,6 +113,7 @@ export function FlowEditor() {
   const [status, setStatus] = useState("");
   const [testPhone, setTestPhone] = useState("");
   const [paletteOpen, setPaletteOpen] = useState(true);
+  const [paletteSearch, setPaletteSearch] = useState("");
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const rfRef = useRef<ReactFlowInstance | null>(null);
@@ -335,47 +335,57 @@ export function FlowEditor() {
   const cfg = (selectedNode?.data?.config ?? {}) as Record<string, unknown>;
   const panelOpen = Boolean(selectedNode);
 
+  const filteredPalette = useMemo(() => {
+    const q = paletteSearch.trim().toLowerCase();
+    if (!q) return PALETTE_GROUPS;
+    return PALETTE_GROUPS.map((group) => ({
+      ...group,
+      items: group.items.filter(
+        (item) =>
+          item.label.toLowerCase().includes(q) || item.type.toLowerCase().includes(q)
+      )
+    })).filter((group) => group.items.length > 0);
+  }, [paletteSearch]);
+
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-zinc-950 text-white">
-      <header className="shrink-0 flex items-center gap-3 border-b border-zinc-800/80 bg-zinc-950/95 px-3 py-2 backdrop-blur">
+    <div className="fixed inset-0 z-50 flex flex-col bg-zap-panel text-white">
+      <header
+        className="shrink-0 flex items-center gap-3 border-b border-zap-border bg-zap-panel px-4"
+        style={{ height: "var(--header-height)" }}
+      >
         <Link
           to="/flows"
-          className="shrink-0 rounded-lg px-2 py-1.5 text-sm text-zinc-400 hover:bg-zinc-900 hover:text-white"
+          className="shrink-0 rounded-lg px-2 py-1.5 text-sm text-zap-muted hover:bg-zap-surface hover:text-white"
         >
           ← Voltar
         </Link>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="min-w-0 flex-1 bg-transparent text-base font-semibold outline-none border-b border-transparent focus:border-zinc-700"
+          className="min-w-0 flex-1 bg-transparent text-base font-semibold outline-none border-b border-transparent focus:border-zap-border"
         />
-        <label className="flex shrink-0 items-center gap-2 text-sm text-zinc-400">
-          <input
-            type="checkbox"
-            checked={enabled}
-            onChange={(e) => setEnabled(e.target.checked)}
-            className="rounded"
-          />
-          Ativo
-        </label>
+        <button
+          type="button"
+          onClick={() => setEnabled((v) => !v)}
+          className={`shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+            enabled
+              ? "bg-zap-orange-muted text-zap-orange border border-zap-orange/30"
+              : "zap-btn-ghost"
+          }`}
+          title={enabled ? "Fluxo publicado e ativo" : "Publicar fluxo"}
+        >
+          {enabled ? "● Publicado" : "Publicar"}
+        </button>
         <input
           placeholder="Tel. teste"
           value={testPhone}
           onChange={(e) => setTestPhone(e.target.value)}
-          className="w-32 shrink-0 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm"
+          className="zap-input w-32 shrink-0 px-2 py-1.5 text-sm"
         />
-        <button
-          type="button"
-          onClick={testFlow}
-          className="shrink-0 rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-900"
-        >
+        <button type="button" onClick={testFlow} className="zap-btn-ghost shrink-0 px-3 py-1.5 text-sm">
           Testar
         </button>
-        <button
-          type="button"
-          onClick={save}
-          className="shrink-0 rounded-lg bg-emerald-500 px-4 py-1.5 text-sm font-semibold text-zinc-950 hover:bg-emerald-400"
-        >
+        <button type="button" onClick={save} className="zap-btn-primary shrink-0 px-4 py-1.5 text-sm">
           Salvar
         </button>
       </header>
@@ -386,30 +396,41 @@ export function FlowEditor() {
 
       <div className="relative flex-1 min-h-0">
         {paletteOpen && (
-          <aside className="absolute left-3 top-3 bottom-3 z-20 w-52 flex flex-col rounded-xl border border-zinc-800/90 bg-zinc-950/95 shadow-2xl backdrop-blur pointer-events-auto">
-            <div className="flex items-center justify-between border-b border-zinc-800 px-3 py-2">
-              <span className="text-xs font-semibold text-zinc-400">Blocos</span>
-              <button
-                type="button"
-                onClick={() => setPaletteOpen(false)}
-                className="text-zinc-500 hover:text-zinc-300 text-xs"
-              >
-                Ocultar
-              </button>
+          <aside className="absolute left-3 top-3 bottom-3 z-20 w-[min(360px,42vw)] flex flex-col rounded-xl border border-zap-border bg-zap-surface shadow-2xl pointer-events-auto">
+            <div className="border-b border-zap-border px-3 py-2.5 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-neutral-300">Blocos</span>
+                <button
+                  type="button"
+                  onClick={() => setPaletteOpen(false)}
+                  className="text-zap-muted hover:text-neutral-300 text-xs"
+                >
+                  Ocultar
+                </button>
+              </div>
+              <input
+                value={paletteSearch}
+                onChange={(e) => setPaletteSearch(e.target.value)}
+                placeholder="Buscar blocos…"
+                className="zap-input w-full px-2.5 py-1.5 text-xs"
+              />
             </div>
             <div className="flex-1 overflow-y-auto p-2 space-y-3">
-              {PALETTE_GROUPS.map((group) => (
+              {filteredPalette.length === 0 && (
+                <p className="px-2 text-xs text-zap-muted">Nenhum bloco encontrado.</p>
+              )}
+              {filteredPalette.map((group) => (
                 <div key={group.id}>
-                  <div className="px-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                  <div className="px-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-zap-muted">
                     {group.label}
                   </div>
-                  <div className="space-y-1">
+                  <div className="grid grid-cols-2 gap-1.5">
                     {group.items.map((p) => (
                       <div
                         key={p.type}
                         draggable
                         onDragStart={(e) => onPaletteDragStart(e, p.type)}
-                        className="w-full cursor-grab active:cursor-grabbing rounded-lg border border-zinc-800 px-2.5 py-2 text-sm text-zinc-200 hover:bg-zinc-900 hover:border-zinc-700 select-none"
+                        className="cursor-grab active:cursor-grabbing rounded-lg border border-zap-border bg-zap-panel px-2 py-2 text-xs text-neutral-200 hover:border-zap-orange/40 hover:bg-zap-orange-muted select-none"
                         role="button"
                         tabIndex={0}
                       >
@@ -420,9 +441,8 @@ export function FlowEditor() {
                 </div>
               ))}
             </div>
-            <p className="px-2 pb-2 text-[10px] text-zinc-600">
-              Arraste blocos para o fluxo. Clique direito: duplicar ou excluir. Clique na linha entre
-              blocos e pressione Delete para remover a conexão.
+            <p className="px-2 pb-2 text-[10px] text-zap-muted leading-relaxed">
+              Arraste para o canvas · clique direito no bloco para duplicar · Delete na conexão
             </p>
           </aside>
         )}
@@ -431,7 +451,7 @@ export function FlowEditor() {
           <button
             type="button"
             onClick={() => setPaletteOpen(true)}
-            className="absolute left-3 top-3 z-20 rounded-xl border border-zinc-800 bg-zinc-950/95 px-3 py-2 text-sm text-zinc-400 hover:text-white shadow-lg pointer-events-auto"
+            className="absolute left-3 top-3 z-20 rounded-xl border border-zap-border bg-zap-surface px-3 py-2 text-sm text-zap-muted hover:text-white shadow-lg pointer-events-auto"
           >
             + Blocos
           </button>
@@ -485,11 +505,10 @@ export function FlowEditor() {
             className="flow-editor-canvas"
             proOptions={{ hideAttribution: true }}
           >
-            <Background color="#3f3f46" gap={20} />
             <FlowZoomToolbar panelOpen={panelOpen} />
             <Panel position="top-right" className="!m-3 pointer-events-none">
               {selectedEdgeId && (
-                <span className="rounded-lg bg-zinc-900/90 border border-emerald-700/50 px-2 py-1 text-xs text-emerald-400">
+                <span className="rounded-lg bg-zap-surface border border-zap-orange/40 px-2 py-1 text-xs text-zap-orange">
                   Conexão selecionada · Delete para remover
                 </span>
               )}
@@ -523,7 +542,7 @@ export function FlowEditor() {
         )}
 
         {selectedNode && (
-          <aside className="absolute right-0 top-0 bottom-0 z-30 w-full max-w-md border-l border-zinc-800 bg-zinc-950/98 shadow-[-8px_0_32px_rgba(0,0,0,0.45)] backdrop-blur pointer-events-auto">
+          <aside className="absolute right-0 top-0 bottom-0 z-30 w-full max-w-md border-l border-zap-border bg-zap-panel shadow-[-8px_0_32px_rgba(0,0,0,0.45)] pointer-events-auto rounded-l-xl">
             <FlowNodeProperties
               selectedNode={selectedNode}
               flowId={flow?.id}

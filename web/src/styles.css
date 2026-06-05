@@ -1,8 +1,25 @@
 @import "tailwindcss";
 
+/* Paleta inspirada no Typebot — laranja primário, roxo para variáveis */
+@theme {
+  --color-zap-orange: #ff5924;
+  --color-zap-orange-hover: #f24905;
+  --color-zap-orange-soft: #f98868;
+  --color-zap-orange-muted: #ff59241a;
+  --color-zap-purple: #8055fd;
+  --color-zap-purple-hover: #7447ec;
+  --color-zap-purple-muted: #8055fd1f;
+  --color-zap-surface: #141414;
+  --color-zap-panel: #0d0d0d;
+  --color-zap-canvas: #1c1c1c;
+  --color-zap-border: #2a2a2a;
+  --color-zap-muted: #737373;
+}
+
 :root {
   color-scheme: dark;
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --header-height: 56px;
 }
 
 html,
@@ -13,17 +30,79 @@ body,
 
 body {
   margin: 0;
-  background: radial-gradient(1200px 600px at 10% -10%, rgba(16, 185, 129, 0.18), transparent 55%),
-    radial-gradient(900px 500px at 90% 10%, rgba(59, 130, 246, 0.14), transparent 55%),
-    linear-gradient(to bottom, #09090b, #09090b);
+  background: var(--color-zap-panel);
   color: #fafafa;
 }
 
 ::selection {
-  background: rgba(16, 185, 129, 0.25);
+  background: rgba(255, 89, 36, 0.28);
 }
 
-/* Inbox — paleta e detalhes inspirados no WhatsApp Web (dark) */
+/* Cards e painéis */
+.zap-card {
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-zap-border);
+  background: var(--color-zap-surface);
+}
+
+.zap-btn-primary {
+  border-radius: 0.625rem;
+  background: var(--color-zap-orange);
+  color: #fff;
+  font-weight: 600;
+  transition: background 0.15s;
+}
+
+.zap-btn-primary:hover {
+  background: var(--color-zap-orange-hover);
+}
+
+.zap-btn-primary:disabled {
+  opacity: 0.5;
+}
+
+.zap-btn-ghost {
+  border-radius: 0.625rem;
+  border: 1px solid var(--color-zap-border);
+  color: #d4d4d4;
+  transition: background 0.15s, color 0.15s;
+}
+
+.zap-btn-ghost:hover {
+  background: #1f1f1f;
+  color: #fff;
+}
+
+.zap-input {
+  border-radius: 0.625rem;
+  border: 1px solid var(--color-zap-border);
+  background: #1a1a1a;
+  color: #fff;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.zap-input:focus {
+  border-color: var(--color-zap-orange-soft);
+  box-shadow: 0 0 0 2px rgba(255, 89, 36, 0.15);
+}
+
+.zap-var-chip {
+  font-family: ui-monospace, monospace;
+  font-size: 0.6875rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.375rem;
+  background: var(--color-zap-purple-muted);
+  color: var(--color-zap-purple);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.zap-var-chip:hover {
+  background: rgba(128, 85, 253, 0.28);
+}
+
+/* Inbox — mantém visual WhatsApp Web */
 .wa-inbox {
   --wa-bg-app: #0b141a;
   --wa-bg-panel: #111b21;
@@ -94,22 +173,24 @@ body {
   display: none;
 }
 
+/* Editor de fluxos — canvas estilo Typebot (dot grid) */
 .flow-editor-canvas {
   width: 100%;
   height: 100%;
-  background: #09090b !important;
+  background-color: var(--color-zap-canvas) !important;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 0) !important;
+  background-size: 40px 40px !important;
 }
 
 .flow-editor-canvas .react-flow__edge.selected .react-flow__edge-path {
-  stroke: #34d399 !important;
+  stroke: var(--color-zap-orange-soft) !important;
   stroke-width: 2.5 !important;
 }
 
 .flow-editor-canvas .react-flow__edge:hover .react-flow__edge-path {
-  stroke: #a1a1aa;
+  stroke: #737373;
 }
 
-/* Bolinhas do bloco Código da oferta — posição fixa alinhada ao nome */
 .flow-offer-node .flow-offer-handle {
   transform: translateY(-50%);
 }
@@ -118,7 +199,6 @@ body {
   transform: translateY(-50%);
 }
 
-/* Esconde controles padrão do React Flow (ficavam à esquerda, sem contraste) */
 .flow-editor-canvas .react-flow__controls {
   display: none !important;
 }
@@ -146,12 +226,12 @@ body {
   font-weight: 600;
   line-height: 1;
   color: #e4e4e7;
-  background: #18181b;
+  background: var(--color-zap-surface);
   transition: background 0.15s, color 0.15s;
 }
 
 .flow-zoom-btn:hover {
-  background: #27272a;
+  background: #262626;
   color: #fff;
 }
 
@@ -160,9 +240,9 @@ body {
 }
 
 .flow-minimap-inner .react-flow__minimap-mask {
-  fill: rgba(9, 9, 11, 0.78);
+  fill: rgba(13, 13, 13, 0.78);
 }
 
 .flow-minimap-inner .react-flow__minimap-node {
-  fill: #34d399;
+  fill: var(--color-zap-orange);
 }
