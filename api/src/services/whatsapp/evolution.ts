@@ -14,8 +14,10 @@ import {
 import {
   MEDIA_SEND_URL_THRESHOLD_BYTES,
   readUploadFileBase64,
-  rewriteUploadUrlForWpp
+  rewriteUploadUrlForWpp,
+  uploadFilenameFromUrl
 } from "../uploads.js";
+import { brazilPhoneVariants } from "../../utils/phone.js";
 
 export const MSG_NO_DEVICE =
   "Nenhum WhatsApp conectado na Evolution. Crie/conecte a instância e escaneie o QR.";
@@ -85,9 +87,23 @@ export function httpErrorMeansNoSession(status: number): boolean {
 }
 
 export function formatWppError(status: number, body: unknown): string {
-  if (typeof body === "object" && body && "message" in body) {
-    return String((body as { message: unknown }).message);
+  const parts: string[] = [];
+
+  if (typeof body === "string" && body.trim()) {
+    parts.push(body.trim());
+  } else if (typeof body === "object" && body) {
+    const o = body as Record<string, unknown>;
+    if (o.message) parts.push(String(o.message));
+    if (o.error) parts.push(String(o.error));
+    const response = o.response;
+    if (Array.isArray(response) && response[0] && typeof response[0] === "object") {
+      const r0 = response[0] as Record<string, unknown>;
+      if (r0.message) parts.push(String(r0.message));
+      if (r0.exists === false) parts.push("número sem WhatsApp");
+    }
   }
+
+  if (parts.length) return `HTTP ${status}: ${parts.join(" — ").slice(0, 380)}`;
   return `HTTP ${status}`;
 }
 
@@ -298,12 +314,54 @@ function inferMimeType(fileName?: string, mimeHint?: string): string {
   return "application/octet-stream";
 }
 
+const IMAGE_INLINE_BASE64_MAX_BYTES = 16 * 1024 * 1024;
+const WHATSAPP_CAPTION_MAX_CHARS = 1024;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function phoneSendVariants(phone: string): string[] {
+  const d = digitsOnly(phone);
+  if (d.startsWith("55")) {
+    return [...new Set([d, ...brazilPhoneVariants(d)].filter(Boolean))];
+  }
+  return d ? [d] : [phone.trim()];
+}
+
+function isRetriableSendError(status: number, message: string): boolean {
+  if ([429, 502, 503, 504].includes(status)) return true;
+  const m = message.toLowerCase();
+  return /timeout|econnreset|fetch failed|network|rate/i.test(m);
+}
+
+function isRetriablePhoneVariantError(message: string): boolean {
+  const m = message.toLowerCase();
+  return (
+    m.includes("http 400") ||
+    m.includes("not exist") ||
+    m.includes("does not exist") ||
+    m.includes("invalid number") ||
+    m.includes("número sem whatsapp") ||
+    m.includes("no whatsapp") ||
+    m.includes("is not on whatsapp")
+  );
+}
+
+function truncateCaption(caption?: string): string {
+  if (!caption) return "";
+  return caption.length > WHATSAPP_CAPTION_MAX_CHARS
+    ? caption.slice(0, WHATSAPP_CAPTION_MAX_CHARS)
+    : caption;
+}
+
 async function resolveEvolutionMediaInput(
   media: string,
   mimeHint?: string,
   fileNameHint?: string
 ): Promise<{ media: string; mimeType: string; fileName: string }> {
-  const fileName = String(fileNameHint ?? "").trim() || "arquivo";
+  const fromUrl = uploadFilenameFromUrl(media);
+  const fileName = String(fileNameHint ?? "").trim() || fromUrl || "arquivo";
   let mimeType = inferMimeType(fileName, mimeHint);
 
   if (media.startsWith("data:")) {
@@ -321,16 +379,28 @@ async function resolveEvolutionMediaInput(
     const local = await readUploadFileBase64(media);
     if (local?.base64) {
       const bytes = Buffer.byteLength(local.base64, "base64");
-      const isVideo = mimeType.startsWith("video/");
-      if (!isVideo && bytes <= MEDIA_SEND_URL_THRESHOLD_BYTES) {
+      const effectiveMime = inferMimeType(local.filename, mimeHint);
+      const isVideo = effectiveMime.startsWith("video/");
+      const isImage = effectiveMime.startsWith("image/");
+      const inlineMax = isVideo
+        ? MEDIA_SEND_URL_THRESHOLD_BYTES
+        : isImage
+          ? IMAGE_INLINE_BASE64_MAX_BYTES
+          : MEDIA_SEND_URL_THRESHOLD_BYTES;
+      if (bytes <= inlineMax) {
         return {
           media: local.base64,
-          mimeType: inferMimeType(local.filename, mimeHint),
+          mimeType: effectiveMime,
           fileName: fileNameHint?.trim() || local.filename
         };
       }
     }
-    return { media: rewriteUploadUrlForWpp(media), mimeType, fileName };
+    const resolvedMime = inferMimeType(fromUrl ?? fileName, mimeHint);
+    return {
+      media: rewriteUploadUrlForWpp(media),
+      mimeType: resolvedMime,
+      fileName: fromUrl ?? fileName
+    };
   }
 
   const stripped = media.replace(/\s/g, "");
@@ -341,7 +411,33 @@ async function resolveEvolutionMediaInput(
   return { media, mimeType, fileName };
 }
 
-export async function sendImage(
+async function postSendMedia(
+  instance: string,
+  payload: Record<string, unknown>,
+  label: string
+): Promise<string | null> {
+  let lastError = `${label}: HTTP error`;
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await evoFetch(`/message/sendMedia/${encodeURIComponent(instance)}`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    const data = await readJson(res);
+    if (res.ok) return extractEvolutionSentMessageId(data);
+
+    lastError = `${label}: ${formatWppError(res.status, data)}`;
+    if (attempt < 2 && isRetriableSendError(res.status, lastError)) {
+      await sleep(800 * (attempt + 1));
+      continue;
+    }
+    throw new Error(lastError);
+  }
+
+  throw new Error(lastError);
+}
+
+async function sendImageOnce(
   phone: string,
   url: string,
   caption?: string,
@@ -350,20 +446,43 @@ export async function sendImage(
   const instance = await getInstanceName();
   const number = await resolveEvolutionSendNumber(phone);
   const resolved = await resolveEvolutionMediaInput(url, opts?.mimeType, opts?.fileName);
-  const res = await evoFetch(`/message/sendMedia/${encodeURIComponent(instance)}`, {
-    method: "POST",
-    body: JSON.stringify({
+  return postSendMedia(
+    instance,
+    {
       number,
       mediatype: "image",
       media: resolved.media,
       mimetype: resolved.mimeType,
       fileName: resolved.fileName,
-      caption: caption ?? ""
-    })
-  });
-  const data = await readJson(res);
-  if (!res.ok) throw new Error(`sendMedia image: ${formatWppError(res.status, data)}`);
-  return extractEvolutionSentMessageId(data);
+      caption: truncateCaption(caption)
+    },
+    "sendMedia image"
+  );
+}
+
+export async function sendImage(
+  phone: string,
+  url: string,
+  caption?: string,
+  opts?: { mimeType?: string; fileName?: string }
+): Promise<string | null> {
+  const variants = phoneSendVariants(phone);
+  let lastErr: Error | null = null;
+
+  for (let i = 0; i < variants.length; i++) {
+    const variant = variants[i];
+    try {
+      return await sendImageOnce(variant, url, caption, opts);
+    } catch (err) {
+      lastErr = err instanceof Error ? err : new Error(String(err));
+      if (i < variants.length - 1 && isRetriablePhoneVariantError(lastErr.message)) {
+        continue;
+      }
+      throw new Error(`${lastErr.message} (tel. ${variant})`);
+    }
+  }
+
+  throw lastErr ?? new Error(`sendMedia image falhou (tel. ${phone})`);
 }
 
 export async function sendVideo(
@@ -375,20 +494,18 @@ export async function sendVideo(
   const instance = await getInstanceName();
   const number = await resolveEvolutionSendNumber(phone);
   const resolved = await resolveEvolutionMediaInput(url, opts?.mimeType, opts?.fileName);
-  const res = await evoFetch(`/message/sendMedia/${encodeURIComponent(instance)}`, {
-    method: "POST",
-    body: JSON.stringify({
+  return postSendMedia(
+    instance,
+    {
       number,
       mediatype: "video",
       media: resolved.media,
       mimetype: resolved.mimeType,
       fileName: resolved.fileName,
-      caption: caption ?? ""
-    })
-  });
-  const data = await readJson(res);
-  if (!res.ok) throw new Error(`sendMedia video: ${formatWppError(res.status, data)}`);
-  return extractEvolutionSentMessageId(data);
+      caption: truncateCaption(caption)
+    },
+    "sendMedia video"
+  );
 }
 
 export async function sendAudio(phone: string, media: string): Promise<string | null> {
