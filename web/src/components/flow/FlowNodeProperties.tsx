@@ -344,56 +344,8 @@ export function FlowNodeProperties({
               </button>
             </div>
 
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 space-y-3">
-              <label className="flex items-center gap-2 text-sm text-zinc-200 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={config.staggerEnabled !== false}
-                  onChange={(e) => onUpdate({ staggerEnabled: e.target.checked })}
-                  className="rounded"
-                />
-                Cadência entre contatos (anti-spam)
-              </label>
-              <p className="text-[11px] text-zinc-500 leading-relaxed">
-                Quando vários contatos recebem a tag ao mesmo tempo, cada um inicia o fluxo com
-                intervalo aleatório — parece envio humano, não disparo em massa instantâneo.
-              </p>
-              {config.staggerEnabled !== false && (
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-xs text-zinc-500">Mín. (seg)</label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={300}
-                      value={Number(config.staggerMinSec ?? 10)}
-                      onChange={(e) =>
-                        onUpdate({ staggerMinSec: Math.max(1, Number(e.target.value) || 10) })
-                      }
-                      className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-zinc-500">Máx. (seg)</label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={600}
-                      value={Number(config.staggerMaxSec ?? 30)}
-                      onChange={(e) =>
-                        onUpdate({
-                          staggerMaxSec: Math.max(
-                            Number(config.staggerMinSec ?? 10),
-                            Number(e.target.value) || 30
-                          )
-                        })
-                      }
-                      className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm"
-                    />
-                  </div>
-                </div>
-              )}
-              {flowId && triggerTags.length > 0 && (
+            {flowId && triggerTags.length > 0 && (
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 space-y-2">
                 <button
                   type="button"
                   disabled={dispatchingTag}
@@ -428,11 +380,11 @@ export function FlowNodeProperties({
                 >
                   {dispatchingTag ? "Agendando…" : `Disparar para todos com "${triggerTags[0]}"`}
                 </button>
-              )}
               {dispatchStatus && (
                 <p className="text-[11px] text-zinc-400">{dispatchStatus}</p>
               )}
-            </div>
+              </div>
+            )}
           </>
         )}
 

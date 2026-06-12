@@ -12,7 +12,7 @@ import {
   upsertContact
 } from "../services/contacts.js";
 import { firstNameFromFullName } from "../utils/phone.js";
-import { startFlowRun } from "../engine/executor.js";
+import { queueFlowRunStart } from "../services/flowDispatch.js";
 import { parseGraph } from "../engine/graph.js";
 import * as wpp from "../services/whatsapp/index.js";
 
@@ -310,7 +310,7 @@ export async function inboxRoutes(app: FastifyInstance) {
       }
 
       const contactName = contact.name ?? displayName ?? "Contato";
-      const result = await startFlowRun({
+      const result = await queueFlowRunStart({
         flowId: body.flowId,
         triggerType: "trigger_manual",
         contactPhone: contact.phone,
@@ -324,7 +324,7 @@ export async function inboxRoutes(app: FastifyInstance) {
         externalId: `manual_${contact.phone}_${Date.now()}`
       });
 
-      if (result.skipped) {
+      if (result && "skipped" in result && result.skipped) {
         return {
           ok: false,
           error: result.reason === "disabled" ? "Fluxo inativo." : "Execução já existente ou ignorada.",

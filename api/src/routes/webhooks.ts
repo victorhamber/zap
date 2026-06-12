@@ -5,9 +5,9 @@ import {
   extractHotmartVariables,
   getHotmartMappingFromGraph,
   getHotmartTriggerFromGraph,
-  matchInboundFlows,
-  startFlowRun
+  matchInboundFlows
 } from "../engine/executor.js";
+import { queueFlowRunStart } from "../services/flowDispatch.js";
 import { hotmartEventName, matchHotmartTrigger } from "../utils/hotmartEvents.js";
 import { parseGraph } from "../engine/graph.js";
 import { asString } from "../utils/jsonPathLite.js";
@@ -67,7 +67,7 @@ export async function webhookRoutes(app: FastifyInstance) {
     const externalSuffix =
       hotmartTrigger.triggerType === "trigger_hotmart_pending" ? "pending" : "approved";
 
-    const result = await startFlowRun({
+    const result = await queueFlowRunStart({
       flowId,
       triggerType: hotmartTrigger.triggerType,
       contactPhone: String(vars.phone),
@@ -197,7 +197,7 @@ export async function webhookRoutes(app: FastifyInstance) {
       const graph = parseGraph(flow.graphJson);
       if (!matchInboundFlows(graph, text, tagNames)) continue;
 
-      const result = await startFlowRun({
+      const result = await queueFlowRunStart({
         flowId: flow.id,
         triggerType: "trigger_inbound",
         contactPhone: phone,
@@ -355,7 +355,7 @@ export async function webhookRoutes(app: FastifyInstance) {
     for (const flow of flows) {
       const graph = parseGraph(flow.graphJson);
       if (!matchInboundFlows(graph, text, tagNames)) continue;
-      const result = await startFlowRun({
+      const result = await queueFlowRunStart({
         flowId: flow.id,
         triggerType: "trigger_inbound",
         contactPhone: phone,

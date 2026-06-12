@@ -1,6 +1,7 @@
 import Mustache from "mustache";
 import { prisma } from "../prisma.js";
 import { enqueueFlowJob } from "../queue.js";
+import { queueFlowRunStart } from "../services/flowDispatch.js";
 import { getByPath, asString } from "../utils/jsonPathLite.js";
 import { resolveHotmartCountryIso, resolveHotmartPhone } from "../utils/hotmartPhone.js";
 import { assertValidWhatsAppPhone, firstNameFromFullName } from "../utils/phone.js";
@@ -333,14 +334,22 @@ async function executeNode(
       } else {
         try {
           const targetGraph = parseGraph(targetFlow.graphJson);
-          const subResult = await startFlowRun({
+          const subResult = await queueFlowRunStart({
             flowId: targetFlowId,
             triggerType: resolveFlowTriggerType(targetGraph),
             contactPhone: phone,
             variables: { ...vars, phone },
             externalId: `from_${flowRunId}_${nodeId}_${Date.now()}`
           });
-          if (subResult.skipped) {
+          if (subResult && "queued" in subResult && subResult.queued) {
+            await logStep(
+              flowRunId,
+              nodeId,
+              node.type,
+              "scheduled",
+              `Subfluxo "${targetFlow.name}" na fila (~${Math.round(subResult.delayMs / 1000)}s)`
+            );
+          } else if (subResult && "skipped" in subResult && subResult.skipped) {
             await logStep(
               flowRunId,
               nodeId,

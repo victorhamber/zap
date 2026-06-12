@@ -1,6 +1,6 @@
 import { Redis } from "ioredis";
+import { env } from "../env.js";
 import { getRedisConnection } from "../queue.js";
-import type { FlowGraph, TriggerTagData } from "../types/flow.js";
 
 let redis: Redis | null = null;
 const memorySlots = new Map<string, number>();
@@ -25,33 +25,29 @@ export function humanGapMs(minSec: number, maxSec: number): number {
   return Math.max(800, base + jitter);
 }
 
-export function getTagTriggerStaggerConfig(graph: FlowGraph): {
+export function getGlobalDispatchStaggerConfig(): {
   enabled: boolean;
   minSec: number;
   maxSec: number;
 } {
-  const trigger = graph.nodes.find((n) => n.type === "trigger_tag");
-  if (!trigger) return { enabled: false, minSec: 10, maxSec: 30 };
-
-  const data = trigger.data as unknown as TriggerTagData;
-  const enabled = data.staggerEnabled !== false;
-  const minSec = Math.max(1, Math.min(300, Number(data.staggerMinSec) || 10));
-  const maxSec = Math.max(minSec, Math.min(600, Number(data.staggerMaxSec) || 30));
+  const enabled = env.FLOW_DISPATCH_STAGGER;
+  const minSec = Math.max(1, Math.min(300, env.FLOW_DISPATCH_MIN_SEC));
+  const maxSec = Math.max(minSec, Math.min(600, env.FLOW_DISPATCH_MAX_SEC));
   return { enabled, minSec, maxSec };
 }
 
 /**
- * Reserva o próximo slot de início para este fluxo (atômico no Redis).
- * O 1º contato inicia na hora; os seguintes esperam um intervalo humanizado.
+ * Fila global de início de fluxos (por instância WhatsApp).
+ * O 1º disparo inicia na hora; os seguintes esperam intervalo humanizado.
  */
 export async function reserveStaggeredStartDelay(
-  flowId: string,
+  queueKey: string,
   minSec: number,
   maxSec: number
 ): Promise<number> {
   const gap = humanGapMs(minSec, maxSec);
   const now = Date.now();
-  const key = `zap:flow-stagger:${flowId}`;
+  const key = `zap:dispatch-stagger:${queueKey}`;
 
   const client = getRedisClient();
   if (client) {
@@ -80,9 +76,9 @@ export async function reserveStaggeredStartDelay(
     }
   }
 
-  const prev = memorySlots.get(flowId) ?? now;
+  const prev = memorySlots.get(queueKey) ?? now;
   const nextAt = Math.max(now, prev);
   const delay = nextAt - now;
-  memorySlots.set(flowId, nextAt + gap);
+  memorySlots.set(queueKey, nextAt + gap);
   return Math.max(0, delay);
 }

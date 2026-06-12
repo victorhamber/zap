@@ -2,7 +2,8 @@ import type { FastifyInstance } from "fastify";
 import { prisma } from "../prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import { defaultHotmartGraph } from "../engine/graph.js";
-import { resolveFlowTriggerType, startFlowRun } from "../engine/executor.js";
+import { resolveFlowTriggerType } from "../engine/executor.js";
+import { queueFlowRunStart } from "../services/flowDispatch.js";
 import { parseGraph } from "../engine/graph.js";
 import type { FlowGraph } from "../types/flow.js";
 
@@ -94,7 +95,7 @@ export async function flowRoutes(app: FastifyInstance) {
     const graph = parseGraph(flow.graphJson);
     const triggerType = resolveFlowTriggerType(graph);
 
-    const result = await startFlowRun({
+    const result = await queueFlowRunStart({
       flowId: id,
       triggerType,
       contactPhone: phone,

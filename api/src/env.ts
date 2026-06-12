@@ -48,6 +48,16 @@ const EnvSchema = z.object({
   EVOLUTION_INTERNAL_URL: z.string().optional(),
   EVOLUTION_API_KEY: z.string().default(""),
 
+  /** false = inicia fluxos imediatamente, sem fila global */
+  FLOW_DISPATCH_STAGGER: z
+    .string()
+    .optional()
+    .transform((v) => v !== "false"),
+  /** Intervalo mínimo entre inícios de fluxo (segundos) — fila global */
+  FLOW_DISPATCH_MIN_SEC: z.coerce.number().int().positive().default(10),
+  /** Intervalo máximo entre inícios (segundos). Valor real é aleatório entre min e max. */
+  FLOW_DISPATCH_MAX_SEC: z.coerce.number().int().positive().default(30),
+
   HOTMART_WEBHOOK_SECRET: z.string().optional(),
   ADMIN_EMAIL: z.string().email().default("admin@trajettu.com"),
   ADMIN_PASSWORD: z.string().min(6).default("admin123"),

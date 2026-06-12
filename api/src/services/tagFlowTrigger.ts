@@ -1,9 +1,7 @@
 import { prisma } from "../prisma.js";
-import { startFlowRun } from "../engine/executor.js";
 import { parseGraph } from "../engine/graph.js";
-import { enqueueFlowRunStart } from "../queue.js";
+import { queueFlowRunStart } from "./flowDispatch.js";
 import type { FlowGraph, TriggerTagData } from "../types/flow.js";
-import { getTagTriggerStaggerConfig, reserveStaggeredStartDelay } from "./flowStagger.js";
 
 export function matchTagTrigger(graph: FlowGraph, addedTagNames: string[]): boolean {
   const trigger = graph.nodes.find((n) => n.type === "trigger_tag");
@@ -15,19 +13,17 @@ export function matchTagTrigger(graph: FlowGraph, addedTagNames: string[]): bool
   return required.some((tag) => added.includes(tag));
 }
 
-async function startOrScheduleTagFlow(
+async function queueTagFlow(
   flowId: string,
-  graph: FlowGraph,
   params: {
     contactPhone: string;
     contactName?: string;
     externalId: string;
   }
 ): Promise<string | null> {
-  const stagger = getTagTriggerStaggerConfig(graph);
-  const runParams = {
+  const result = await queueFlowRunStart({
     flowId,
-    triggerType: "trigger_tag" as const,
+    triggerType: "trigger_tag",
     contactPhone: params.contactPhone,
     variables: {
       phone: params.contactPhone,
@@ -35,17 +31,13 @@ async function startOrScheduleTagFlow(
       purchaseId: `tag_${Date.now()}_${flowId}`
     },
     externalId: params.externalId
-  };
+  });
 
-  if (!stagger.enabled) {
-    const result = await startFlowRun(runParams);
-    return result && "runId" in result && result.runId ? result.runId : null;
+  if (result && "queued" in result && result.queued) {
+    return `queued_${result.delayMs}ms`;
   }
-
-  const delayMs = await reserveStaggeredStartDelay(flowId, stagger.minSec, stagger.maxSec);
-  const jobId = `tagstart_${flowId}_${params.contactPhone}_${Date.now()}`;
-  await enqueueFlowRunStart(runParams, delayMs, jobId);
-  return `scheduled_${delayMs}ms`;
+  if (result && "runId" in result && result.runId) return result.runId;
+  return null;
 }
 
 export async function dispatchTagTriggerFlows(params: {
@@ -63,12 +55,12 @@ export async function dispatchTagTriggerFlows(params: {
     if (!matchTagTrigger(graph, params.addedTagNames)) continue;
 
     try {
-      const runId = await startOrScheduleTagFlow(flow.id, graph, {
+      const id = await queueTagFlow(flow.id, {
         contactPhone: params.phone,
         contactName: params.contactName,
         externalId: `tag_${params.phone}_${Date.now()}_${flow.id}`
       });
-      if (runId) started.push(runId);
+      if (id) started.push(id);
     } catch {
       /* não bloqueia atribuição de tag */
     }
@@ -77,7 +69,7 @@ export async function dispatchTagTriggerFlows(params: {
   return started;
 }
 
-/** Dispara fluxo com gatilho tag para todos os contatos que já possuem a tag (cadência humanizada). */
+/** Dispara fluxo com gatilho tag para todos os contatos que já possuem a tag. */
 export async function dispatchTagFlowToContactsWithTag(
   flowId: string,
   tagName: string
@@ -119,12 +111,12 @@ export async function dispatchTagFlowToContactsWithTag(
       continue;
     }
     try {
-      const runId = await startOrScheduleTagFlow(flowId, graph, {
+      const id = await queueTagFlow(flowId, {
         contactPhone: phone,
         contactName: link.contact.name ?? undefined,
         externalId: `tag_bulk_${phone}_${flowId}_${Date.now()}`
       });
-      if (runId) scheduled++;
+      if (id) scheduled++;
       else skipped++;
     } catch {
       skipped++;

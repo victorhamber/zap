@@ -94,12 +94,7 @@ export function defaultNodeData(type: string): Record<string, unknown> {
     case "condition_contact_tag":
       return { matchMode: "any", tagNames: [] as string[] };
     case "trigger_tag":
-      return {
-        tags: [] as string[],
-        staggerEnabled: true,
-        staggerMinSec: 10,
-        staggerMaxSec: 30
-      };
+      return { tags: [] as string[] };
     case "trigger_inbound":
       return { keyword: "", tags: [] as string[] };
     case "condition_offer_code":
