@@ -474,21 +474,62 @@ function chatDedupeKey(c: NormalizedChat, session?: string): string {
     const gid = digitsOnly(c.id) || c.id.replace(/@.*/, "");
     return `g:${gid}`;
   }
+  const phoneKey = canonicalDirectPhoneDigits(c, session);
+  if (phoneKey) return `p:${phoneKey}`;
+  return `id:${c.id}`;
+}
+
+function canonicalDirectPhoneDigits(c: NormalizedChat, session?: string): string | null {
+  if (c.isGroup || c.kind !== "direct") return null;
   if (session && isLikelyInternalLidJid(c.id)) {
     const mapped = getMappedPhoneJid(session, c.id);
     if (mapped) {
       const md = digitsOnly(mapped);
-      if (isValidWhatsAppPhoneDigits(md)) return `p:${md}`;
+      if (isValidWhatsAppPhoneDigits(md)) return md;
     }
   }
   const d = digitsOnly(c.id);
-  if (isValidWhatsAppPhoneDigits(d)) return `p:${d}`;
+  if (isValidWhatsAppPhoneDigits(d)) return d;
   const phoneDigits = digitsOnly(c.phone);
-  if (isValidWhatsAppPhoneDigits(phoneDigits)) return `p:${phoneDigits}`;
-  if (c.name && !isGenericSelfChatName(c.name) && c.name !== d && c.name !== c.phone) {
-    return `n:${c.name.toLowerCase()}`;
+  if (isValidWhatsAppPhoneDigits(phoneDigits)) return phoneDigits;
+  return null;
+}
+
+/** Unifica conversas do mesmo telefone (ex.: @lid + @s.whatsapp.net). */
+function dedupeChatsByPhone(chats: NormalizedChat[], session?: string): NormalizedChat[] {
+  const map = new Map<string, NormalizedChat>();
+  const orphans: NormalizedChat[] = [];
+
+  for (const c of chats) {
+    const phoneKey = canonicalDirectPhoneDigits(c, session);
+    if (!phoneKey) {
+      orphans.push(c);
+      continue;
+    }
+    const key = `p:${phoneKey}`;
+    const prev = map.get(key);
+    const next = prev ? mergeTwoChats(prev, c) : { ...c, phone: phoneKey };
+    map.set(key, next);
   }
-  return `id:${c.id}`;
+
+  const remaining: NormalizedChat[] = [];
+  for (const c of orphans) {
+    if (session && isLikelyInternalLidJid(c.id)) {
+      const mapped = getMappedPhoneJid(session, c.id);
+      const pd = mapped ? digitsOnly(mapped) : "";
+      if (isValidWhatsAppPhoneDigits(pd)) {
+        const key = `p:${pd}`;
+        const prev = map.get(key);
+        if (prev) {
+          map.set(key, mergeTwoChats(prev, c));
+          continue;
+        }
+      }
+    }
+    remaining.push(c);
+  }
+
+  return [...map.values(), ...remaining];
 }
 
 function preferChatId(a: string, b: string): string {
@@ -742,17 +783,20 @@ export async function fetchChats(): Promise<FetchChatsResult> {
           })
         : dedupedChats;
 
-    const chats = mergeContactNames(
-      scopedChats.sort((a, b) => {
-        if (a.timestamp !== b.timestamp) return b.timestamp - a.timestamp;
-        return a.name.localeCompare(b.name, "pt-BR");
-      }),
-      await loadEvolutionContactNames(),
-      wpp.isEvolution ? await wpp.getConnectedOwnerDigits() : null
-    ).map((c) => ({
-      ...c,
-      unreadCount: isChatReadLocally(session, c.id) ? 0 : c.unreadCount
-    }));
+    const chats = dedupeChatsByPhone(
+      mergeContactNames(
+        scopedChats.sort((a, b) => {
+          if (a.timestamp !== b.timestamp) return b.timestamp - a.timestamp;
+          return a.name.localeCompare(b.name, "pt-BR");
+        }),
+        await loadEvolutionContactNames(),
+        wpp.isEvolution ? await wpp.getConnectedOwnerDigits() : null
+      ).map((c) => ({
+        ...c,
+        unreadCount: isChatReadLocally(session, c.id) ? 0 : c.unreadCount
+      })),
+      session
+    );
     await flushWaLidMap(session);
     return {
       chats,

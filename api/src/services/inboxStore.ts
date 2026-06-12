@@ -8,7 +8,7 @@ import {
   labelForMediaType,
   mimeFromMessageType
 } from "./mediaText.js";
-import { normalizeDirectJid } from "./waJid.js";
+import { isValidWhatsAppPhoneDigits, normalizeDirectJid } from "./waJid.js";
 import {
   expandChatIdVariants,
   getMappedPhoneJid,
@@ -579,28 +579,38 @@ export async function listStoredChatSummaries(): Promise<NormalizedChat[]> {
       ...(captureSince ? { timestamp: { gte: captureSince } } : {})
     },
     orderBy: { timestamp: "desc" },
-    distinct: ["chatId"],
-    take: 200,
+    take: 400,
     select: { chatId: true, body: true, timestamp: true }
   });
 
-  return rows.map((r) => {
+  const merged = new Map<string, NormalizedChat>();
+  for (const r of rows) {
     let id = r.chatId;
     const mapped = getMappedPhoneJid(session, id);
     if (mapped) id = mapped;
     const isGroup = id.includes("@g.us");
-    const phone = digitsOnly(id.replace(/@.*/, "")) || id.replace(/@.*/, "");
-    return {
+    const phoneDigits = digitsOnly(id.replace(/@.*/, "")) || id.replace(/@.*/, "");
+    const mapKey =
+      !isGroup && isValidWhatsAppPhoneDigits(phoneDigits)
+        ? `p:${phoneDigits}`
+        : `id:${id}`;
+    const entry: NormalizedChat = {
       id,
-      phone,
-      name: phone,
+      phone: phoneDigits,
+      name: phoneDigits,
       lastMessage: r.body.slice(0, 120),
       timestamp: r.timestamp.getTime(),
       isGroup,
       kind: isGroup ? ("group" as const) : ("direct" as const),
       unreadCount: 0
     };
-  });
+    const prev = merged.get(mapKey);
+    if (!prev || entry.timestamp >= prev.timestamp) {
+      merged.set(mapKey, prev ? { ...entry, lastMessage: entry.lastMessage || prev.lastMessage } : entry);
+    }
+  }
+
+  return [...merged.values()];
 }
 
 export async function listStoredMessages(
