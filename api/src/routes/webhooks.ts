@@ -30,6 +30,54 @@ import {
 } from "../services/wppWebhook.js";
 import { getActiveWppSessionName } from "../services/whatsapp/index.js";
 
+async function triggerInboundFlows(params: {
+  chatId: string;
+  text: string;
+  contactName?: string;
+  log?: { warn: (obj: unknown, msg?: string) => void };
+}): Promise<string[]> {
+  if (!prisma) return [];
+  const from = params.chatId.trim();
+  if (!from) return [];
+
+  const phone = normalizePhone(from.replace(/@.*/, ""));
+  if (!phone.replace(/\D/g, "")) return [];
+
+  let tagNames: string[] = [];
+  try {
+    tagNames = await getContactTagNames(phone);
+  } catch (err) {
+    params.log?.warn({ err, phone }, "getContactTagNames failed");
+  }
+
+  const flows = await prisma.flow.findMany({ where: { enabled: true } });
+  const started: string[] = [];
+
+  for (const flow of flows) {
+    try {
+      const graph = parseGraph(flow.graphJson);
+      if (!matchInboundFlows(graph, params.text, tagNames)) continue;
+      const result = await queueFlowRunStart({
+        flowId: flow.id,
+        triggerType: "trigger_inbound",
+        contactPhone: phone,
+        variables: {
+          phone,
+          name: params.contactName?.trim() || "Contato",
+          message: params.text,
+          purchaseId: `inbound_${Date.now()}_${flow.id}`
+        },
+        externalId: `inbound_${phone}_${Date.now()}_${flow.id}`
+      });
+      if (result && "runId" in result) started.push(result.runId as string);
+    } catch (err) {
+      params.log?.warn({ err, flowId: flow.id }, "inbound flow trigger failed");
+    }
+  }
+
+  return started;
+}
+
 export async function webhookRoutes(app: FastifyInstance) {
   app.post("/api/webhooks/hotmart/:flowId", async (req, reply) => {
     if (!prisma) return reply.status(503).send({ error: "Banco indisponível" });
@@ -148,28 +196,32 @@ export async function webhookRoutes(app: FastifyInstance) {
       const msgType = parsed.type === "ptt" ? "audio" : parsed.type;
       const sessionName = webhookSession || activeSession;
 
-      const { ensureInboxCaptureStarted } = await import("../services/inboxStore.js");
-      await ensureInboxCaptureStarted();
+      try {
+        const { ensureInboxCaptureStarted } = await import("../services/inboxStore.js");
+        await ensureInboxCaptureStarted();
 
-      await saveInboxMessage({
-        chatId: parsed.chatId,
-        body: parsed.text,
-        fromMe: parsed.fromMe,
-        type: msgType,
-        mediaUrl: parsed.mediaUrl,
-        waMessageId: parsed.waMessageId,
-        timestamp: parsed.timestamp,
-        sessionName
-      });
-      saved = true;
-      touchWppWebhookSaved();
+        await saveInboxMessage({
+          chatId: parsed.chatId,
+          body: parsed.text,
+          fromMe: parsed.fromMe,
+          type: msgType,
+          mediaUrl: parsed.mediaUrl,
+          waMessageId: parsed.waMessageId,
+          timestamp: parsed.timestamp,
+          sessionName
+        });
+        saved = true;
+        touchWppWebhookSaved();
+      } catch (err) {
+        req.log.warn({ err, event }, "save wppconnect message failed");
+      }
 
-      const needsMediaDownload =
+      if (
+        saved &&
         parsed.waMessageId &&
         isInboundMediaType(parsed.type) &&
-        !webhookMediaAlreadyInline(parsed);
-
-      if (needsMediaDownload) {
+        !webhookMediaAlreadyInline(parsed)
+      ) {
         const waId = parsed.waMessageId;
         void downloadInboundMedia(body, waId)
           .then((url) => {
@@ -205,30 +257,14 @@ export async function webhookRoutes(app: FastifyInstance) {
       };
     }
 
-    const phone = normalizePhone(from.replace(/@.*/, ""));
-    const tagNames = await getContactTagNames(phone);
-
-    const flows = await prisma.flow.findMany({ where: { enabled: true } });
-    const started: string[] = [];
-
-    for (const flow of flows) {
-      const graph = parseGraph(flow.graphJson);
-      if (!matchInboundFlows(graph, text, tagNames)) continue;
-
-      const result = await queueFlowRunStart({
-        flowId: flow.id,
-        triggerType: "trigger_inbound",
-        contactPhone: phone,
-        variables: {
-          phone,
-          name: asString(body?.notifyName) ?? "Contato",
-          message: text,
-          purchaseId: `inbound_${Date.now()}_${flow.id}`
-        },
-        externalId: `inbound_${phone}_${Date.now()}`
+    let started: string[] = [];
+    if (saved && parsed && !parsed.fromMe) {
+      started = await triggerInboundFlows({
+        chatId: from,
+        text,
+        contactName: asString(body?.notifyName) ?? undefined,
+        log: req.log
       });
-
-      if (result && "runId" in result) started.push(result.runId as string);
     }
 
     if (!saved) {
@@ -257,138 +293,143 @@ export async function webhookRoutes(app: FastifyInstance) {
     };
   });
 
-  app.post("/api/webhooks/evolution", async (req) => {
+  app.post("/api/webhooks/evolution", async (req, reply) => {
     if (!prisma) return { ok: false };
 
     const body = (req.body ?? {}) as Record<string, unknown>;
     const event = String(body.event ?? "").toLowerCase();
     touchWppWebhookReceived(event);
 
-    const {
-      parseEvolutionMessagePayload,
-      parseEvolutionConnectionEvent,
-      extractEvolutionQr,
-      extractEvolutionMessagePayloads,
-      isEvolutionMessageEvent
-    } = await import("../services/whatsapp/evolutionWebhook.js");
+    let saved = false;
 
-    const activeSession = await getActiveWppSessionName();
-    const instance = String(body.instance ?? "").trim().toLowerCase();
-    if (instance && instance !== activeSession) {
-      touchWppWebhookSkipped("other_session");
-      return { ok: true, skipped: "other_session", instance, activeSession };
-    }
+    try {
+      const {
+        parseEvolutionMessagePayload,
+        parseEvolutionConnectionEvent,
+        extractEvolutionQr,
+        extractEvolutionMessagePayloads,
+        isEvolutionMessageEvent
+      } = await import("../services/whatsapp/evolutionWebhook.js");
 
-    const connLabel = parseEvolutionConnectionEvent(body);
-    if (connLabel) {
-      if (prisma) {
+      const activeSession = await getActiveWppSessionName();
+      const instance = String(body.instance ?? "").trim().toLowerCase();
+      if (instance && instance !== activeSession) {
+        touchWppWebhookSkipped("other_session");
+        return { ok: true, skipped: "other_session", instance, activeSession };
+      }
+
+      const connLabel = parseEvolutionConnectionEvent(body);
+      if (connLabel) {
         await prisma.appSettings.update({
           where: { id: "default" },
           data: { connectionStatus: connLabel }
         });
+        return { ok: true, lifecycle: true, event };
       }
-      return { ok: true, lifecycle: true, event };
-    }
 
-    const qr = extractEvolutionQr(body);
-    if (qr && prisma) {
-      await prisma.appSettings.update({
-        where: { id: "default" },
-        data: { connectionStatus: "AWAITING_QR:QRCODE" }
-      });
-      return { ok: true, qr: true, event };
-    }
+      const qr = extractEvolutionQr(body);
+      if (qr) {
+        await prisma.appSettings.update({
+          where: { id: "default" },
+          data: { connectionStatus: "AWAITING_QR:QRCODE" }
+        });
+        return { ok: true, qr: true, event };
+      }
 
-    if (!isEvolutionMessageEvent(body)) {
-      touchWppWebhookSkipped("not_message");
-      return { ok: true, skipped: "not_message", event };
-    }
+      if (!isEvolutionMessageEvent(body)) {
+        touchWppWebhookSkipped("not_message");
+        return { ok: true, skipped: "not_message", event };
+      }
 
-    const payloads = extractEvolutionMessagePayloads(body);
-    let saved = false;
-    let lastParsed: ReturnType<typeof parseEvolutionMessagePayload> = null;
+      const payloads = extractEvolutionMessagePayloads(body);
+      let lastParsed: ReturnType<typeof parseEvolutionMessagePayload> = null;
+      let lastPushName = "";
 
-    const { ensureInboxCaptureStarted } = await import("../services/inboxStore.js");
+      const { ensureInboxCaptureStarted } = await import("../services/inboxStore.js");
 
-    for (const payload of payloads) {
-      const parsed = parseEvolutionMessagePayload(body, payload);
-      if (!parsed) continue;
-      lastParsed = parsed;
+      for (const payload of payloads) {
+        let parsed: ReturnType<typeof parseEvolutionMessagePayload> = null;
+        try {
+          parsed = parseEvolutionMessagePayload(body, payload);
+          if (!parsed) continue;
+          lastParsed = parsed;
+          const pushName = String(payload.pushName ?? "").trim();
+          if (pushName && pushName !== "Você") lastPushName = pushName;
 
-      await ensureInboxCaptureStarted();
+          await ensureInboxCaptureStarted();
 
-      const key = (payload.key ?? {}) as Record<string, unknown>;
-      const msgType = parsed.type === "ptt" ? "audio" : parsed.type;
-      await saveInboxMessage({
-        chatId: parsed.chatId,
-        body: parsed.text,
-        fromMe: parsed.fromMe,
-        type: msgType,
-        mediaUrl: parsed.mediaUrl,
-        waMessageId: parsed.waMessageId,
-        timestamp: parsed.timestamp,
-        sessionName: parsed.instance || activeSession,
-        peerJids: [
-          String(key.remoteJid ?? ""),
-          String(key.remoteJidAlt ?? ""),
-          String(key.participant ?? ""),
-          String(key.participantAlt ?? ""),
-          String(body.sender ?? "")
-        ].filter(Boolean)
-      });
-      saved = true;
-      touchWppWebhookSaved();
-
-      const needsMediaDownload =
-        parsed.waMessageId &&
-        isInboundMediaType(parsed.type) &&
-        !webhookMediaAlreadyInline(parsed);
-
-      if (needsMediaDownload) {
-        const waId = parsed.waMessageId;
-        void downloadInboundMedia(body, waId, parsed.rawData)
-          .then((url) => {
-            if (url) return updateInboxMessageMedia(waId!, url);
-          })
-          .catch((e) => {
-            req.log.warn({ err: e, waId }, "download evolution media async");
+          const key = (payload.key ?? {}) as Record<string, unknown>;
+          const msgType = parsed.type === "ptt" ? "audio" : parsed.type;
+          await saveInboxMessage({
+            chatId: parsed.chatId,
+            body: parsed.text,
+            fromMe: parsed.fromMe,
+            type: msgType,
+            mediaUrl: parsed.mediaUrl,
+            waMessageId: parsed.waMessageId,
+            timestamp: parsed.timestamp,
+            sessionName: parsed.instance || activeSession,
+            peerJids: [
+              String(key.remoteJid ?? ""),
+              String(key.remoteJidAlt ?? ""),
+              String(key.participant ?? ""),
+              String(key.participantAlt ?? ""),
+              String(body.sender ?? "")
+            ].filter(Boolean)
           });
+          saved = true;
+          touchWppWebhookSaved();
+
+          const needsMediaDownload =
+            parsed.waMessageId &&
+            isInboundMediaType(parsed.type) &&
+            !webhookMediaAlreadyInline(parsed);
+
+          if (needsMediaDownload) {
+            const waId = parsed.waMessageId;
+            void downloadInboundMedia(body, waId, parsed.rawData)
+              .then((url) => {
+                if (url) return updateInboxMessageMedia(waId!, url);
+              })
+              .catch((e) => {
+                req.log.warn({ err: e, waId }, "download evolution media async");
+              });
+          }
+        } catch (err) {
+          req.log.warn({ err, event, waMessageId: parsed?.waMessageId }, "save evolution message failed");
+        }
       }
-    }
 
-    const parsed = lastParsed;
-    const from = parsed?.chatId ?? "";
-    const text = parsed?.text ?? "";
+      const parsed = lastParsed;
+      const from = parsed?.chatId ?? "";
+      const text = parsed?.text ?? "";
 
-    if (!from) {
-      touchWppWebhookSkipped(saved ? "no_from_flow" : "no_from_unparsed");
-      return { ok: true, skipped: saved ? "no_from_flow" : "no_from_unparsed", event, saved };
-    }
+      if (!from) {
+        touchWppWebhookSkipped(saved ? "no_from_flow" : "no_from_unparsed");
+        return { ok: true, skipped: saved ? "no_from_flow" : "no_from_unparsed", event, saved };
+      }
 
-    const phone = normalizePhone(from.replace(/@.*/, ""));
-    const tagNames = await getContactTagNames(phone);
-    const flows = await prisma.flow.findMany({ where: { enabled: true } });
-    const started: string[] = [];
+      let started: string[] = [];
+      if (saved && parsed && !parsed.fromMe) {
+        started = await triggerInboundFlows({
+          chatId: from,
+          text,
+          contactName: lastPushName || undefined,
+          log: req.log
+        });
+      }
 
-    for (const flow of flows) {
-      const graph = parseGraph(flow.graphJson);
-      if (!matchInboundFlows(graph, text, tagNames)) continue;
-      const result = await queueFlowRunStart({
-        flowId: flow.id,
-        triggerType: "trigger_inbound",
-        contactPhone: phone,
-        variables: {
-          phone,
-          name: "Contato",
-          message: text,
-          purchaseId: `inbound_${Date.now()}_${flow.id}`
-        },
-        externalId: `inbound_${phone}_${Date.now()}`
+      if (!saved) touchWppWebhookSkipped("message_unparsed");
+      return { ok: true, started, saved, event };
+    } catch (err) {
+      req.log.error({ err, event }, "evolution webhook handler error");
+      touchWppWebhookSkipped("handler_error");
+      return reply.status(200).send({
+        ok: false,
+        saved,
+        event,
+        error: err instanceof Error ? err.message : String(err)
       });
-      if (result && "runId" in result) started.push(result.runId as string);
     }
-
-    if (!saved) touchWppWebhookSkipped("message_unparsed");
-    return { ok: true, started, saved, event };
   });
 }

@@ -17,7 +17,10 @@ export function isEvolutionMessageEvent(body: Record<string, unknown>): boolean 
   );
 }
 
-function parseMessageContent(msg: Record<string, unknown>): { text: string; type: string } {
+function parseMessageContent(
+  msg: Record<string, unknown>,
+  payload?: Record<string, unknown>
+): { text: string; type: string } {
   if (typeof msg.conversation === "string" && msg.conversation.trim()) {
     return { text: msg.conversation.trim(), type: "chat" };
   }
@@ -44,6 +47,14 @@ function parseMessageContent(msg: Record<string, unknown>): { text: string; type
   }
   if (msg.stickerMessage) return { text: "", type: "sticker" };
   if (msg.locationMessage) return { text: "📍 Localização", type: "location" };
+
+  const payloadType = String(payload?.messageType ?? "").toLowerCase();
+  if (payloadType.includes("audio")) return { text: "", type: "audio" };
+  if (payloadType.includes("image")) return { text: "", type: "image" };
+  if (payloadType.includes("video")) return { text: "", type: "video" };
+  if (payloadType.includes("document")) return { text: "📎 Documento", type: "document" };
+  if (payloadType.includes("sticker")) return { text: "", type: "sticker" };
+
   return { text: "", type: "chat" };
 }
 
@@ -122,7 +133,7 @@ export function parseEvolutionMessagePayload(
   if (!chatId) return null;
 
   const msg = (payload.message ?? {}) as Record<string, unknown>;
-  const { text, type } = parseMessageContent(msg);
+  const { text, type } = parseMessageContent(msg, payload);
 
   const mediaTypes = new Set(["image", "video", "audio", "ptt", "sticker", "document"]);
   if (type === "chat" && !text.trim()) return null;
