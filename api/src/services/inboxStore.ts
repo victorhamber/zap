@@ -404,16 +404,31 @@ function peerChatIdFromWebhook(
   ]);
 }
 
+const MEDIA_MESSAGE_TYPES = new Set([
+  "image",
+  "sticker",
+  "video",
+  "audio",
+  "ptt",
+  "document",
+  "location"
+]);
+
+function isMediaMessageType(type: string): boolean {
+  return MEDIA_MESSAGE_TYPES.has(type.toLowerCase());
+}
+
 function inboxMessageDedupeKey(row: {
   waMessageId: string | null;
   fromMe: boolean;
   body: string;
   timestamp: Date;
   chatId: string;
+  type?: string;
 }): string {
   if (row.waMessageId) return `wa:${row.waMessageId}`;
   const sec = Math.floor(row.timestamp.getTime() / 1000);
-  return `${row.fromMe ? 1 : 0}|${row.body}|${sec}|${row.chatId}`;
+  return `${row.fromMe ? 1 : 0}|${row.type ?? "chat"}|${row.body}|${sec}|${row.chatId}`;
 }
 
 async function findDuplicateInboxMessage(params: {
@@ -422,6 +437,7 @@ async function findDuplicateInboxMessage(params: {
   chatId: string;
   body: string;
   fromMe: boolean;
+  type: string;
   waMessageId: string | null;
   timestamp: Date;
 }): Promise<{ id: string; waMessageId: string | null } | null> {
@@ -437,6 +453,11 @@ async function findDuplicateInboxMessage(params: {
     if (byWaId) return byWaId;
   }
 
+  // Mídia (áudio, imagem…) costuma ter o mesmo rótulo ("🎤 Áudio") — só deduplica por waMessageId.
+  if (isMediaMessageType(params.type)) {
+    return null;
+  }
+
   const variants = await chatIdVariantsResolved(params.session, params.chatId);
   const windowStart = new Date(params.timestamp.getTime() - 120_000);
   const windowEnd = new Date(params.timestamp.getTime() + 45_000);
@@ -447,6 +468,7 @@ async function findDuplicateInboxMessage(params: {
       ...ownerWhere,
       chatId: { in: variants },
       fromMe: params.fromMe,
+      type: params.type,
       body: params.body,
       timestamp: { gte: windowStart, lte: windowEnd }
     },
@@ -486,6 +508,7 @@ export async function saveInboxMessage(params: {
     chatId,
     body,
     fromMe: params.fromMe,
+    type,
     waMessageId,
     timestamp
   });
@@ -614,7 +637,7 @@ export async function listStoredMessages(
 
     if (!r.waMessageId) {
       const sec = Math.floor(r.timestamp.getTime() / 1000);
-      const contentKey = `${r.fromMe ? 1 : 0}|${r.type}|${r.body}|${sec}|${r.chatId}`;
+      const contentKey = `${r.fromMe ? 1 : 0}|${r.type}|${r.body}|${sec}|${r.chatId}|${r.id}`;
       if (seenContent.has(contentKey)) return false;
       seenContent.add(contentKey);
     }

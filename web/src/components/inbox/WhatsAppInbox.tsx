@@ -269,8 +269,9 @@ function mergePendingMessages(server: Message[], pending: Message[]): Message[] 
     const duplicated = server.some(
       (m) =>
         m.fromMe === p.fromMe &&
+        m.type === p.type &&
         m.body === p.body &&
-        Math.abs(m.timestamp - p.timestamp) < 120_000
+        Math.abs(m.timestamp - p.timestamp) < 5_000
     );
     if (!duplicated) merged.push(p);
   }
