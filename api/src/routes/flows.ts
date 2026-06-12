@@ -107,6 +107,36 @@ export async function flowRoutes(app: FastifyInstance) {
     return result;
   });
 
+  /** Dispara broadcast para todos os contatos (filtros ficam nas condições do fluxo). */
+  app.post("/api/flows/:id/dispatch-broadcast", async (req, reply) => {
+    if (!prisma) return reply.status(503).send({ error: "Banco indisponível" });
+    const id = (req.params as { id: string }).id;
+
+    try {
+      const { dispatchBroadcastFlow } = await import("../services/broadcastFlowTrigger.js");
+      const result = await dispatchBroadcastFlow(id);
+      return { ok: true, ...result };
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return reply.status(400).send({ error: message });
+    }
+  });
+
+  /** Dispara o fluxo para contatos que já têm as tags do gatilho (não só quando a tag é adicionada). */
+  app.post("/api/flows/:id/dispatch-tag-existing", async (req, reply) => {
+    if (!prisma) return reply.status(503).send({ error: "Banco indisponível" });
+    const id = (req.params as { id: string }).id;
+
+    try {
+      const { dispatchTagFlowToExistingContacts } = await import("../services/tagFlowTrigger.js");
+      const result = await dispatchTagFlowToExistingContacts(id);
+      return { ok: true, ...result };
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return reply.status(400).send({ error: message });
+    }
+  });
+
   /** Dispara o fluxo (gatilho tag) para todos os contatos que já têm a tag, com cadência humanizada. */
   app.post("/api/flows/:id/dispatch-tag", async (req, reply) => {
     if (!prisma) return reply.status(503).send({ error: "Banco indisponível" });

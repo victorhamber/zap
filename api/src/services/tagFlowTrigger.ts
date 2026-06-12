@@ -125,3 +125,65 @@ export async function dispatchTagFlowToContactsWithTag(
 
   return { scheduled, skipped };
 }
+
+/** Dispara para todos os contatos que já possuem alguma tag configurada no gatilho. */
+export async function dispatchTagFlowToExistingContacts(
+  flowId: string
+): Promise<{ scheduled: number; skipped: number; tags: string[] }> {
+  if (!prisma) throw new Error("Banco indisponível");
+
+  const flow = await prisma.flow.findUnique({ where: { id: flowId } });
+  if (!flow?.enabled) throw new Error("Fluxo não encontrado ou inativo");
+
+  const graph = parseGraph(flow.graphJson);
+  const trigger = graph.nodes.find((n) => n.type === "trigger_tag");
+  if (!trigger) throw new Error("Este fluxo não tem gatilho por tag");
+
+  const triggerTags = ((trigger.data as TriggerTagData).tags ?? [])
+    .map((t) => t.trim())
+    .filter(Boolean);
+  if (triggerTags.length === 0) throw new Error("Nenhuma tag configurada no gatilho");
+
+  const seenPhones = new Set<string>();
+  let scheduled = 0;
+  let skipped = 0;
+
+  for (const tagName of triggerTags) {
+    const tag = await prisma.tag.findFirst({
+      where: { name: { equals: tagName, mode: "insensitive" } }
+    });
+    if (!tag) continue;
+
+    const links = await prisma.contactTag.findMany({
+      where: { tagId: tag.id },
+      include: { contact: true }
+    });
+
+    for (const link of links) {
+      const phone = link.contact.phone;
+      if (!phone) {
+        skipped++;
+        continue;
+      }
+      if (seenPhones.has(phone)) {
+        skipped++;
+        continue;
+      }
+      seenPhones.add(phone);
+
+      try {
+        const id = await queueTagFlow(flowId, {
+          contactPhone: phone,
+          contactName: link.contact.name ?? undefined,
+          externalId: `tag_bulk_${phone}_${flowId}_${Date.now()}`
+        });
+        if (id) scheduled++;
+        else skipped++;
+      } catch {
+        skipped++;
+      }
+    }
+  }
+
+  return { scheduled, skipped, tags: triggerTags };
+}

@@ -61,7 +61,7 @@ export function FlowNodeProperties({
   const [dispatchStatus, setDispatchStatus] = useState("");
   const webhookUrl = flowId ? hotmartWebhookUrl(flowId) : "";
   const textRef = useRef<HTMLTextAreaElement>(null);
-  const captionRef = useRef<HTMLInputElement>(null);
+  const captionRef = useRef<HTMLTextAreaElement>(null);
 
   function insertVariable(snippet: string, field: "text" | "caption") {
     const el = field === "text" ? textRef.current : captionRef.current;
@@ -231,13 +231,15 @@ export function FlowNodeProperties({
                   onInsert={(s) => insertVariable(s, "caption")}
                 />
                 <label className="text-xs text-zinc-500">Legenda</label>
-                <input
+                <textarea
                   ref={captionRef}
+                  rows={5}
                   value={String(config.caption ?? "")}
                   onChange={(e) => onUpdate({ caption: e.target.value })}
-                  className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-mono text-white"
-                  placeholder="{{name}}"
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-mono text-white resize-y min-h-[88px]"
+                  placeholder={"{{name}}\n\nLinha 2 da legenda"}
                 />
+                <p className="text-[11px] text-zinc-600">Enter cria nova linha na legenda do WhatsApp.</p>
               </>
             )}
           </>
@@ -280,9 +282,9 @@ export function FlowNodeProperties({
 
         {nodeType === "trigger_tag" && (
           <>
-            <p className="text-xs text-zinc-500">
-              Dispara o fluxo quando o contato receber uma dessas tags — no inbox, em outro fluxo
-              (bloco Adicionar tag) ou manualmente.
+            <p className="text-xs text-zinc-500 leading-relaxed">
+              Dispara automaticamente quando uma dessas tags é <strong className="text-zinc-400">adicionada</strong>{" "}
+              ao contato (inbox, bloco Adicionar tag ou outro fluxo).
             </p>
             {triggerTags.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
@@ -343,17 +345,32 @@ export function FlowNodeProperties({
                 Criar
               </button>
             </div>
+          </>
+        )}
 
-            {flowId && triggerTags.length > 0 && (
+        {nodeType === "trigger_broadcast" && (
+          <>
+            <p className="text-xs text-zinc-500 leading-relaxed">
+              Disparo em massa para <strong className="text-zinc-400">todos os contatos</strong> cadastrados.
+              Não filtra por tag aqui — ligue um bloco{" "}
+              <strong className="text-zinc-400">Contato tem tag?</strong> (ou outra condição) depois deste
+              gatilho para escolher quem recebe mensagens.
+            </p>
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 text-xs text-zinc-500 space-y-1">
+              <p>Exemplo de fluxo:</p>
+              <p className="text-zinc-400 font-mono text-[11px]">
+                Broadcast → Contato tem tag? → (sim) Enviar imagem
+              </p>
+            </div>
+            {flowId && (
               <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 space-y-2">
                 <button
                   type="button"
                   disabled={dispatchingTag}
                   onClick={async () => {
-                    const tag = triggerTags[0];
                     if (
                       !window.confirm(
-                        `Disparar este fluxo para todos os contatos com a tag "${tag}"? Os envios serão espaçados automaticamente.`
+                        "Disparar para TODOS os contatos? Filtros do fluxo serão aplicados para cada um. Envios espaçados automaticamente."
                       )
                     ) {
                       return;
@@ -361,13 +378,19 @@ export function FlowNodeProperties({
                     setDispatchingTag(true);
                     setDispatchStatus("");
                     try {
-                      const r = await api<{ ok: boolean; scheduled?: number; skipped?: number; error?: string }>(
-                        `/api/flows/${flowId}/dispatch-tag`,
-                        { method: "POST", body: JSON.stringify({ tagName: tag }) }
-                      );
+                      const r = await api<{
+                        ok: boolean;
+                        scheduled?: number;
+                        skipped?: number;
+                        total?: number;
+                        error?: string;
+                      }>(`/api/flows/${flowId}/dispatch-broadcast`, {
+                        method: "POST",
+                        body: JSON.stringify({})
+                      });
                       setDispatchStatus(
                         r.ok
-                          ? `${r.scheduled ?? 0} contato(s) na fila · ${r.skipped ?? 0} ignorado(s)`
+                          ? `${r.scheduled ?? 0} de ${r.total ?? 0} na fila · ${r.skipped ?? 0} ignorado(s)`
                           : (r.error ?? "Falha ao disparar")
                       );
                     } catch (e: unknown) {
@@ -376,13 +399,13 @@ export function FlowNodeProperties({
                       setDispatchingTag(false);
                     }
                   }}
-                  className="w-full rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-50"
+                  className="w-full rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200 hover:bg-amber-500/20 disabled:opacity-50"
                 >
-                  {dispatchingTag ? "Agendando…" : `Disparar para todos com "${triggerTags[0]}"`}
+                  {dispatchingTag ? "Agendando…" : "Disparar broadcast agora"}
                 </button>
-              {dispatchStatus && (
-                <p className="text-[11px] text-zinc-400">{dispatchStatus}</p>
-              )}
+                {dispatchStatus && (
+                  <p className="text-[11px] text-zinc-400">{dispatchStatus}</p>
+                )}
               </div>
             )}
           </>

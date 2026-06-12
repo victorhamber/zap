@@ -252,6 +252,20 @@ export function FlowNodeComponent({ data, selected }: NodeProps) {
     );
   }
 
+  if (type === "trigger_broadcast") {
+    return (
+      <div
+        className={`min-w-[160px] rounded-xl border px-3 py-2 text-sm shadow-lg ${
+          selected ? "border-amber-400 bg-zinc-900" : "border-amber-500/40 bg-zinc-950"
+        }`}
+      >
+        <div className="text-xs text-amber-400/90">{label}</div>
+        <div className="font-medium truncate">{String(data.summary ?? "Todos os contatos")}</div>
+        <Handle type="source" position={Position.Right} className="!bg-amber-400" />
+      </div>
+    );
+  }
+
   return (
     <div
       className={`min-w-[140px] rounded-xl border px-3 py-2 text-sm shadow-lg ${

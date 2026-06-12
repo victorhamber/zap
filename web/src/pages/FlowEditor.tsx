@@ -50,6 +50,7 @@ function summaryFor(type: string, data: Record<string, unknown>): string {
     const tags = (data.tags as string[] | undefined) ?? [];
     if (tags.length) return tags.join(", ");
   }
+  if (type === "trigger_broadcast") return "Todos os contatos";
   if (type === "condition_offer_code") {
     const branches = (data.branches as Array<{ label?: string }> | undefined) ?? [];
     return branches.length ? `${branches.length} oferta(s) + outros` : "Sem regras";
@@ -117,6 +118,7 @@ export function FlowEditor() {
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const rfRef = useRef<ReactFlowInstance | null>(null);
+  const enabledAtLoadRef = useRef(false);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -193,6 +195,7 @@ export function FlowEditor() {
       setFlow(f);
       setName(f.name);
       setEnabled(f.enabled);
+      enabledAtLoadRef.current = f.enabled;
       setNodes(toReactFlowNodes(f.graphJson.nodes));
       setEdges(toReactFlowEdges(f.graphJson.edges));
       window.setTimeout(() => {
@@ -297,8 +300,29 @@ export function FlowEditor() {
     );
   }
 
+  function hasBroadcastTrigger(): boolean {
+    return nodes.some((n) => n.data.nodeType === "trigger_broadcast");
+  }
+
+  async function dispatchBroadcast(): Promise<string | null> {
+    if (!id) return null;
+    const r = await api<{
+      ok: boolean;
+      scheduled?: number;
+      skipped?: number;
+      total?: number;
+      error?: string;
+    }>(`/api/flows/${id}/dispatch-broadcast`, {
+      method: "POST",
+      body: JSON.stringify({})
+    });
+    if (!r.ok) return r.error ?? "Falha ao disparar";
+    return `${r.scheduled ?? 0} de ${r.total ?? 0} contato(s) na fila · ${r.skipped ?? 0} ignorado(s)`;
+  }
+
   async function save() {
     if (!id) return;
+    const wasEnabled = enabledAtLoadRef.current;
     setStatus("Salvando…");
     const graphJson = {
       schemaVersion: 1 as const,
@@ -319,7 +343,40 @@ export function FlowEditor() {
       method: "PUT",
       body: JSON.stringify({ name, enabled, graphJson })
     });
+    enabledAtLoadRef.current = enabled;
+    setFlow((prev) => (prev ? { ...prev, name, enabled, graphJson } : prev));
+
+    if (enabled && !wasEnabled && hasBroadcastTrigger()) {
+      if (
+        window.confirm(
+          "Publicado! Deseja disparar este broadcast agora para TODOS os contatos?\n\nUse blocos de condição no fluxo (ex.: Contato tem tag?) para filtrar quem recebe mensagens."
+        )
+      ) {
+        setStatus("Agendando broadcast…");
+        const dispatchStatus = await dispatchBroadcast();
+        setStatus(dispatchStatus ? `Salvo · ${dispatchStatus}` : "Salvo.");
+        return;
+      }
+    }
+
     setStatus("Salvo.");
+  }
+
+  async function runBroadcast() {
+    if (!id || !enabled) {
+      setStatus("Publique o fluxo antes de disparar o broadcast.");
+      return;
+    }
+    if (
+      !window.confirm(
+        "Disparar para TODOS os contatos cadastrados? Os envios serão espaçados automaticamente. Filtros do fluxo (tags, ofertas, etc.) serão aplicados para cada contato."
+      )
+    ) {
+      return;
+    }
+    setStatus("Agendando broadcast…");
+    const result = await dispatchBroadcast();
+    setStatus(result ?? "Broadcast agendado.");
   }
 
   async function testFlow() {
@@ -391,6 +448,17 @@ export function FlowEditor() {
         >
           {enabled ? "● Publicado" : "Publicar"}
         </button>
+        {hasBroadcastTrigger() && (
+          <button
+            type="button"
+            onClick={() => void runBroadcast()}
+            disabled={!enabled}
+            className="shrink-0 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-sm text-amber-200 hover:bg-amber-500/20 disabled:opacity-40"
+            title={enabled ? "Disparar para todos os contatos" : "Publique o fluxo primeiro"}
+          >
+            Broadcast
+          </button>
+        )}
         <input
           placeholder="Tel. teste"
           value={testPhone}

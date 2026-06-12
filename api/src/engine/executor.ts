@@ -59,6 +59,7 @@ export function resolveFlowTriggerType(graph: FlowGraph): string {
     return "trigger_hotmart_pending";
   }
   if (graph.nodes.some((n) => n.type === "trigger_hotmart")) return "trigger_hotmart";
+  if (graph.nodes.some((n) => n.type === "trigger_broadcast")) return "trigger_broadcast";
   if (graph.nodes.some((n) => n.type === "trigger_tag")) return "trigger_tag";
   if (graph.nodes.some((n) => n.type === "trigger_inbound")) return "trigger_inbound";
   return "trigger_manual";

@@ -2,6 +2,7 @@ export const NODE_LABELS: Record<string, string> = {
   trigger_hotmart: "Hotmart",
   trigger_hotmart_pending: "Aguardando pagamento",
   trigger_tag: "Gatilho tag",
+  trigger_broadcast: "Broadcast",
   trigger_inbound: "Msg recebida",
   trigger_manual: "Manual",
   condition_offer_code: "Código da oferta",
@@ -32,6 +33,7 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
       { type: "trigger_hotmart", label: "Hotmart (compra aprovada)" },
       { type: "trigger_hotmart_pending", label: "Hotmart (aguardando pagamento)" },
       { type: "trigger_tag", label: "Tag do contato" },
+      { type: "trigger_broadcast", label: "Broadcast (todos)" },
       { type: "trigger_inbound", label: "Mensagem recebida" },
       { type: "trigger_manual", label: "Teste manual" }
     ]
@@ -95,6 +97,8 @@ export function defaultNodeData(type: string): Record<string, unknown> {
       return { matchMode: "any", tagNames: [] as string[] };
     case "trigger_tag":
       return { tags: [] as string[] };
+    case "trigger_broadcast":
+      return {};
     case "trigger_inbound":
       return { keyword: "", tags: [] as string[] };
     case "condition_offer_code":

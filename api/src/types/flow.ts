@@ -2,6 +2,7 @@ export type NodeType =
   | "trigger_hotmart"
   | "trigger_hotmart_pending"
   | "trigger_tag"
+  | "trigger_broadcast"
   | "trigger_inbound"
   | "trigger_manual"
   | "condition_offer_code"
@@ -112,6 +113,9 @@ export type TriggerTagData = {
   /** Dispara quando o contato recebe uma dessas tags */
   tags: string[];
 };
+
+/** Disparo em massa manual — sem filtro no gatilho; use condições no fluxo. */
+export type TriggerBroadcastData = Record<string, never>;
 
 export type FlowJobPayload = {
   flowRunId: string;

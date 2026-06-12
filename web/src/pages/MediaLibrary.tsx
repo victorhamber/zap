@@ -67,6 +67,7 @@ export function MediaLibrary() {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [copiedFilename, setCopiedFilename] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
@@ -157,6 +158,22 @@ export function MediaLibrary() {
       window.alert(e instanceof Error ? e.message : "Falha ao excluir");
     } finally {
       setBulkDeleting(false);
+    }
+  }
+
+  async function handleCopyUrl(item: MediaItem) {
+    const url = item.url.startsWith("http")
+      ? item.url
+      : `${window.location.origin}${item.url.startsWith("/") ? "" : "/"}${item.url}`;
+
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedFilename(item.filename);
+      window.setTimeout(() => {
+        setCopiedFilename((current) => (current === item.filename ? null : current));
+      }, 2000);
+    } catch {
+      window.prompt("Copie a URL:", url);
     }
   }
 
@@ -351,24 +368,33 @@ export function MediaLibrary() {
                   )}
                 </div>
 
-                <div className="mt-auto flex gap-2 pt-2">
-                  <a
-                    href={item.url}
-                    download={item.filename}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex-1 rounded-lg border border-zinc-700 px-3 py-2 text-center text-xs text-zinc-200 hover:bg-zinc-900 transition"
-                  >
-                    Baixar
-                  </a>
+                <div className="mt-auto flex flex-col gap-2 pt-2">
                   <button
                     type="button"
-                    disabled={deleting === item.filename}
-                    onClick={() => void handleDelete(item)}
-                    className="flex-1 rounded-lg border border-red-500/30 px-3 py-2 text-xs text-red-300 hover:bg-red-500/10 disabled:opacity-50 transition"
+                    onClick={() => void handleCopyUrl(item)}
+                    className="w-full rounded-lg border border-emerald-500/30 px-3 py-2 text-xs text-emerald-300 hover:bg-emerald-500/10 transition"
                   >
-                    {deleting === item.filename ? "…" : "Excluir"}
+                    {copiedFilename === item.filename ? "URL copiada!" : "Copiar URL"}
                   </button>
+                  <div className="flex gap-2">
+                    <a
+                      href={item.url}
+                      download={item.filename}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 rounded-lg border border-zinc-700 px-3 py-2 text-center text-xs text-zinc-200 hover:bg-zinc-900 transition"
+                    >
+                      Baixar
+                    </a>
+                    <button
+                      type="button"
+                      disabled={deleting === item.filename}
+                      onClick={() => void handleDelete(item)}
+                      className="flex-1 rounded-lg border border-red-500/30 px-3 py-2 text-xs text-red-300 hover:bg-red-500/10 disabled:opacity-50 transition"
+                    >
+                      {deleting === item.filename ? "…" : "Excluir"}
+                    </button>
+                  </div>
                 </div>
               </div>
             </article>
