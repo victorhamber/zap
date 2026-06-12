@@ -606,11 +606,15 @@ export async function listStoredMessages(
   const seenContent = new Set<string>();
   const dedupedRows = rows.filter((r) => {
     const key = inboxMessageDedupeKey(r);
-    const sec = Math.floor(r.timestamp.getTime() / 1000);
-    const contentKey = `${r.fromMe ? 1 : 0}|${r.body}|${sec}`;
-    if (seen.has(key) || seenContent.has(contentKey)) return false;
+    if (seen.has(key)) return false;
     seen.add(key);
-    seenContent.add(contentKey);
+
+    if (!r.waMessageId) {
+      const sec = Math.floor(r.timestamp.getTime() / 1000);
+      const contentKey = `${r.fromMe ? 1 : 0}|${r.type}|${r.body}|${sec}|${r.chatId}`;
+      if (seenContent.has(contentKey)) return false;
+      seenContent.add(contentKey);
+    }
     return true;
   });
 

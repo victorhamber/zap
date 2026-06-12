@@ -12,6 +12,8 @@ import {
   removeContactTagsByNames
 } from "../services/contacts.js";
 import * as wpp from "../services/whatsapp/index.js";
+import { saveInboxMessage } from "../services/inboxStore.js";
+import { toPublicMediaUrl } from "../services/uploads.js";
 import {
   findFlowTriggerNode,
   getNextNodeId,
@@ -78,6 +80,31 @@ async function sendMediaWithRetries(
     }
   }
   throw last;
+}
+
+function contactStorageJid(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  return `${digits}@s.whatsapp.net`;
+}
+
+/** Grava no inbox imediatamente — não depende só do webhook (evita sumir no próximo poll). */
+async function persistFlowOutboundMessage(params: {
+  phone: string;
+  body: string;
+  type: string;
+  mediaUrl?: string | null;
+  waMessageId?: string | null;
+}): Promise<void> {
+  const jid = contactStorageJid(params.phone);
+  await saveInboxMessage({
+    chatId: jid,
+    body: params.body,
+    fromMe: true,
+    type: params.type,
+    mediaUrl: params.mediaUrl ?? null,
+    waMessageId: params.waMessageId ?? null,
+    peerJids: [jid, params.phone]
+  });
 }
 
 export function resolveFlowTriggerType(graph: FlowGraph): string {
@@ -470,27 +497,51 @@ async function executeNode(
     const data = node.data as unknown as SendTextNodeData;
     const text = render(data.text ?? "", vars);
     try {
-      await wpp.sendText(phone, text);
+      const waMessageId = await wpp.sendText(phone, text);
+      await persistFlowOutboundMessage({
+        phone,
+        body: text,
+        type: "chat",
+        waMessageId
+      });
     } catch (err) {
       await logSendFailure(node.type, err);
     }
     await logStep(flowRunId, nodeId, node.type, "ok", "Mensagem enviada");
   } else if (node.type === "send_image") {
     const data = node.data as unknown as SendMediaNodeData;
+    const caption = data.caption ? render(data.caption, vars) : undefined;
     try {
-      await sendMediaWithRetries("send_image", () =>
-        wpp.sendImage(phone, data.url, data.caption ? render(data.caption, vars) : undefined)
-      );
+      let waMessageId: string | null = null;
+      await sendMediaWithRetries("send_image", async () => {
+        waMessageId = await wpp.sendImage(phone, data.url, caption);
+      });
+      await persistFlowOutboundMessage({
+        phone,
+        body: caption?.trim() || "📷 Imagem",
+        type: "image",
+        mediaUrl: toPublicMediaUrl(data.url) ?? data.url,
+        waMessageId
+      });
     } catch (err) {
       await logSendFailure(node.type, err);
     }
     await logStep(flowRunId, nodeId, node.type, "ok", "Imagem enviada");
   } else if (node.type === "send_video") {
     const data = node.data as unknown as SendMediaNodeData;
+    const caption = data.caption ? render(data.caption, vars) : undefined;
     try {
-      await sendMediaWithRetries("send_video", () =>
-        wpp.sendVideo(phone, data.url, data.caption ? render(data.caption, vars) : undefined)
-      );
+      let waMessageId: string | null = null;
+      await sendMediaWithRetries("send_video", async () => {
+        waMessageId = await wpp.sendVideo(phone, data.url, caption);
+      });
+      await persistFlowOutboundMessage({
+        phone,
+        body: caption?.trim() || "🎬 Vídeo",
+        type: "video",
+        mediaUrl: toPublicMediaUrl(data.url) ?? data.url,
+        waMessageId
+      });
     } catch (err) {
       await logSendFailure(node.type, err);
     }
@@ -498,7 +549,14 @@ async function executeNode(
   } else if (node.type === "send_audio") {
     const data = node.data as unknown as SendMediaNodeData;
     try {
-      await wpp.sendAudio(phone, data.url);
+      const waMessageId = await wpp.sendAudio(phone, data.url);
+      await persistFlowOutboundMessage({
+        phone,
+        body: "🎤 Áudio",
+        type: "audio",
+        mediaUrl: toPublicMediaUrl(data.url) ?? data.url,
+        waMessageId
+      });
     } catch (err) {
       await logSendFailure(node.type, err);
     }

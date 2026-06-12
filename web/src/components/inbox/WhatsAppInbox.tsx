@@ -644,10 +644,11 @@ export function WhatsAppInbox() {
       return;
     }
     activeChatIdRef.current = selected.id;
+    setMessages([]);
     loadMessages(selected);
     const t = setInterval(() => loadMessages(selected, true), 2500);
     return () => clearInterval(t);
-  }, [selected, pageVisible, loadMessages]);
+  }, [selected?.id, pageVisible, loadMessages]);
 
   useEffect(() => {
     if (messages.length > lastMsgCountRef.current) {
