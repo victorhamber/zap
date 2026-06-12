@@ -13,8 +13,9 @@ import {
 } from "../waJid.js";
 import {
   MEDIA_SEND_URL_THRESHOLD_BYTES,
+  fetchRemoteMediaBase64,
+  loadUploadMediaBase64,
   publicUploadUrl,
-  readUploadFileBase64,
   rewriteUploadUrlForWpp,
   uploadFilenameFromUrl
 } from "../uploads.js";
@@ -324,7 +325,7 @@ function inferMimeType(fileName?: string, mimeHint?: string): string {
 const IMAGE_INLINE_BASE64_MAX_BYTES = 16 * 1024 * 1024;
 const WHATSAPP_CAPTION_MAX_CHARS = 1024;
 /** Espaço mínimo entre sendMedia — evita HTTP 400 intermitente em broadcast. */
-const MEDIA_SEND_MIN_GAP_MS = 2500;
+const MEDIA_SEND_MIN_GAP_MS = 3500;
 
 type ResolvedMediaInput = { media: string; mimeType: string; fileName: string };
 const mediaInputCache = new Map<string, Promise<ResolvedMediaInput>>();
@@ -346,11 +347,15 @@ async function readLocalUploadBase64(
   url: string
 ): Promise<{ base64: string; filename: string } | null> {
   for (let i = 0; i < 4; i++) {
-    const local = await readUploadFileBase64(url);
+    const local = await loadUploadMediaBase64(url);
     if (local?.base64) return local;
     await sleep(120 * (i + 1));
   }
   return null;
+}
+
+function invalidateMediaInputCache(media: string, mimeHint?: string, fileNameHint?: string): void {
+  mediaInputCache.delete(`${media}|${mimeHint ?? ""}|${fileNameHint ?? ""}`);
 }
 
 async function waitMediaSendSlot(): Promise<void> {
@@ -437,6 +442,19 @@ async function resolveEvolutionMediaInput(
         };
       }
     }
+
+    const effectiveMime = inferMimeType(fromUrl ?? fileName, mimeHint);
+    if (effectiveMime.startsWith("image/")) {
+      const remote = await fetchRemoteMediaBase64(media, IMAGE_INLINE_BASE64_MAX_BYTES);
+      if (remote?.base64) {
+        return {
+          media: remote.base64,
+          mimeType: remote.mimeType || effectiveMime,
+          fileName: fromUrl ?? fileName
+        };
+      }
+    }
+
     const resolvedMime = inferMimeType(fromUrl ?? fileName, mimeHint);
     return {
       media: mediaUrlForEvolution(media),
@@ -475,7 +493,7 @@ async function postSendMedia(
 ): Promise<string | null> {
   let lastError = `${label}: HTTP error`;
 
-  for (let attempt = 0; attempt < 5; attempt++) {
+  for (let attempt = 0; attempt < 7; attempt++) {
     await waitMediaSendSlot();
     const res = await evoFetch(`/message/sendMedia/${encodeURIComponent(instance)}`, {
       method: "POST",
@@ -485,8 +503,8 @@ async function postSendMedia(
     if (res.ok) return extractEvolutionSentMessageId(data);
 
     lastError = `${label}: ${formatWppError(res.status, data)}`;
-    if (attempt < 4 && isRetriableSendError(res.status, lastError)) {
-      await sleep(1200 * (attempt + 1));
+    if (attempt < 6 && isRetriableSendError(res.status, lastError)) {
+      await sleep(1500 * (attempt + 1));
       continue;
     }
     throw new Error(lastError);
@@ -518,6 +536,64 @@ async function sendImageOnce(
   );
 }
 
+async function resolveImageMediaForcedBase64(
+  url: string,
+  opts?: { mimeType?: string; fileName?: string }
+): Promise<ResolvedMediaInput | null> {
+  invalidateMediaInputCache(url, opts?.mimeType, opts?.fileName);
+
+  const local = await readLocalUploadBase64(url);
+  if (local?.base64) {
+    const mimeType = inferMimeType(local.filename, opts?.mimeType);
+    return {
+      media: local.base64,
+      mimeType,
+      fileName: opts?.fileName?.trim() || local.filename
+    };
+  }
+
+  const remote = await fetchRemoteMediaBase64(url, IMAGE_INLINE_BASE64_MAX_BYTES);
+  if (remote?.base64) {
+    const fromUrl = uploadFilenameFromUrl(url);
+    return {
+      media: remote.base64,
+      mimeType: remote.mimeType || inferMimeType(fromUrl ?? opts?.fileName, opts?.mimeType),
+      fileName: opts?.fileName?.trim() || fromUrl || "imagem.jpg"
+    };
+  }
+
+  return null;
+}
+
+async function sendImageOnceForceBase64(
+  phone: string,
+  url: string,
+  caption?: string,
+  opts?: { mimeType?: string; fileName?: string }
+): Promise<string | null> {
+  const forced = await resolveImageMediaForcedBase64(url, opts);
+  if (!forced) return null;
+
+  const instance = await getInstanceName();
+  const number = await resolveEvolutionSendNumber(phone);
+  return postSendMedia(
+    instance,
+    {
+      number,
+      mediatype: "image",
+      media: forced.media,
+      mimetype: forced.mimeType,
+      fileName: forced.fileName,
+      caption: truncateCaption(caption)
+    },
+    "sendMedia image"
+  );
+}
+
+function isHttp400MediaError(message: string): boolean {
+  return /sendMedia image:\s*HTTP 400/i.test(message);
+}
+
 export async function sendImage(
   phone: string,
   url: string,
@@ -533,6 +609,14 @@ export async function sendImage(
       return await sendImageOnce(variant, url, caption, opts);
     } catch (err) {
       lastErr = err instanceof Error ? err : new Error(String(err));
+      if (isHttp400MediaError(lastErr.message)) {
+        try {
+          const fallback = await sendImageOnceForceBase64(variant, url, caption, opts);
+          if (fallback !== null) return fallback;
+        } catch (fallbackErr) {
+          lastErr = fallbackErr instanceof Error ? fallbackErr : new Error(String(fallbackErr));
+        }
+      }
       if (i < variants.length - 1 && isRetriablePhoneVariantError(lastErr.message)) {
         continue;
       }

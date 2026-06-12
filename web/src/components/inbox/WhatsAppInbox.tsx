@@ -6,6 +6,7 @@ import type { QuickReply, QuickReplyKind } from "../../types/quickReply";
 import { WaAudioPlayer } from "./WaAudioPlayer";
 import { WaMediaViewer } from "./WaMediaViewer";
 import { WhatsAppAvatar } from "./WhatsAppAvatar";
+import { ForwardMessageModal } from "./ForwardMessageModal";
 import { LinkifyText } from "./LinkifyText";
 
 type Tag = { id: string; name: string; color: string };
@@ -360,23 +361,51 @@ const ChatListRow = memo(function ChatListRow({
   );
 });
 
-const MessageRow = memo(function MessageRow({ message: m }: { message: Message }) {
+function IconForward({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden>
+      <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8-8-8z" />
+    </svg>
+  );
+}
+
+const MessageRow = memo(function MessageRow({
+  message: m,
+  onForward
+}: {
+  message: Message;
+  onForward?: (message: Message) => void;
+}) {
   const isVisualMedia =
     m.type === "image" || m.type === "sticker" || m.type === "video" || m.type === "audio" || m.type === "ptt";
   return (
-    <div className={`flex py-0.5 ${m.fromMe ? "justify-end" : "justify-start"}`}>
-      <div
-        className={`wa-bubble break-words ${
-          isVisualMedia ? "max-w-[min(88%,480px)] px-1.5 py-1" : "max-w-[min(78%,420px)] px-3 py-1.5"
-        } ${m.fromMe ? "wa-bubble-out" : "wa-bubble-in"}`}
-      >
-        <InboxMessageContent message={m} />
+    <div className={`group flex py-0.5 ${m.fromMe ? "justify-end" : "justify-start"}`}>
+      <div className="relative max-w-full">
+        {onForward && (
+          <button
+            type="button"
+            onClick={() => onForward(m)}
+            title="Encaminhar mensagem"
+            className={`absolute top-0 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-[#233138] text-[#aebac1] shadow-md opacity-0 transition group-hover:opacity-100 hover:bg-[#2a3942] hover:text-[#e9edef] ${
+              m.fromMe ? "-left-9" : "-right-9"
+            }`}
+          >
+            <IconForward />
+          </button>
+        )}
         <div
-          className={`text-[10px] mt-0.5 text-right ${
-            m.fromMe ? "text-[#99beb7]" : "text-[#8696a0]"
-          }`}
+          className={`wa-bubble break-words ${
+            isVisualMedia ? "max-w-[min(88vw,480px)] px-1.5 py-1" : "max-w-[min(78vw,420px)] px-3 py-1.5"
+          } ${m.fromMe ? "wa-bubble-out" : "wa-bubble-in"}`}
         >
-          {formatTime(m.timestamp)}
+          <InboxMessageContent message={m} />
+          <div
+            className={`text-[10px] mt-0.5 text-right ${
+              m.fromMe ? "text-[#99beb7]" : "text-[#8696a0]"
+            }`}
+          >
+            {formatTime(m.timestamp)}
+          </div>
         </div>
       </div>
     </div>
@@ -428,6 +457,8 @@ export function WhatsAppInbox() {
   const qrFileRef = useRef<HTMLInputElement>(null);
   const [msgHint, setMsgHint] = useState("");
   const [sendError, setSendError] = useState("");
+  const [forwardMessage, setForwardMessage] = useState<Message | null>(null);
+  const [forwardNotice, setForwardNotice] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastMsgCountRef = useRef(0);
   const activeChatIdRef = useRef<string | null>(null);
@@ -1252,6 +1283,11 @@ export function WhatsAppInbox() {
                 {flowNotice}
               </div>
             )}
+            {forwardNotice && (
+              <div className="px-3 py-1.5 bg-[#00a884]/10 border-b border-[#00a884]/30 text-xs text-[#53bdeb]">
+                {forwardNotice}
+              </div>
+            )}
 
             <div className="px-3 py-1.5 bg-[#111b21] border-b border-[#2a3942]/60 flex flex-wrap gap-1.5 items-center max-h-[72px] overflow-y-auto">
               <span className="text-[11px] text-[#8696a0]">Tags do contato:</span>
@@ -1525,7 +1561,11 @@ export function WhatsAppInbox() {
                 </p>
               )}
               {visibleMessages.map((m) => (
-                <MessageRow key={m.id} message={m} />
+                <MessageRow
+                  key={m.id}
+                  message={m}
+                  onForward={setForwardMessage}
+                />
               ))}
               <div ref={messagesEndRef} />
             </div>
@@ -1548,6 +1588,24 @@ export function WhatsAppInbox() {
           </div>
         )}
       </section>
+
+      {forwardMessage && (
+        <ForwardMessageModal
+          message={forwardMessage}
+          chats={chats}
+          tags={tags}
+          excludeChatId={selected?.id}
+          onClose={() => setForwardMessage(null)}
+          onDone={({ sent, failed }) => {
+            setForwardNotice(
+              failed > 0
+                ? `${sent} encaminhada(s), ${failed} falha(s).`
+                : `${sent} mensagem(ns) encaminhada(s) com sucesso.`
+            );
+            window.setTimeout(() => setForwardNotice(""), 8000);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -100,6 +100,55 @@ export async function readUploadFileBase64(
   }
 }
 
+/** Lê upload do disco ou baixa via HTTP (worker pode não ter volume de uploads). */
+export async function loadUploadMediaBase64(
+  publicOrInternalUrl: string
+): Promise<{ base64: string; filename: string } | null> {
+  const local = await readUploadFileBase64(publicOrInternalUrl);
+  if (local?.base64) return local;
+
+  const name = uploadFilenameFromUrl(publicOrInternalUrl);
+  if (!name) return null;
+
+  const candidates = [
+    uploadUrlForWpp(name),
+    publicUploadUrl(name),
+    publicOrInternalUrl.trim()
+  ].filter((u, i, arr) => Boolean(u) && arr.indexOf(u) === i);
+
+  for (const url of candidates) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(45_000) });
+      if (!res.ok) continue;
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.length === 0) continue;
+      return { base64: buf.toString("base64"), filename: name };
+    } catch {
+      /* tenta próxima URL */
+    }
+  }
+  return null;
+}
+
+/** Baixa URL externa e retorna base64 (para imagens no fluxo). */
+export async function fetchRemoteMediaBase64(
+  url: string,
+  maxBytes: number
+): Promise<{ base64: string; mimeType: string } | null> {
+  const trimmed = url.trim();
+  if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) return null;
+  try {
+    const res = await fetch(trimmed, { signal: AbortSignal.timeout(45_000) });
+    if (!res.ok) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length === 0 || buf.length > maxBytes) return null;
+    const mimeType = res.headers.get("content-type")?.split(";")[0]?.trim() || "image/jpeg";
+    return { base64: buf.toString("base64"), mimeType };
+  } catch {
+    return null;
+  }
+}
+
 export async function getUploadFileSize(publicOrInternalUrl: string): Promise<number | null> {
   const name = uploadFilenameFromUrl(publicOrInternalUrl);
   if (!name) return null;

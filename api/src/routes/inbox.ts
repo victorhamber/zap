@@ -285,6 +285,73 @@ export async function inboxRoutes(app: FastifyInstance) {
     }
   });
 
+  app.post("/api/inbox/forward-message", async (req) => {
+    const body = req.body as {
+      targets?: Array<{ chatId?: string; isGroup?: boolean }>;
+      message?: {
+        kind?: "text" | "image" | "video" | "audio" | "document";
+        text?: string;
+        url?: string;
+        caption?: string;
+        filename?: string;
+      };
+    };
+
+    const targets = (body.targets ?? []).filter((t) => t.chatId?.trim());
+    const msg = body.message;
+    if (targets.length === 0) {
+      return { ok: false, message: "Selecione ao menos um contato." };
+    }
+    if (!msg?.kind) {
+      return { ok: false, message: "Mensagem inválida para encaminhar." };
+    }
+
+    const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    let sent = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    for (let i = 0; i < targets.length; i++) {
+      const target = targets[i];
+      const chatId = String(target.chatId).trim();
+      const isGroup = target.isGroup === true;
+      try {
+        if (msg.kind === "text") {
+          const text = (msg.text ?? "").trim();
+          if (!text) throw new Error("Texto vazio");
+          await inbox.sendChatMessage(chatId, text, isGroup);
+        } else {
+          const url = (msg.url ?? "").trim();
+          if (!url) throw new Error("URL da mídia ausente");
+          await inbox.sendChatMedia(chatId, msg.kind, url, {
+            caption: msg.caption,
+            filename: msg.filename,
+            isGroup
+          });
+        }
+        sent++;
+      } catch (e: unknown) {
+        failed++;
+        const errMsg = e instanceof Error ? e.message : String(e);
+        errors.push(`${chatId}: ${errMsg}`);
+      }
+      if (i < targets.length - 1) {
+        await delay(msg.kind === "text" ? 600 : 2600);
+      }
+    }
+
+    return {
+      ok: sent > 0 || failed === 0,
+      sent,
+      failed,
+      errors: errors.slice(0, 8),
+      message:
+        failed > 0
+          ? `${sent} enviado(s), ${failed} falha(s).`
+          : `${sent} mensagem(ns) encaminhada(s).`
+    };
+  });
+
   app.post("/api/inbox/start-flow", async (req, reply) => {
     if (!prisma) return reply.status(503).send({ error: "Banco indisponível" });
     const body = req.body as {

@@ -53,6 +53,33 @@ function render(template: string, vars: Record<string, unknown>): string {
   return Mustache.render(template, vars);
 }
 
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetriableMediaSendError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /sendMedia|HTTP 400|HTTP 429|timeout|econnreset|fetch failed|network|busy/i.test(message);
+}
+
+async function sendMediaWithRetries(
+  label: string,
+  send: () => Promise<unknown>
+): Promise<void> {
+  let last: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await send();
+      return;
+    } catch (err) {
+      last = err;
+      if (attempt >= 2 || !isRetriableMediaSendError(err)) throw err;
+      await sleepMs(4500 * (attempt + 1));
+    }
+  }
+  throw last;
+}
+
 export function resolveFlowTriggerType(graph: FlowGraph): string {
   if (graph.nodes.some((n) => n.type === "trigger_manual")) return "trigger_manual";
   if (graph.nodes.some((n) => n.type === "trigger_hotmart_pending")) {
@@ -451,7 +478,9 @@ async function executeNode(
   } else if (node.type === "send_image") {
     const data = node.data as unknown as SendMediaNodeData;
     try {
-      await wpp.sendImage(phone, data.url, data.caption ? render(data.caption, vars) : undefined);
+      await sendMediaWithRetries("send_image", () =>
+        wpp.sendImage(phone, data.url, data.caption ? render(data.caption, vars) : undefined)
+      );
     } catch (err) {
       await logSendFailure(node.type, err);
     }
@@ -459,7 +488,9 @@ async function executeNode(
   } else if (node.type === "send_video") {
     const data = node.data as unknown as SendMediaNodeData;
     try {
-      await wpp.sendVideo(phone, data.url, data.caption ? render(data.caption, vars) : undefined);
+      await sendMediaWithRetries("send_video", () =>
+        wpp.sendVideo(phone, data.url, data.caption ? render(data.caption, vars) : undefined)
+      );
     } catch (err) {
       await logSendFailure(node.type, err);
     }
