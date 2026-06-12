@@ -105,4 +105,22 @@ export async function flowRoutes(app: FastifyInstance) {
 
     return result;
   });
+
+  /** Dispara o fluxo (gatilho tag) para todos os contatos que já têm a tag, com cadência humanizada. */
+  app.post("/api/flows/:id/dispatch-tag", async (req, reply) => {
+    if (!prisma) return reply.status(503).send({ error: "Banco indisponível" });
+    const id = (req.params as { id: string }).id;
+    const body = req.body as { tagName?: string };
+    const tagName = body.tagName?.trim();
+    if (!tagName) return reply.status(400).send({ error: "tagName obrigatório" });
+
+    try {
+      const { dispatchTagFlowToContactsWithTag } = await import("../services/tagFlowTrigger.js");
+      const result = await dispatchTagFlowToContactsWithTag(id, tagName);
+      return { ok: true, ...result };
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return reply.status(400).send({ error: message });
+    }
+  });
 }

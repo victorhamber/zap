@@ -314,7 +314,8 @@ export async function webhookRoutes(app: FastifyInstance) {
           String(key.remoteJid ?? ""),
           String(key.remoteJidAlt ?? ""),
           String(key.participant ?? ""),
-          String(key.participantAlt ?? "")
+          String(key.participantAlt ?? ""),
+          String(body.sender ?? "")
         ].filter(Boolean)
       });
       saved = true;

@@ -46,7 +46,14 @@ function summaryFor(type: string, data: Record<string, unknown>): string {
   if (type === "schedule_at") return String(data.datetime ?? "").slice(0, 16);
   if (type.startsWith("send_")) return String(data.url ?? "").slice(0, 30);
   if (type === "trigger_inbound" && data.keyword) return `Palavra: ${data.keyword}`;
-  if (type === "trigger_inbound" || type === "trigger_tag") {
+  if (type === "trigger_tag") {
+    const tags = (data.tags as string[] | undefined) ?? [];
+    const min = Number(data.staggerMinSec ?? 10);
+    const max = Number(data.staggerMaxSec ?? 30);
+    const stagger = data.staggerEnabled !== false ? ` · ${min}–${max}s` : "";
+    return tags.length ? `Tags: ${tags.join(", ")}${stagger}` : `Configure tags${stagger}`;
+  }
+  if (type === "trigger_inbound") {
     const tags = (data.tags as string[] | undefined) ?? [];
     if (tags.length) return tags.join(", ");
   }

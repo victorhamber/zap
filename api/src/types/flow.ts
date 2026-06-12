@@ -111,9 +111,24 @@ export type TriggerInboundData = {
 export type TriggerTagData = {
   /** Dispara quando o contato recebe uma dessas tags */
   tags: string[];
+  /** Espaça inícios entre contatos (anti-spam). Padrão: ligado. */
+  staggerEnabled?: boolean;
+  /** Intervalo mínimo entre um contato e o próximo (segundos). */
+  staggerMinSec?: number;
+  /** Intervalo máximo entre contatos (segundos). O valor real é aleatório entre min e max. */
+  staggerMaxSec?: number;
 };
 
 export type FlowJobPayload = {
   flowRunId: string;
   nodeId: string;
+};
+
+export type FlowStartRunJobPayload = {
+  flowId: string;
+  triggerType: string;
+  contactPhone: string;
+  variables: Record<string, unknown>;
+  externalId?: string;
+  manualStart?: boolean;
 };
