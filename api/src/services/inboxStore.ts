@@ -13,6 +13,7 @@ import {
   expandChatIdVariants,
   getMappedPhoneJid,
   loadWaLidMap,
+  pickPhoneJid,
   recordWaJidMapping
 } from "./waLidMap.js";
 
@@ -152,9 +153,26 @@ async function setSessionInboxState(
   });
 }
 
-function ownerPhoneFilter(ownerPhone: string | null): { ownerPhone?: string } {
+function ownerPhoneFilter(ownerPhone: string | null): { OR?: Array<{ ownerPhone: string }> } {
   if (!ownerPhone) return {};
-  return { ownerPhone };
+  // Mensagens gravadas antes do ownerPhone sincronizar ficam com "".
+  return { OR: [{ ownerPhone }, { ownerPhone: "" }] };
+}
+
+async function resolveStorageChatId(
+  session: string,
+  chatId: string,
+  peerJids: string[] = []
+): Promise<string> {
+  await recordWaJidMapping(session, chatId, ...peerJids);
+  const mapped = getMappedPhoneJid(session, chatId);
+  if (mapped) return mapped;
+  const phone = pickPhoneJid([chatId, ...peerJids]);
+  if (phone) {
+    await recordWaJidMapping(session, chatId, phone, ...peerJids);
+    return phone;
+  }
+  return chatId;
 }
 
 export type InboxOwnerSyncResult = {
@@ -453,8 +471,9 @@ export async function saveInboxMessage(params: {
 
   const session = (params.sessionName ?? (await getSessionName())).trim().toLowerCase();
   const ownerPhone = await resolveOwnerPhoneForSave(session, params.ownerPhone);
-  const chatId = normalizeDirectJid(extractWaId(params.chatId) || params.chatId.trim());
-  if (!chatId || chatId.includes("status@broadcast")) return;
+  const rawChatId = normalizeDirectJid(extractWaId(params.chatId) || params.chatId.trim());
+  if (!rawChatId || rawChatId.includes("status@broadcast")) return;
+  const chatId = await resolveStorageChatId(session, rawChatId, params.peerJids ?? []);
 
   const type = params.type ?? "chat";
   const { body, mediaUrl } = await resolveStoredMedia(type, params.body, params.mediaUrl);
@@ -578,9 +597,10 @@ export async function listStoredMessages(
       chatId: { in: variants },
       ...(captureSince ? { timestamp: { gte: captureSince } } : {})
     },
-    orderBy: { timestamp: "asc" },
+    orderBy: { timestamp: "desc" },
     take: limit
   });
+  rows.reverse();
 
   const seen = new Set<string>();
   const seenContent = new Set<string>();
@@ -596,10 +616,39 @@ export async function listStoredMessages(
 
   dedupedRows.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
 
-  const messages: NormalizedMessage[] = dedupedRows.map((r) => {
+  const { isInboundMediaType, downloadMediaForStoredMessage } = await import("./wppMedia.js");
+  const hydrateCandidates = dedupedRows
+    .filter((r) => !r.mediaUrl && r.waMessageId && isInboundMediaType(r.type === "ptt" ? "audio" : r.type))
+    .slice(-8);
+  const hydratedUrls = new Map<string, string>();
+
+  for (const r of hydrateCandidates) {
+    try {
+      const downloaded = await downloadMediaForStoredMessage({
+        chatId: r.chatId,
+        waMessageId: r.waMessageId!,
+        type: r.type === "ptt" ? "audio" : r.type
+      });
+      if (downloaded) {
+        const publicUrl = toPublicMediaUrl(downloaded) ?? downloaded;
+        hydratedUrls.set(r.id, publicUrl);
+        await updateInboxMessageMedia(r.waMessageId!, downloaded);
+      }
+    } catch {
+      /* mídia indisponível */
+    }
+  }
+
+  const messages: NormalizedMessage[] = [];
+  for (const r of dedupedRows) {
     let body = r.body;
     let mediaUrl = toPublicMediaUrl(r.mediaUrl) ?? r.mediaUrl;
     const normalizedType = r.type === "ptt" ? "audio" : r.type;
+
+    if (!mediaUrl && hydratedUrls.has(r.id)) {
+      mediaUrl = hydratedUrls.get(r.id) ?? null;
+    }
+
     if (!mediaUrl && isLikelyBase64Payload(body)) {
       mediaUrl =
         body.startsWith("data:")
@@ -609,15 +658,15 @@ export async function listStoredMessages(
     } else if (isLikelyBase64Payload(body)) {
       body = labelForMediaType(r.type) || body.slice(0, 40);
     }
-    return {
+    messages.push({
       id: r.id,
       body,
       fromMe: r.fromMe,
       timestamp: r.timestamp.getTime(),
       type: normalizedType,
       mediaUrl
-    };
-  });
+    });
+  }
 
   return {
     messages,

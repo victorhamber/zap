@@ -216,6 +216,13 @@ const InboxMessageContent = memo(function InboxMessageContent({
       </div>
     );
   }
+  if ((m.type === "audio" || m.type === "ptt") && !url) {
+    return (
+      <p className="text-sm text-[var(--wa-text-secondary)] italic">
+        🎤 Áudio — aguardando download da mídia…
+      </p>
+    );
+  }
   if (isMedia && (m.type === "audio" || m.type === "ptt")) {
     return (
       <div className="space-y-1">
@@ -271,6 +278,25 @@ function mergePendingMessages(server: Message[], pending: Message[]): Message[] 
 
 function isOptimisticMessageId(id: string): boolean {
   return id.startsWith("opt-");
+}
+
+function chatPhoneDigits(chat: Pick<Chat, "id" | "phone">): string {
+  return (chat.phone ?? "").replace(/\D/g, "") || chat.id.replace(/@.*/, "").replace(/\D/g, "");
+}
+
+function findMatchingChat(chats: Chat[], current: Chat): Chat | undefined {
+  const digits = chatPhoneDigits(current);
+  return chats.find(
+    (c) =>
+      c.id === current.id ||
+      (digits.length >= 10 && chatPhoneDigits(c) === digits)
+  );
+}
+
+function messagesSignature(list: Message[]): string {
+  if (list.length === 0) return "0";
+  const tail = list.slice(-3);
+  return `${list.length}|${tail.map((m) => `${m.id}:${m.timestamp}:${m.mediaUrl ?? ""}`).join(";")}`;
 }
 
 function formatTime(ts: number): string {
@@ -481,7 +507,17 @@ export function WhatsAppInbox() {
 
       const connected = r.connected ?? sessionProfile?.connected ?? false;
       setWaConnected(connected);
-      setChats(r.chats ?? []);
+      const nextChats = r.chats ?? [];
+      setChats(nextChats);
+      setSelected((sel) => {
+        if (!sel) return sel;
+        const updated = findMatchingChat(nextChats, sel);
+        if (!updated) return sel;
+        if (updated.id !== sel.id) {
+          activeChatIdRef.current = updated.id;
+        }
+        return updated;
+      });
 
       if (r.chats.length === 0) {
         if (connected) {
@@ -529,12 +565,7 @@ export function WhatsAppInbox() {
         if (activeChatIdRef.current !== requestChatId) return prev;
         const pending = prev.filter((m) => isOptimisticMessageId(m.id));
         const merged = mergePendingMessages(next, pending);
-        if (
-          prev.length === merged.length &&
-          prev.length > 0 &&
-          prev[prev.length - 1]?.id === merged[merged.length - 1]?.id &&
-          prev[prev.length - 1]?.mediaUrl === merged[merged.length - 1]?.mediaUrl
-        ) {
+        if (messagesSignature(prev) === messagesSignature(merged)) {
           return prev;
         }
         return merged;

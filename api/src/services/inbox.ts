@@ -793,9 +793,16 @@ export async function fetchMessages(
 
   try {
     const { syncRecentMessagesFromWpp } = await import("./inboxSync.js");
-    await syncRecentMessagesFromWpp(chatId, options.isGroup, 40);
-    if (mapped && mapped !== options.chatId) {
-      await syncRecentMessagesFromWpp(options.chatId, options.isGroup, 40);
+    const { expandChatIdVariants } = await import("./waLidMap.js");
+    const syncTargets = [...new Set([chatId, options.chatId, ...(mapped ? [mapped] : [])])];
+    for (const target of syncTargets) {
+      await syncRecentMessagesFromWpp(target, options.isGroup, 50);
+    }
+    const variants = await expandChatIdVariants(session, chatId);
+    for (const variant of variants) {
+      if (!syncTargets.includes(variant)) {
+        await syncRecentMessagesFromWpp(variant, options.isGroup, 50);
+      }
     }
   } catch {
     /* webhook é o caminho principal; sync é fallback */

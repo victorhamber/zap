@@ -32,7 +32,7 @@ function jidCandidates(...values: unknown[]): string[] {
   return out;
 }
 
-function pickPhoneJid(candidates: string[]): string | null {
+export function pickPhoneJid(candidates: string[]): string | null {
   const normalized = candidates.map((c) => normalizeDirectJid(c)).filter(Boolean);
   const best = pickBestJid(normalized);
   const d = digitsOnly(best);
@@ -151,6 +151,22 @@ export function getMappedPhoneJid(session: string, chatId: string): string | nul
   return null;
 }
 
+/** Todos os @lid conhecidos que apontam para o mesmo telefone (busca reversa). */
+export function getLidsMappedToPhone(session: string, phoneJid: string): string[] {
+  const norm = session.trim().toLowerCase();
+  const target = normalizeDirectJid(phoneJid.trim());
+  if (!target) return [];
+
+  const out: string[] = [];
+  const prefix = `${norm}|`;
+  for (const [k, v] of mem.entries()) {
+    if (v !== target || !k.startsWith(prefix)) continue;
+    const lid = k.slice(prefix.length);
+    if (lid && !out.includes(lid)) out.push(lid);
+  }
+  return out;
+}
+
 export async function expandChatIdVariants(session: string, chatId: string): Promise<string[]> {
   const out: string[] = [];
   const add = (id: string) => {
@@ -179,6 +195,14 @@ export async function expandChatIdVariants(session: string, chatId: string): Pro
     if (md) {
       add(`${md}@s.whatsapp.net`);
       add(`${md}@c.us`);
+    }
+    for (const lid of getLidsMappedToPhone(session, mapped)) {
+      add(lid);
+    }
+  } else if (isValidWhatsAppPhoneDigits(digits)) {
+    const phoneJid = `${digits}@s.whatsapp.net`;
+    for (const lid of getLidsMappedToPhone(session, phoneJid)) {
+      add(lid);
     }
   }
 
