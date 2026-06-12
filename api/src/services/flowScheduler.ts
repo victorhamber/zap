@@ -1,5 +1,6 @@
 import { prisma } from "../prisma.js";
 import { continueFlowRun } from "../engine/executor.js";
+import { recoverOverdueFlowStarts } from "./flowStartRecovery.js";
 
 const POLL_INTERVAL_MS = 60_000;
 let timer: ReturnType<typeof setInterval> | null = null;
@@ -68,12 +69,14 @@ export async function processDueScheduledJobs(): Promise<number> {
 export function startFlowScheduler(): void {
   if (!prisma || timer) return;
 
-  void processDueScheduledJobs().then((n) => {
-    if (n > 0) console.log(`[flowScheduler] ${n} job(s) vencido(s) processado(s) na inicialização`);
+  void Promise.all([processDueScheduledJobs(), recoverOverdueFlowStarts()]).then(([due, starts]) => {
+    if (due > 0) console.log(`[flowScheduler] ${due} delay(s) vencido(s) na inicialização`);
+    if (starts > 0) console.log(`[flowScheduler] ${starts} início(s) de fluxo recuperado(s) na inicialização`);
   });
 
   timer = setInterval(() => {
     void processDueScheduledJobs();
+    void recoverOverdueFlowStarts();
   }, POLL_INTERVAL_MS);
 
   console.log(`[flowScheduler] Polling a cada ${POLL_INTERVAL_MS / 1000}s para delays vencidos`);

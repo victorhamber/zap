@@ -325,11 +325,29 @@ export function FlowEditor() {
   async function testFlow() {
     if (!id || !testPhone) return;
     setStatus("Disparando teste…");
-    await api(`/api/flows/${id}/test`, {
+    const result = await api<{
+      runId?: string;
+      queued?: boolean;
+      delayMs?: number;
+      skipped?: boolean;
+      reason?: string;
+    }>(`/api/flows/${id}/test`, {
       method: "POST",
       body: JSON.stringify({ phone: testPhone })
     });
-    setStatus("Teste enfileirado/executado.");
+    if (result.skipped) {
+      setStatus(
+        result.reason === "disabled"
+          ? "Fluxo desativado — clique em Publicar antes de testar."
+          : `Teste ignorado: ${result.reason ?? "motivo desconhecido"}`
+      );
+      return;
+    }
+    if (result.queued && result.delayMs) {
+      setStatus(`Teste na fila — disparo em ~${Math.ceil(result.delayMs / 1000)}s.`);
+      return;
+    }
+    setStatus(result.runId ? `Teste executado (run ${result.runId.slice(0, 8)}…).` : "Teste executado.");
   }
 
   const cfg = (selectedNode?.data?.config ?? {}) as Record<string, unknown>;

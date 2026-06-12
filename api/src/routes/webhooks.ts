@@ -62,8 +62,21 @@ export async function webhookRoutes(app: FastifyInstance) {
       };
     }
 
+    if (!flow.enabled) {
+      console.warn(`[hotmart] Fluxo ${flowId} desativado — compra ignorada (event=${event})`);
+      return { skipped: true, reason: "flow_disabled", event, triggerType: hotmartTrigger.triggerType };
+    }
+
     const mapping = getHotmartMappingFromGraph(graph);
-    const vars = extractHotmartVariables(payload, mapping);
+    let vars: Awaited<ReturnType<typeof extractHotmartVariables>>;
+    try {
+      vars = extractHotmartVariables(payload, mapping);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[hotmart] flow=${flowId} event=${event} erro ao extrair dados:`, message);
+      return reply.status(422).send({ error: message, event, flowId });
+    }
+
     const externalSuffix =
       hotmartTrigger.triggerType === "trigger_hotmart_pending" ? "pending" : "approved";
 
@@ -74,6 +87,11 @@ export async function webhookRoutes(app: FastifyInstance) {
       variables: vars,
       externalId: `${String(vars.purchaseId)}_${externalSuffix}`
     });
+
+    console.log(
+      `[hotmart] flow=${flowId} event=${event} phone=${vars.phone} purchase=${vars.purchaseId}`,
+      result
+    );
 
     return { ...result, event, triggerType: hotmartTrigger.triggerType };
   });
