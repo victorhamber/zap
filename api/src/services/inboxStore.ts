@@ -548,6 +548,7 @@ export async function listStoredChatSummaries(): Promise<NormalizedChat[]> {
   const session = await getSessionName();
   const ownerPhone = await getStoredOwnerPhone();
   const captureSince = await getCaptureSince();
+  await loadWaLidMap(session);
   const rows = await prisma.inboxMessage.findMany({
     where: {
       session,
@@ -561,7 +562,9 @@ export async function listStoredChatSummaries(): Promise<NormalizedChat[]> {
   });
 
   return rows.map((r) => {
-    const id = r.chatId;
+    let id = r.chatId;
+    const mapped = getMappedPhoneJid(session, id);
+    if (mapped) id = mapped;
     const isGroup = id.includes("@g.us");
     const phone = digitsOnly(id.replace(/@.*/, "")) || id.replace(/@.*/, "");
     return {

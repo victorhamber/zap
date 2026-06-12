@@ -728,15 +728,19 @@ export async function fetchChats(): Promise<FetchChatsResult> {
       };
     });
 
+    const resolvedMap = new Map<string, NormalizedChat>();
+    mergeChats(resolvedMap, resolvedChats, session);
+    const dedupedChats = [...resolvedMap.values()];
+
     const scopedChats =
       captureMs > 0
-        ? resolvedChats.filter((c) => {
+        ? dedupedChats.filter((c) => {
             const key = chatDedupeKey(c, session);
             if (localKeys.has(key)) return true;
             if (c.timestamp <= 0) return false;
             return c.timestamp >= captureMs - 60_000;
           })
-        : resolvedChats;
+        : dedupedChats;
 
     const chats = mergeContactNames(
       scopedChats.sort((a, b) => {
