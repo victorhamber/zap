@@ -18,6 +18,15 @@ import {
   recordWaJidMapping
 } from "./waLidMap.js";
 
+function isPrismaUniqueConflict(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    (err as { code: string }).code === "P2002"
+  );
+}
+
 function digitsOnly(s: string): string {
   return s.replace(/\D/g, "");
 }
@@ -448,7 +457,7 @@ async function findDuplicateInboxMessage(params: {
 
   if (params.waMessageId) {
     const byWaId = await prisma.inboxMessage.findFirst({
-      where: { session: params.session, waMessageId: params.waMessageId, ...ownerWhere },
+      where: { session: params.session, waMessageId: params.waMessageId },
       select: { id: true, waMessageId: true }
     });
     if (byWaId) return byWaId;
@@ -527,19 +536,24 @@ export async function saveInboxMessage(params: {
     () => {}
   );
 
-  await prisma.inboxMessage.create({
-    data: {
-      session,
-      ownerPhone,
-      chatId,
-      body,
-      fromMe: params.fromMe,
-      type,
-      mediaUrl,
-      waMessageId,
-      timestamp
-    }
-  });
+  try {
+    await prisma.inboxMessage.create({
+      data: {
+        session,
+        ownerPhone,
+        chatId,
+        body,
+        fromMe: params.fromMe,
+        type,
+        mediaUrl,
+        waMessageId,
+        timestamp
+      }
+    });
+  } catch (err) {
+    if (isPrismaUniqueConflict(err) && waMessageId) return;
+    throw err;
+  }
 }
 
 export async function updateInboxMessageMedia(

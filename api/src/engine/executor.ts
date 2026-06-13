@@ -59,27 +59,32 @@ function sleepMs(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function isRetriableMediaSendError(err: unknown): boolean {
+function isRetriableSendError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);
-  return /sendMedia|HTTP 400|HTTP 429|timeout|econnreset|fetch failed|network|busy/i.test(message);
+  return /sendText|sendMedia|HTTP 400|HTTP 429|timeout|econnreset|fetch failed|network|busy/i.test(
+    message
+  );
+}
+
+async function sendWithRetries<T>(send: () => Promise<T>): Promise<T> {
+  let last: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await send();
+    } catch (err) {
+      last = err;
+      if (attempt >= 2 || !isRetriableSendError(err)) throw err;
+      await sleepMs(4500 * (attempt + 1));
+    }
+  }
+  throw last;
 }
 
 async function sendMediaWithRetries(
   label: string,
   send: () => Promise<unknown>
 ): Promise<void> {
-  let last: unknown;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      await send();
-      return;
-    } catch (err) {
-      last = err;
-      if (attempt >= 2 || !isRetriableMediaSendError(err)) throw err;
-      await sleepMs(4500 * (attempt + 1));
-    }
-  }
-  throw last;
+  await sendWithRetries(send);
 }
 
 function contactStorageJid(phone: string): string {
@@ -496,14 +501,22 @@ async function executeNode(
   if (node.type === "send_text") {
     const data = node.data as unknown as SendTextNodeData;
     const text = render(data.text ?? "", vars);
+    if (!text.trim()) {
+      await logStep(flowRunId, nodeId, node.type, "failed", "Texto da mensagem vazio");
+      throw new Error("Texto da mensagem vazio");
+    }
     try {
-      const waMessageId = await wpp.sendText(phone, text);
-      await persistFlowOutboundMessage({
-        phone,
-        body: text,
-        type: "chat",
-        waMessageId
-      });
+      const waMessageId = await sendWithRetries(() => wpp.sendText(phone, text));
+      try {
+        await persistFlowOutboundMessage({
+          phone,
+          body: text,
+          type: "chat",
+          waMessageId
+        });
+      } catch {
+        /* webhook ou gravação paralela — envio já foi feito */
+      }
     } catch (err) {
       await logSendFailure(node.type, err);
     }
@@ -516,13 +529,17 @@ async function executeNode(
       await sendMediaWithRetries("send_image", async () => {
         waMessageId = await wpp.sendImage(phone, data.url, caption);
       });
-      await persistFlowOutboundMessage({
-        phone,
-        body: caption?.trim() || "📷 Imagem",
-        type: "image",
-        mediaUrl: toPublicMediaUrl(data.url) ?? data.url,
-        waMessageId
-      });
+      try {
+        await persistFlowOutboundMessage({
+          phone,
+          body: caption?.trim() || "📷 Imagem",
+          type: "image",
+          mediaUrl: toPublicMediaUrl(data.url) ?? data.url,
+          waMessageId
+        });
+      } catch {
+        /* gravação paralela com webhook */
+      }
     } catch (err) {
       await logSendFailure(node.type, err);
     }
@@ -535,13 +552,17 @@ async function executeNode(
       await sendMediaWithRetries("send_video", async () => {
         waMessageId = await wpp.sendVideo(phone, data.url, caption);
       });
-      await persistFlowOutboundMessage({
-        phone,
-        body: caption?.trim() || "🎬 Vídeo",
-        type: "video",
-        mediaUrl: toPublicMediaUrl(data.url) ?? data.url,
-        waMessageId
-      });
+      try {
+        await persistFlowOutboundMessage({
+          phone,
+          body: caption?.trim() || "🎬 Vídeo",
+          type: "video",
+          mediaUrl: toPublicMediaUrl(data.url) ?? data.url,
+          waMessageId
+        });
+      } catch {
+        /* gravação paralela com webhook */
+      }
     } catch (err) {
       await logSendFailure(node.type, err);
     }
@@ -550,13 +571,17 @@ async function executeNode(
     const data = node.data as unknown as SendMediaNodeData;
     try {
       const waMessageId = await wpp.sendAudio(phone, data.url);
-      await persistFlowOutboundMessage({
-        phone,
-        body: "🎤 Áudio",
-        type: "audio",
-        mediaUrl: toPublicMediaUrl(data.url) ?? data.url,
-        waMessageId
-      });
+      try {
+        await persistFlowOutboundMessage({
+          phone,
+          body: "🎤 Áudio",
+          type: "audio",
+          mediaUrl: toPublicMediaUrl(data.url) ?? data.url,
+          waMessageId
+        });
+      } catch {
+        /* gravação paralela com webhook */
+      }
     } catch (err) {
       await logSendFailure(node.type, err);
     }

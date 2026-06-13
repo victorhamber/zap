@@ -19,7 +19,7 @@ import {
   rewriteUploadUrlForWpp,
   uploadFilenameFromUrl
 } from "../uploads.js";
-import { brazilPhoneVariants } from "../../utils/phone.js";
+import { brazilPhoneVariants, canonicalBrazilPhone } from "../../utils/phone.js";
 
 export const MSG_NO_DEVICE =
   "Nenhum WhatsApp conectado na Evolution. Crie/conecte a instância e escaneie o QR.";
@@ -293,13 +293,20 @@ export async function markEvolutionChatAsRead(
 }
 
 export async function sendText(phone: string, message: string): Promise<string | null> {
+  const text = String(message ?? "").trim();
+  if (!text) throw new Error("sendText: mensagem vazia");
+
   const instance = await getInstanceName();
-  const number = await resolveEvolutionSendNumber(phone);
+  let number = await resolveEvolutionSendNumber(phone);
+  const d = digitsOnly(number);
+  if (d.startsWith("55") && d.length >= 12) {
+    number = canonicalBrazilPhone(d);
+  }
   const res = await evoFetch(`/message/sendText/${encodeURIComponent(instance)}`, {
     method: "POST",
     body: JSON.stringify({
       number,
-      text: message
+      text
     })
   });
   const data = await readJson(res);
