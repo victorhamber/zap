@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { isGenericSelfChatName } from "../services/waJid.js";
-import { expandPhoneLookupKeys, canonicalBrazilPhone } from "../utils/phone.js";
+import { expandPhoneLookupKeys, canonicalBrazilPhone, phoneDedupeKey, phoneDigits } from "../utils/phone.js";
 import { prisma } from "../prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import * as inbox from "../services/inbox.js";
@@ -100,6 +100,74 @@ function sanitizeQuickRepliesForSave(list: QuickReply[]): QuickReply[] {
     .filter((r) => r.id && r.title);
 }
 
+type InboxChatRow = {
+  id: string;
+  phone: string;
+  name: string;
+  lastMessage: string;
+  timestamp: number;
+  unreadCount: number;
+  isGroup: boolean;
+  kind: string;
+  contact: ReturnType<typeof contactToJson> | null;
+};
+
+function preferMergedChatId(a: string, b: string): string {
+  const rank = (id: string) => {
+    if (id.endsWith("@g.us")) return 5;
+    if (id.endsWith("@s.whatsapp.net")) return 4;
+    if (id.endsWith("@c.us")) return 3;
+    if (id.endsWith("@lid")) return 1;
+    return 0;
+  };
+  const ra = rank(a);
+  const rb = rank(b);
+  if (ra !== rb) return ra > rb ? a : b;
+  return a.length >= b.length ? a : b;
+}
+
+function mergeInboxChatRows(a: InboxChatRow, b: InboxChatRow): InboxChatRow {
+  const ts = Math.max(a.timestamp, b.timestamp);
+  const ref = a.timestamp >= b.timestamp ? a : b;
+  const other = a.timestamp >= b.timestamp ? b : a;
+  const name =
+    a.name.length >= b.name.length && !/^\d{8,}$/.test(a.name.replace(/\D/g, ""))
+      ? a.name
+      : b.name;
+  return {
+    ...ref,
+    id: preferMergedChatId(a.id, b.id),
+    phone: phoneDedupeKey(phoneDigits(ref.phone || ref.id)) || ref.phone,
+    name,
+    lastMessage: ref.lastMessage || other.lastMessage,
+    timestamp: ts,
+    unreadCount: Math.max(a.unreadCount, b.unreadCount),
+    contact: a.contact ?? b.contact
+  };
+}
+
+/** Última barreira: mesmo contato com JID/telefone em formatos diferentes. */
+function dedupeInboxChatRows(list: InboxChatRow[]): InboxChatRow[] {
+  const map = new Map<string, InboxChatRow>();
+  for (const ch of list) {
+    let key: string;
+    if (ch.kind === "direct" && !ch.isGroup) {
+      const d = phoneDigits(ch.phone || ch.id.replace(/@.*/, ""));
+      if (d.length >= 10) key = `p:${phoneDedupeKey(d)}`;
+      else if (ch.contact?.id) key = `c:${ch.contact.id}`;
+      else key = `id:${ch.id}`;
+    } else {
+      key = `g:${ch.id}`;
+    }
+    const prev = map.get(key);
+    map.set(key, prev ? mergeInboxChatRows(prev, ch) : ch);
+  }
+  return [...map.values()].sort((a, b) => {
+    if (a.timestamp !== b.timestamp) return b.timestamp - a.timestamp;
+    return a.name.localeCompare(b.name, "pt-BR");
+  });
+}
+
 export async function inboxRoutes(app: FastifyInstance) {
   app.addHook("preHandler", requireAuth);
 
@@ -144,33 +212,35 @@ export async function inboxRoutes(app: FastifyInstance) {
         connected,
         ownerPhone,
         ownerPhoneChanged: ownerPhoneChanged === true,
-        chats: chats.map((ch) => {
-          const phone =
-            ch.kind === "direct" && ch.phone ? canonicalBrazilPhone(ch.phone) : ch.phone;
-          const contact = resolveChatContact({ ...ch, phone });
-          const contactName = contact?.name?.trim();
-          const looksLikePhone =
-            !ch.name ||
-            ch.name === ch.phone ||
-            ch.name === phone ||
-            isGenericSelfChatName(ch.name) ||
-            /^\d{8,}$/.test(ch.name.replace(/\D/g, ""));
-          let name =
-            contactName && contactName !== contact?.phone
-              ? contactName
-              : looksLikePhone && contactName
+        chats: dedupeInboxChatRows(
+          chats.map((ch) => {
+            const phone =
+              ch.kind === "direct" && ch.phone ? canonicalBrazilPhone(ch.phone) : ch.phone;
+            const contact = resolveChatContact({ ...ch, phone });
+            const contactName = contact?.name?.trim();
+            const looksLikePhone =
+              !ch.name ||
+              ch.name === ch.phone ||
+              ch.name === phone ||
+              isGenericSelfChatName(ch.name) ||
+              /^\d{8,}$/.test(ch.name.replace(/\D/g, ""));
+            let name =
+              contactName && contactName !== contact?.phone
                 ? contactName
-                : ch.name;
-          if (ch.kind === "direct" && /^\d{8,}$/.test(String(name).replace(/\D/g, ""))) {
-            name = canonicalBrazilPhone(String(name));
-          }
-          return {
-            ...ch,
-            phone,
-            name,
-            contact
-          };
-        }),
+                : looksLikePhone && contactName
+                  ? contactName
+                  : ch.name;
+            if (ch.kind === "direct" && /^\d{8,}$/.test(String(name).replace(/\D/g, ""))) {
+              name = canonicalBrazilPhone(String(name));
+            }
+            return {
+              ...ch,
+              phone,
+              name,
+              contact
+            };
+          })
+        ),
         sourcesOk,
         errors,
         message

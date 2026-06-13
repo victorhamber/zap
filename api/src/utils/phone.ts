@@ -131,6 +131,14 @@ export function canonicalBrazilPhone(phone: string): string {
   return ensureBrazilMobileNineDigits(phoneDigits(phone));
 }
 
+/** Chave única para deduplicar chats (BR com/sem nono dígito → mesmo valor). */
+export function phoneDedupeKey(digits: string): string {
+  const d = digits.replace(/\D/g, "");
+  if (!d) return d;
+  if (d.startsWith("55") && d.length >= 12) return canonicalBrazilPhone(d);
+  return d;
+}
+
 /** Variantes BR com/sem nono dígito do celular (WhatsApp vs Hotmart). */
 export function brazilPhoneVariants(digits: string): string[] {
   const d = digits.replace(/\D/g, "");

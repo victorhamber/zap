@@ -11,7 +11,7 @@ import {
   isValidWhatsAppPhoneDigits,
   normalizeDirectJid
 } from "./waJid.js";
-import { canonicalBrazilPhone } from "../utils/phone.js";
+import { canonicalBrazilPhone, phoneDedupeKey } from "../utils/phone.js";
 import {
   expandChatIdVariants,
   extractEvolutionKeyFields,
@@ -485,13 +485,13 @@ function canonicalDirectPhoneDigits(c: NormalizedChat, session?: string): string
     const mapped = getMappedPhoneJid(session, c.id);
     if (mapped) {
       const md = digitsOnly(mapped);
-      if (isValidWhatsAppPhoneDigits(md)) return md;
+      if (isValidWhatsAppPhoneDigits(md)) return phoneDedupeKey(md);
     }
   }
   const d = digitsOnly(c.id);
-  if (isValidWhatsAppPhoneDigits(d)) return d;
+  if (isValidWhatsAppPhoneDigits(d)) return phoneDedupeKey(d);
   const phoneDigits = digitsOnly(c.phone);
-  if (isValidWhatsAppPhoneDigits(phoneDigits)) return phoneDigits;
+  if (isValidWhatsAppPhoneDigits(phoneDigits)) return phoneDedupeKey(phoneDigits);
   return null;
 }
 
@@ -518,7 +518,7 @@ function dedupeChatsByPhone(chats: NormalizedChat[], session?: string): Normaliz
       const mapped = getMappedPhoneJid(session, c.id);
       const pd = mapped ? digitsOnly(mapped) : "";
       if (isValidWhatsAppPhoneDigits(pd)) {
-        const key = `p:${pd}`;
+        const key = `p:${phoneDedupeKey(pd)}`;
         const prev = map.get(key);
         if (prev) {
           map.set(key, mergeTwoChats(prev, c));

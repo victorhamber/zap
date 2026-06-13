@@ -8,6 +8,7 @@ import {
   labelForMediaType,
   mimeFromMessageType
 } from "./mediaText.js";
+import { phoneDedupeKey } from "../utils/phone.js";
 import { isValidWhatsAppPhoneDigits, normalizeDirectJid } from "./waJid.js";
 import {
   expandChatIdVariants,
@@ -592,7 +593,7 @@ export async function listStoredChatSummaries(): Promise<NormalizedChat[]> {
     const phoneDigits = digitsOnly(id.replace(/@.*/, "")) || id.replace(/@.*/, "");
     const mapKey =
       !isGroup && isValidWhatsAppPhoneDigits(phoneDigits)
-        ? `p:${phoneDigits}`
+        ? `p:${phoneDedupeKey(phoneDigits)}`
         : `id:${id}`;
     const entry: NormalizedChat = {
       id,
