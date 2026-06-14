@@ -163,12 +163,6 @@ async function setSessionInboxState(
   });
 }
 
-function ownerPhoneFilter(ownerPhone: string | null): { OR?: Array<{ ownerPhone: string }> } {
-  if (!ownerPhone) return {};
-  // Mensagens gravadas antes do ownerPhone sincronizar ficam com "".
-  return { OR: [{ ownerPhone }, { ownerPhone: "" }] };
-}
-
 async function resolveStorageChatId(
   session: string,
   chatId: string,
@@ -192,8 +186,8 @@ export type InboxOwnerSyncResult = {
 };
 
 /**
- * Detecta troca de número na instância ativa e isola o histórico por telefone.
- * Mensagens antigas permanecem no banco (ownerPhone anterior) mas deixam de aparecer.
+ * Sincroniza o número conectado na instância (metadado de exibição).
+ * O histórico do CRM permanece ligado à session — trocar o chip não apaga conversas.
  */
 export async function ensureInboxOwnerPhone(): Promise<InboxOwnerSyncResult> {
   if (!prisma) return { phone: null, changed: false, previousPhone: null };
@@ -218,27 +212,19 @@ export async function ensureInboxOwnerPhone(): Promise<InboxOwnerSyncResult> {
     return { phone: previousPhone, changed: false, previousPhone };
   }
 
-  if (previousPhone === phone) {
-    if (hadSessionEntry) {
-      return { phone, changed: false, previousPhone };
-    }
-    await setSessionInboxState(session, { ownerPhone: phone, captureSince: new Date() });
-    const { clearWaLidMap } = await import("./waLidMap.js");
-    await clearWaLidMap(session);
+  if (previousPhone === phone && hadSessionEntry) {
     return { phone, changed: false, previousPhone };
   }
 
-  const now = new Date();
-  await setSessionInboxState(session, { ownerPhone: phone, captureSince: now });
+  const captureSince = previous.captureSince ?? new Date();
+  await setSessionInboxState(session, { ownerPhone: phone, captureSince });
 
-  const { clearWaLidMap } = await import("./waLidMap.js");
-  await clearWaLidMap(session);
+  if (!hadSessionEntry) {
+    const { clearWaLidMap } = await import("./waLidMap.js");
+    await clearWaLidMap(session);
+  }
 
-  return {
-    phone,
-    changed: previousPhone !== null && previousPhone !== phone,
-    previousPhone
-  };
+  return { phone, changed: false, previousPhone };
 }
 
 async function resolveOwnerPhoneForSave(session: string, explicit?: string | null): Promise<string> {
@@ -453,8 +439,6 @@ async function findDuplicateInboxMessage(params: {
 }): Promise<{ id: string; waMessageId: string | null } | null> {
   if (!prisma) return null;
 
-  const ownerWhere = ownerPhoneFilter(params.ownerPhone || null);
-
   if (params.waMessageId) {
     const byWaId = await prisma.inboxMessage.findFirst({
       where: { session: params.session, waMessageId: params.waMessageId },
@@ -475,7 +459,6 @@ async function findDuplicateInboxMessage(params: {
   return prisma.inboxMessage.findFirst({
     where: {
       session: params.session,
-      ...ownerWhere,
       chatId: { in: variants },
       fromMe: params.fromMe,
       type: params.type,
@@ -562,10 +545,9 @@ export async function updateInboxMessageMedia(
 ): Promise<void> {
   if (!prisma || !waMessageId) return;
   const session = await getSessionName();
-  const ownerPhone = await getStoredOwnerPhone();
   const publicUrl = toPublicMediaUrl(mediaUrl) ?? mediaUrl;
   await prisma.inboxMessage.updateMany({
-    where: { session, waMessageId: waMessageId.slice(0, 240), ...ownerPhoneFilter(ownerPhone) },
+    where: { session, waMessageId: waMessageId.slice(0, 240) },
     data: { mediaUrl: publicUrl }
   });
 }
@@ -584,19 +566,16 @@ export function webhookMediaAlreadyInline(
 export async function listStoredChatSummaries(): Promise<NormalizedChat[]> {
   if (!prisma) return [];
   const session = await getSessionName();
-  const ownerPhone = await getStoredOwnerPhone();
-  const captureSince = await getCaptureSince();
   await loadWaLidMap(session);
-  const rows = await prisma.inboxMessage.findMany({
-    where: {
-      session,
-      ...ownerPhoneFilter(ownerPhone),
-      ...(captureSince ? { timestamp: { gte: captureSince } } : {})
-    },
-    orderBy: { timestamp: "desc" },
-    take: 400,
-    select: { chatId: true, body: true, timestamp: true }
-  });
+
+  const rows = await prisma.$queryRaw<
+    Array<{ chatId: string; body: string; timestamp: Date }>
+  >`
+    SELECT DISTINCT ON ("chatId") "chatId", "body", "timestamp"
+    FROM "InboxMessage"
+    WHERE "session" = ${session}
+    ORDER BY "chatId", "timestamp" DESC
+  `;
 
   const merged = new Map<string, NormalizedChat>();
   for (const r of rows) {
@@ -636,7 +615,6 @@ export async function contactHasInboundReply(params: {
   if (!prisma) return false;
 
   const session = await getSessionName();
-  const ownerPhone = await getStoredOwnerPhone();
   await loadWaLidMap(session);
 
   const chatIds = new Set<string>();
@@ -661,7 +639,6 @@ export async function contactHasInboundReply(params: {
   const row = await prisma.inboxMessage.findFirst({
     where: {
       session,
-      ...ownerPhoneFilter(ownerPhone),
       chatId: { in: unique },
       fromMe: false,
       ...(params.since ? { timestamp: { gte: params.since } } : {})
@@ -680,16 +657,12 @@ export async function listStoredMessages(
   }
 
   const session = await getSessionName();
-  const ownerPhone = await getStoredOwnerPhone();
   const variants = await chatIdVariantsResolved(session, chatId);
-  const captureSince = await getCaptureSince();
 
   const rows = await prisma.inboxMessage.findMany({
     where: {
       session,
-      ...ownerPhoneFilter(ownerPhone),
-      chatId: { in: variants },
-      ...(captureSince ? { timestamp: { gte: captureSince } } : {})
+      chatId: { in: variants }
     },
     orderBy: { timestamp: "desc" },
     take: limit
@@ -768,7 +741,7 @@ export async function listStoredMessages(
 
   return {
     messages,
-    captureSince: captureSince?.toISOString() ?? null
+    captureSince: null
   };
 }
 

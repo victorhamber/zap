@@ -820,7 +820,7 @@ export async function fetchChats(): Promise<FetchChatsResult> {
 }
 
 const INBOX_HINT_EMPTY =
-  "Nenhuma mensagem desde a conexão. O Zap não importa histórico antigo do WhatsApp — novas mensagens aparecem aqui automaticamente.";
+  "Nenhuma mensagem gravada nesta instância ainda. Novas mensagens aparecem aqui automaticamente.";
 
 export async function fetchMessages(
   _phone: string,
