@@ -8,6 +8,9 @@ import {
   type AiSettingsDto
 } from "../services/ai/settings.js";
 import { simulateReply } from "../services/ai/replyService.js";
+import { importKnowledgeForSession, parseKnowledgeImport } from "../services/ai/knowledgeImport.js";
+import { queueHistoryLearning } from "../services/ai/historyLearn.js";
+import { logAiEvent } from "../services/ai/chatState.js";
 
 export async function aiRoutes(app: FastifyInstance) {
   app.addHook("preHandler", requireAuth);
@@ -52,6 +55,120 @@ export async function aiRoutes(app: FastifyInstance) {
     const session = await getActiveSessionName();
     const result = await prisma.instanceAiKnowledge.deleteMany({ where: { session } });
     return { ok: true, deleted: result.count };
+  });
+
+  app.get("/api/ai/knowledge/export", async (req, reply) => {
+    if (!prisma) throw new Error("Banco indisponível");
+    const session = await getActiveSessionName();
+    const q = req.query as { format?: string };
+    const format = q.format === "csv" ? "csv" : "json";
+
+    const items = await prisma.instanceAiKnowledge.findMany({
+      where: { session },
+      orderBy: { createdAt: "asc" }
+    });
+
+    const stamp = new Date().toISOString().slice(0, 10);
+    const safeSession = session.replace(/[^\w.-]+/g, "_");
+
+    if (format === "csv") {
+      const header = ["id", "kind", "topic", "content", "chatId", "modality", "sourceMsgId", "createdAt"];
+      const escape = (v: string) => `"${v.replace(/"/g, '""')}"`;
+      const rows = items.map((k) =>
+        [
+          k.id,
+          k.kind,
+          k.topic ?? "",
+          k.content,
+          k.chatId,
+          k.modality,
+          k.sourceMsgId ?? "",
+          k.createdAt.toISOString()
+        ]
+          .map((v) => escape(String(v)))
+          .join(",")
+      );
+      const csv = [header.join(","), ...rows].join("\n");
+      return reply
+        .header("Content-Type", "text/csv; charset=utf-8")
+        .header(
+          "Content-Disposition",
+          `attachment; filename="aprendizagem-${safeSession}-${stamp}.csv"`
+        )
+        .send(`\uFEFF${csv}`);
+    }
+
+    const payload = {
+      session,
+      exportedAt: new Date().toISOString(),
+      total: items.length,
+      items
+    };
+
+    return reply
+      .header("Content-Type", "application/json; charset=utf-8")
+      .header(
+        "Content-Disposition",
+        `attachment; filename="aprendizagem-${safeSession}-${stamp}.json"`
+      )
+      .send(JSON.stringify(payload, null, 2));
+  });
+
+  app.post("/api/ai/knowledge/import", async (req, reply) => {
+    if (!prisma) throw new Error("Banco indisponível");
+
+    const session = await getActiveSessionName();
+    const body = req.body as {
+      content?: string;
+      format?: string;
+      mode?: string;
+    };
+
+    const content = body.content?.trim();
+    if (!content) {
+      return reply.status(400).send({ error: "content obrigatório" });
+    }
+
+    const format = body.format === "csv" ? "csv" : "json";
+    const mode = body.mode === "replace" ? "replace" : "merge";
+
+    try {
+      const rows = parseKnowledgeImport(content, format);
+      if (rows.length === 0) {
+        return reply.status(400).send({ error: "Nenhum item válido encontrado no arquivo" });
+      }
+
+      const result = await importKnowledgeForSession({ session, rows, mode });
+
+      await logAiEvent({
+        session,
+        event: "imported",
+        detail: `${result.imported} importados, ${result.skipped} ignorados (${format}, ${mode})`
+      });
+
+      return { ok: true, session, ...result };
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      return reply.status(400).send({ error: message });
+    }
+  });
+
+  app.post("/api/ai/knowledge/backfill", async (req, reply) => {
+    if (!prisma) throw new Error("Banco indisponível");
+
+    const session = await getActiveSessionName();
+    const body = (req.body ?? {}) as { limit?: number };
+
+    try {
+      const result = await queueHistoryLearning({
+        session,
+        limit: body.limit
+      });
+      return { ok: true, session, ...result };
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      return reply.status(400).send({ error: message });
+    }
   });
 
   app.get("/api/ai/events", async (req) => {

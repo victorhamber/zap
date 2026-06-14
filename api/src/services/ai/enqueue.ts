@@ -6,6 +6,7 @@ import {
   phoneFromChatId
 } from "./tagGate.js";
 import { detectModality } from "./mediaExtract.js";
+import { modalityAllowedForLearn } from "./learnGate.js";
 import { setChatModeHuman, resolveChatModeForInbound, setPendingReply } from "./chatState.js";
 import {
   enqueueAiLearnJob,
@@ -34,11 +35,7 @@ function modalityAllowed(
     learnVideo: boolean;
   }
 ): boolean {
-  if (modality === "text" || modality === "chat") return flags.learnText;
-  if (modality === "image") return flags.learnImage;
-  if (modality === "audio") return flags.learnAudio;
-  if (modality === "video") return flags.learnVideo;
-  return flags.learnText;
+  return modalityAllowedForLearn(modality, flags);
 }
 
 export function enqueueAiPipeline(msg: SavedInboxMessage): void {

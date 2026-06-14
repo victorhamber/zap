@@ -91,12 +91,15 @@ export function aiReplyJobId(session: string, chatId: string): string {
   return sanitizeQueueJobId(`ai_reply_${session}_${chatId}`);
 }
 
-export async function enqueueAiLearnJob(payload: AiLearnJobPayload) {
+export async function enqueueAiLearnJob(payload: AiLearnJobPayload, delayMs = 0) {
   const queue = getAiQueue();
   const jobId = sanitizeQueueJobId(
     `ai_learn_${payload.session}_${payload.inboxMessageId}`
   );
-  return queue.add("learn", payload, { jobId });
+  return queue.add("learn", payload, {
+    jobId,
+    delay: Math.max(0, delayMs)
+  });
 }
 
 export async function enqueueAiReplyJob(

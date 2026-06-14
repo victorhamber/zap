@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { api } from "../../api/client";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { api, downloadApiFile } from "../../api/client";
 
 type Tag = { id: string; name: string; color: string };
 
@@ -58,6 +58,9 @@ export function AiAssistantPanel() {
   const [events, setEvents] = useState<AiEvent[]>([]);
   const [testInput, setTestInput] = useState("");
   const [testReply, setTestReply] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     const [s, t, k, e] = await Promise.all([
@@ -104,6 +107,111 @@ export function AiAssistantPanel() {
     await api("/api/ai/knowledge", { method: "DELETE" });
     setKnowledge([]);
     setMessage("Memória limpa.");
+  }
+
+  async function downloadKnowledge(format: "json" | "csv") {
+    const ext = format === "csv" ? "csv" : "json";
+    await downloadApiFile(
+      `/api/ai/knowledge/export?format=${format}`,
+      `aprendizagem.${ext}`
+    );
+    setMessage(`Aprendizagem baixada (${ext.toUpperCase()}).`);
+  }
+
+  async function extractFromHistory() {
+    if (!requireApiKey("extrair do histórico")) return;
+    if (!settings?.learnEnabled) {
+      setMessage("Ative o aprendizado por tags antes de extrair do histórico.");
+      return;
+    }
+    if (!settings.learnTagIds.length) {
+      setMessage("Selecione ao menos uma tag para o aprendizado.");
+      return;
+    }
+    if (
+      !confirm(
+        "Extrair aprendizagem das conversas antigas do CRM?\n\n" +
+          "• Apenas contatos com as tags selecionadas\n" +
+          "• Perguntas do cliente + suas respostas (manual/celular)\n" +
+          "• Ignora fluxos automáticos e respostas da IA\n" +
+          "• Pode consumir créditos OpenAI — o worker processa em fila\n\n" +
+          "Continuar?"
+      )
+    ) {
+      return;
+    }
+
+    setBackfilling(true);
+    setMessage(null);
+    try {
+      const result = await api<{
+        ok: boolean;
+        queued: number;
+        skipped: number;
+        chats: number;
+        scanned: number;
+        session: string;
+      }>("/api/ai/knowledge/backfill", {
+        method: "POST",
+        body: JSON.stringify({})
+      });
+
+      const k = await api<{ items: KnowledgeItem[] }>("/api/ai/knowledge?limit=20");
+      setKnowledge(k.items);
+      setMessage(
+        `Histórico enfileirado (${result.session}): ${result.queued} mensagens em ${result.chats} chats. ` +
+          `${result.skipped} ignoradas. Aguarde o worker processar.`
+      );
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBackfilling(false);
+    }
+  }
+
+  async function uploadKnowledgeFile(file: File) {
+    const name = file.name.toLowerCase();
+    const format: "json" | "csv" = name.endsWith(".csv") ? "csv" : "json";
+
+    const replace = confirm(
+      "Como deseja importar?\n\nOK = substituir toda a memória desta instância\nCancelar = mesclar (ignorar duplicados)"
+    )
+      ? "replace"
+      : "merge";
+
+    if (
+      replace === "replace" &&
+      !confirm("Isso apaga a memória atual desta instância antes de importar. Continuar?")
+    ) {
+      return;
+    }
+
+    setImporting(true);
+    setMessage(null);
+    try {
+      const content = await file.text();
+      const result = await api<{
+        ok: boolean;
+        imported: number;
+        skipped: number;
+        total: number;
+        session: string;
+      }>("/api/ai/knowledge/import", {
+        method: "POST",
+        body: JSON.stringify({ content, format, mode: replace })
+      });
+
+      const k = await api<{ items: KnowledgeItem[] }>("/api/ai/knowledge?limit=20");
+      setKnowledge(k.items);
+      setMessage(
+        `Importado na instância "${result.session}": ${result.imported} itens (${result.skipped} ignorados).`
+      );
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setImporting(false);
+      if (importInputRef.current) importInputRef.current.value = "";
+    }
   }
 
   async function runTestReply() {
@@ -271,6 +379,26 @@ export function AiAssistantPanel() {
             <input type="checkbox" checked={settings.learnVideo} onChange={(e) => void save({ learnVideo: e.target.checked })} />
             Vídeo (aprender)
           </label>
+        </div>
+        <div className="pt-2 border-t border-zinc-800">
+          <p className="text-xs text-zinc-500 mb-3 leading-relaxed">
+            Use para processar conversas já salvas no CRM antes de ativar o aprendizado automático.
+            Mensagens já aprendidas são ignoradas.
+          </p>
+          <button
+            type="button"
+            className="px-4 py-2 rounded-lg bg-zinc-800 text-zinc-100 text-sm hover:bg-zinc-700 disabled:opacity-50"
+            disabled={
+              !settings.enabled ||
+              !settings.learnEnabled ||
+              !settings.hasOpenaiApiKey ||
+              backfilling ||
+              settings.learnTagIds.length === 0
+            }
+            onClick={() => void extractFromHistory()}
+          >
+            {backfilling ? "Enfileirando histórico…" : "Extrair aprendizagem do histórico"}
+          </button>
         </div>
       </section>
 
@@ -442,11 +570,59 @@ export function AiAssistantPanel() {
       </section>
 
       <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-5 space-y-3">
-        <div className="flex justify-between items-center">
-          <h3 className="font-medium text-white">Conhecimento aprendido</h3>
-          <button type="button" className="text-sm text-red-400" onClick={() => void clearKnowledge()}>
-            Limpar memória
-          </button>
+        <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-start">
+          <div>
+            <h3 className="font-medium text-white">Conhecimento aprendido</h3>
+            <p className="text-xs text-zinc-500 mt-1 leading-relaxed">
+              Baixe de uma instância, troque a instância ativa e use <strong className="text-zinc-400">Subir</strong>{" "}
+              para copiar a aprendizagem.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 shrink-0">
+            <button
+              type="button"
+              className="text-sm text-emerald-400 hover:text-emerald-300"
+              onClick={() =>
+                void downloadKnowledge("json").catch((e) => setMessage(String(e)))
+              }
+            >
+              Baixar JSON
+            </button>
+            <button
+              type="button"
+              className="text-sm text-emerald-400/80 hover:text-emerald-300"
+              onClick={() =>
+                void downloadKnowledge("csv").catch((e) => setMessage(String(e)))
+              }
+            >
+              Baixar CSV
+            </button>
+            <button
+              type="button"
+              className="text-sm text-sky-400 hover:text-sky-300 disabled:opacity-50"
+              disabled={importing}
+              onClick={() => importInputRef.current?.click()}
+            >
+              {importing ? "Importando…" : "Subir aprendizagem"}
+            </button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".json,.csv,application/json,text/csv"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void uploadKnowledgeFile(file);
+              }}
+            />
+            <button
+              type="button"
+              className="text-sm text-red-400 hover:text-red-300"
+              onClick={() => void clearKnowledge().catch((e) => setMessage(String(e)))}
+            >
+              Limpar memória
+            </button>
+          </div>
         </div>
         <ul className="space-y-2 max-h-48 overflow-y-auto text-sm">
           {knowledge.map((k) => (

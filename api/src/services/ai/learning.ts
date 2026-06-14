@@ -4,6 +4,7 @@ import { resolveOpenAiApiKey } from "./settings.js";
 import { extractKnowledge } from "./openaiClient.js";
 import { extractTextFromMessage } from "./mediaExtract.js";
 import { logAiEvent } from "./chatState.js";
+import { knowledgeSourceMsgId } from "./learnGate.js";
 
 const QA_WINDOW_MS = 30 * 60 * 1000;
 
@@ -20,12 +21,11 @@ export async function processLearnJob(payload: AiLearnJobPayload): Promise<void>
   });
   if (!msg || msg.session !== payload.session) return;
 
-  if (msg.waMessageId) {
-    const dup = await prisma.instanceAiKnowledge.findFirst({
-      where: { session: payload.session, sourceMsgId: msg.waMessageId }
-    });
-    if (dup) return;
-  }
+  const sourceMsgId = knowledgeSourceMsgId(msg);
+  const dup = await prisma.instanceAiKnowledge.findFirst({
+    where: { session: payload.session, sourceMsgId }
+  });
+  if (dup) return;
 
   const apiKey = await resolveOpenAiApiKey(payload.session);
   if (!apiKey) {
@@ -72,7 +72,10 @@ export async function processLearnJob(payload: AiLearnJobPayload): Promise<void>
         session: payload.session,
         chatId: msg.chatId,
         fromMe: false,
-        timestamp: { gte: new Date(Date.now() - QA_WINDOW_MS) }
+        timestamp: {
+          gte: new Date(msg.timestamp.getTime() - QA_WINDOW_MS),
+          lte: msg.timestamp
+        }
       },
       orderBy: { timestamp: "desc" }
     });
@@ -87,8 +90,6 @@ export async function processLearnJob(payload: AiLearnJobPayload): Promise<void>
     priorQuestion,
     kind: payload.kind
   });
-
-  const sourceMsgId = msg.waMessageId;
 
   if (payload.kind === "question") {
     await prisma.instanceAiKnowledge.create({

@@ -61,3 +61,38 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
+
+function filenameFromContentDisposition(header: string | null, fallback: string): string {
+  if (!header) return fallback;
+  const match = /filename="?([^";\n]+)"?/i.exec(header);
+  return match?.[1]?.trim() || fallback;
+}
+
+/** Baixa arquivo de rota autenticada (export CSV/JSON etc.). */
+export async function downloadApiFile(path: string, fallbackFilename: string): Promise<void> {
+  const token = getToken();
+  const res = await fetch(path, {
+    headers: token ? { authorization: `Bearer ${token}` } : {}
+  });
+
+  if (res.status === 401) {
+    clearToken();
+    window.location.href = "/login";
+    throw new Error("Sessão expirada");
+  }
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(sanitizeErrorMessage(text || `HTTP ${res.status}`, res.status));
+  }
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filenameFromContentDisposition(res.headers.get("content-disposition"), fallbackFilename);
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
