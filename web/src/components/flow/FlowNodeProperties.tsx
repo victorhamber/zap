@@ -751,6 +751,47 @@ export function FlowNodeProperties({
           </>
         )}
 
+        {nodeType === "condition_contact_replied" && (
+          <>
+            <p className="text-xs text-zinc-500 leading-relaxed">
+              Verifica se o contato <strong>enviou alguma mensagem recebida</strong> no WhatsApp (texto, áudio, etc.).
+              Ideal após um bloco &quot;Aguardar&quot; para não insistir em quem não respondeu.
+            </p>
+            <label className="flex items-start gap-2 text-sm text-zinc-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={config.sinceFlowStart !== false}
+                onChange={(e) => onUpdate({ sinceFlowStart: e.target.checked })}
+                className="mt-1 rounded"
+              />
+              <span>
+                Contar só respostas <strong>depois que este fluxo começou</strong> (recomendado)
+              </span>
+            </label>
+            <label className="text-xs text-zinc-500">Janela máxima (dias, 0 = sem limite extra)</label>
+            <input
+              type="number"
+              min={0}
+              max={365}
+              value={Number(config.withinDays ?? 0)}
+              onChange={(e) => onUpdate({ withinDays: Math.max(0, Number(e.target.value) || 0) })}
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-white"
+            />
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 text-[11px] text-zinc-500 space-y-1">
+              <p>
+                <span className="text-emerald-400">Saída 1 — Respondeu:</span> continue o fluxo de engajamento
+              </p>
+              <p>
+                <span className="text-zinc-400">Saída 2 — Não respondeu:</span> encerre, tag &quot;Silencioso&quot; ou
+                inicie outro fluxo leve
+              </p>
+              <p className="text-zinc-600 pt-1">
+                Reações (emoji) só contam se aparecerem como mensagem no inbox.
+              </p>
+            </div>
+          </>
+        )}
+
         {nodeType === "trigger_manual" && (
           <p className="text-xs text-zinc-500">
             Use o botão &quot;Testar&quot; na barra superior com um telefone.

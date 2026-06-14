@@ -7,6 +7,7 @@ export type NodeType =
   | "trigger_manual"
   | "condition_offer_code"
   | "condition_contact_tag"
+  | "condition_contact_replied"
   | "tag_action"
   | "start_flow"
   | "delay"
@@ -63,6 +64,14 @@ export type ConditionContactTagData = {
   /** Se o contato tem alguma dessas tags (padrão) ou todas */
   matchMode?: "any" | "all";
   tagNames: string[];
+};
+
+/** Contato enviou mensagem inbound (respondeu) no inbox. */
+export type ConditionContactRepliedData = {
+  /** Se true (padrão), só conta respostas após o início desta execução do fluxo */
+  sinceFlowStart?: boolean;
+  /** Janela extra em dias (0 = sem limite além de sinceFlowStart) */
+  withinDays?: number;
 };
 
 export type TagActionData = {

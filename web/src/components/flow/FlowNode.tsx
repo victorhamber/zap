@@ -102,25 +102,45 @@ export function FlowNodeComponent({ data, selected }: NodeProps) {
       ? ((config.tagNames as string[] | undefined) ?? [])
       : [];
 
-  if (type === "condition_contact_tag") {
-    const slots = [
-      {
-        key: "yes",
-        handleId: "yes",
-        variant: "offer" as const,
-        outputNumber: 1,
-        title: "Tem a tag",
-        codes: tagConditionNames.join(", ") || undefined
-      },
-      {
-        key: "no",
-        handleId: "no",
-        variant: "default" as const,
-        outputNumber: 2,
-        title: "Não tem a tag",
-        codes: undefined
-      }
-    ];
+  if (type === "condition_contact_tag" || type === "condition_contact_replied") {
+    const isReply = type === "condition_contact_replied";
+    const slots = isReply
+      ? [
+          {
+            key: "yes",
+            handleId: "yes",
+            variant: "offer" as const,
+            outputNumber: 1,
+            title: "Respondeu",
+            codes: undefined
+          },
+          {
+            key: "no",
+            handleId: "no",
+            variant: "default" as const,
+            outputNumber: 2,
+            title: "Não respondeu",
+            codes: undefined
+          }
+        ]
+      : [
+          {
+            key: "yes",
+            handleId: "yes",
+            variant: "offer" as const,
+            outputNumber: 1,
+            title: "Tem a tag",
+            codes: tagConditionNames.join(", ") || undefined
+          },
+          {
+            key: "no",
+            handleId: "no",
+            variant: "default" as const,
+            outputNumber: 2,
+            title: "Não tem a tag",
+            codes: undefined
+          }
+        ];
 
     return (
       <div
@@ -141,7 +161,9 @@ export function FlowNodeComponent({ data, selected }: NodeProps) {
         >
           <div className="text-xs font-medium text-zinc-400">{label}</div>
           <div className="mt-1.5 text-[10px] leading-snug text-zinc-600">
-            Saída 1 = tem tag · Saída 2 = não tem
+            {isReply
+              ? "Saída 1 = respondeu · Saída 2 = silêncio"
+              : "Saída 1 = tem tag · Saída 2 = não tem"}
           </div>
         </div>
 

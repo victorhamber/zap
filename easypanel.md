@@ -53,7 +53,29 @@ EVOLUTION_API_KEY=mesma-chave-AUTHENTICATION_API_KEY-da-evolution
 
 HOTMART_WEBHOOK_SECRET=
 CORS_ORIGIN=https://zap.trajettu.com
+
+# Anti-spam: intervalo entre inícios de fluxo (Hotmart + broadcast)
+FLOW_DISPATCH_STAGGER=true
+FLOW_DISPATCH_MIN_SEC=45
+FLOW_DISPATCH_MAX_SEC=120
 ```
+
+## Evitar restrição por spam no WhatsApp
+
+A punição de ~24h costuma vir de **muitas mensagens automáticas / em massa** para quem não interagiu.
+
+**No EasyPanel (recomendado):**
+- `FLOW_DISPATCH_STAGGER=true` com intervalo **45–120 s** (ou mais) entre cada disparo
+- Evite broadcast para **toda** a base de contatos de uma vez
+- Nos fluxos pós-compra: use **Aguardar 2–4 dias** → bloco **Contato respondeu?**
+  - **Saída Sim:** continue o fluxo
+  - **Saída Não:** encerre ou tag "Silencioso" (não insista)
+
+**Boas práticas:**
+- Máximo ~2–3 mensagens proativas sem resposta do cliente
+- Priorize conversas onde o cliente já respondeu (a restrição ainda permite responder)
+- Não dispare comunidade/link em massa para listas frias
+
 
 ## Persistir sessão WhatsApp no deploy (volume no WPP)
 

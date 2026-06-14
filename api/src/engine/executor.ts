@@ -12,7 +12,7 @@ import {
   removeContactTagsByNames
 } from "../services/contacts.js";
 import * as wpp from "../services/whatsapp/index.js";
-import { saveInboxMessage } from "../services/inboxStore.js";
+import { saveInboxMessage, contactHasInboundReply } from "../services/inboxStore.js";
 import { toPublicMediaUrl } from "../services/uploads.js";
 import {
   findFlowTriggerNode,
@@ -23,6 +23,7 @@ import {
 } from "./graph.js";
 import type {
   ConditionContactTagData,
+  ConditionContactRepliedData,
   ConditionOfferCodeData,
   DelayNodeData,
   DelayUnit,
@@ -335,6 +336,56 @@ async function executeNode(
         ? `${label}: ${required.join(", ")} (contato: ${contactTags.join(", ") || "nenhuma"})`
         : "Nenhuma tag configurada → Não",
       { required, contactTags, branch: handle }
+    );
+
+    const nextId = getNextNodeIdByHandle(graph, nodeId, handle);
+    if (!nextId) {
+      await finishRun(flowRunId, "completed");
+      return;
+    }
+
+    if (prisma) {
+      await prisma.flowRun.update({
+        where: { id: flowRunId },
+        data: { currentNodeId: nextId, status: "running" }
+      });
+    }
+
+    await executeNode(graph, flowRunId, nextId, vars);
+    return;
+  }
+
+  if (node.type === "condition_contact_replied") {
+    const data = node.data as unknown as ConditionContactRepliedData;
+    let since: Date | undefined;
+
+    if (data.sinceFlowStart !== false && prisma) {
+      const run = await prisma.flowRun.findUnique({
+        where: { id: flowRunId },
+        select: { createdAt: true }
+      });
+      since = run?.createdAt;
+    }
+
+    const withinDays = Math.max(0, Number(data.withinDays ?? 0));
+    if (withinDays > 0) {
+      const windowStart = new Date(Date.now() - withinDays * 86_400_000);
+      since = since ? new Date(Math.max(since.getTime(), windowStart.getTime())) : windowStart;
+    }
+
+    const replied = await contactHasInboundReply({ phone, since });
+    const handle = replied ? "yes" : "no";
+    const label = replied ? "Respondeu" : "Não respondeu";
+
+    await logStep(
+      flowRunId,
+      nodeId,
+      node.type,
+      "ok",
+      since
+        ? `${label} (desde ${since.toISOString().slice(0, 16).replace("T", " ")})`
+        : label,
+      { replied, branch: handle, since: since?.toISOString() ?? null }
     );
 
     const nextId = getNextNodeIdByHandle(graph, nodeId, handle);

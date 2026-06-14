@@ -8,7 +8,7 @@ import {
   labelForMediaType,
   mimeFromMessageType
 } from "./mediaText.js";
-import { phoneDedupeKey } from "../utils/phone.js";
+import { phoneDedupeKey, expandPhoneLookupKeys } from "../utils/phone.js";
 import { isValidWhatsAppPhoneDigits, normalizeDirectJid } from "./waJid.js";
 import {
   expandChatIdVariants,
@@ -626,6 +626,49 @@ export async function listStoredChatSummaries(): Promise<NormalizedChat[]> {
   }
 
   return [...merged.values()];
+}
+
+/** Contato enviou alguma mensagem recebida (fromMe=false) no inbox. */
+export async function contactHasInboundReply(params: {
+  phone: string;
+  since?: Date;
+}): Promise<boolean> {
+  if (!prisma) return false;
+
+  const session = await getSessionName();
+  const ownerPhone = await getStoredOwnerPhone();
+  await loadWaLidMap(session);
+
+  const chatIds = new Set<string>();
+  for (const key of expandPhoneLookupKeys(params.phone)) {
+    if (key.includes("@")) {
+      chatIds.add(normalizeDirectJid(key));
+    } else if (key.length >= 10) {
+      chatIds.add(`${key}@s.whatsapp.net`);
+      chatIds.add(`${key}@c.us`);
+      chatIds.add(`${key}@lid`);
+    }
+  }
+
+  const allVariants: string[] = [];
+  for (const id of chatIds) {
+    const expanded = await chatIdVariantsResolved(session, id);
+    for (const v of expanded) allVariants.push(v);
+  }
+  const unique = [...new Set(allVariants)];
+  if (unique.length === 0) return false;
+
+  const row = await prisma.inboxMessage.findFirst({
+    where: {
+      session,
+      ...ownerPhoneFilter(ownerPhone),
+      chatId: { in: unique },
+      fromMe: false,
+      ...(params.since ? { timestamp: { gte: params.since } } : {})
+    },
+    select: { id: true }
+  });
+  return Boolean(row);
 }
 
 export async function listStoredMessages(
