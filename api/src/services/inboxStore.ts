@@ -18,6 +18,8 @@ import {
   recordWaJidMapping
 } from "./waLidMap.js";
 
+export type InboxMessageSource = "webhook" | "manual" | "flow" | "ai";
+
 function isPrismaUniqueConflict(err: unknown): boolean {
   return (
     typeof err === "object" &&
@@ -279,6 +281,8 @@ export async function resetInboxForSession(sessionName: string): Promise<void> {
   const session = sessionName.trim().toLowerCase();
   if (!session) return;
   await prisma.inboxMessage.deleteMany({ where: { session } });
+  const { purgeAiForSession } = await import("./ai/purge.js");
+  await purgeAiForSession(session);
 }
 
 function extractMediaUrl(body: Record<string, unknown>): string | null {
@@ -470,10 +474,22 @@ async function findDuplicateInboxMessage(params: {
   });
 }
 
+export type SaveInboxMessageResult = {
+  id: string;
+  session: string;
+  chatId: string;
+  fromMe: boolean;
+  source: InboxMessageSource;
+  type: string;
+  body: string;
+  waMessageId: string | null;
+};
+
 export async function saveInboxMessage(params: {
   chatId: string;
   body: string;
   fromMe: boolean;
+  source?: InboxMessageSource;
   type?: string;
   mediaUrl?: string | null;
   waMessageId?: string | null;
@@ -481,16 +497,17 @@ export async function saveInboxMessage(params: {
   sessionName?: string;
   ownerPhone?: string | null;
   peerJids?: string[];
-}): Promise<void> {
-  if (!prisma) return;
+}): Promise<SaveInboxMessageResult | null> {
+  if (!prisma) return null;
 
   const session = (params.sessionName ?? (await getSessionName())).trim().toLowerCase();
   const ownerPhone = await resolveOwnerPhoneForSave(session, params.ownerPhone);
   const rawChatId = normalizeDirectJid(extractWaId(params.chatId) || params.chatId.trim());
-  if (!rawChatId || rawChatId.includes("status@broadcast")) return;
+  if (!rawChatId || rawChatId.includes("status@broadcast")) return null;
   const chatId = await resolveStorageChatId(session, rawChatId, params.peerJids ?? []);
 
   const type = params.type ?? "chat";
+  const source: InboxMessageSource = params.source ?? "webhook";
   const { body, mediaUrl } = await resolveStoredMedia(type, params.body, params.mediaUrl);
   const waMessageId = params.waMessageId?.slice(0, 240) ?? null;
   const timestamp = params.timestamp ?? new Date();
@@ -512,7 +529,7 @@ export async function saveInboxMessage(params: {
         data: { waMessageId }
       });
     }
-    return;
+    return null;
   }
 
   await recordWaJidMapping(session, chatId, ...(params.peerJids ?? []), params.chatId).catch(
@@ -520,21 +537,38 @@ export async function saveInboxMessage(params: {
   );
 
   try {
-    await prisma.inboxMessage.create({
+    const created = await prisma.inboxMessage.create({
       data: {
         session,
         ownerPhone,
         chatId,
         body,
         fromMe: params.fromMe,
+        source,
         type,
         mediaUrl,
         waMessageId,
         timestamp
       }
     });
+
+    const saved: SaveInboxMessageResult = {
+      id: created.id,
+      session,
+      chatId,
+      fromMe: params.fromMe,
+      source,
+      type,
+      body,
+      waMessageId
+    };
+
+    const { enqueueAiPipeline } = await import("./ai/enqueue.js");
+    enqueueAiPipeline(saved);
+
+    return saved;
   } catch (err) {
-    if (isPrismaUniqueConflict(err) && waMessageId) return;
+    if (isPrismaUniqueConflict(err) && waMessageId) return null;
     throw err;
   }
 }

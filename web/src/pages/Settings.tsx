@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { WppConnectPanel } from "../components/wpp/WppConnectPanel";
 import { WppInstancesManager } from "../components/wpp/WppInstancesManager";
+import { AiAssistantPanel } from "../components/ai/AiAssistantPanel";
 
-type Tab = "instances" | "connect";
+type Tab = "instances" | "connect" | "ai";
 
 export function Settings() {
   const [tab, setTab] = useState<Tab>("connect");
@@ -10,14 +11,15 @@ export function Settings() {
 
   const tabs: { id: Tab; label: string; desc: string }[] = [
     { id: "instances", label: "Instâncias", desc: "Números e sessões do WhatsApp" },
-    { id: "connect", label: "Conexão / QR", desc: "Vincular aparelho com QR Code" }
+    { id: "connect", label: "Conexão / QR", desc: "Vincular aparelho com QR Code" },
+    { id: "ai", label: "Assistente IA", desc: "Aprendizado, regras e auto-resposta por instância" }
   ];
 
   return (
     <div className="max-w-2xl">
       <h1 className="text-2xl font-semibold text-white">Configurações</h1>
       <p className="text-sm text-zinc-400 mt-1 leading-relaxed">
-        Gerencie a instância ativa e conecte o WhatsApp. O atendimento fica no menu{" "}
+        Gerencie a instância ativa, conecte o WhatsApp e configure o assistente IA. O atendimento fica no menu{" "}
         <strong className="text-zinc-300">WhatsApp</strong>.
       </p>
 
@@ -50,6 +52,7 @@ export function Settings() {
           />
         )}
         {tab === "connect" && <WppConnectPanel key={panelKey} />}
+        {tab === "ai" && <AiAssistantPanel />}
       </div>
     </div>
   );

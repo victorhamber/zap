@@ -1,6 +1,7 @@
 import { Queue } from "bullmq";
 import { env } from "./env.js";
 import type { FlowJobPayload, FlowStartRunJobPayload } from "./types/flow.js";
+import type { AiLearnJobPayload, AiReplyJobPayload } from "./types/ai.js";
 
 const connection = {
   url: env.REDIS_URL,
@@ -9,6 +10,7 @@ const connection = {
 
 let flowQueue: Queue<FlowJobPayload> | null = null;
 let flowStartQueue: Queue<FlowStartRunJobPayload> | null = null;
+let aiQueue: Queue<AiLearnJobPayload | AiReplyJobPayload> | null = null;
 
 export function getRedisConnection() {
   return connection;
@@ -68,4 +70,50 @@ export async function enqueueFlowRunStart(
     delay: Math.max(0, delayMs),
     ...(jobId ? { jobId: sanitizeQueueJobId(jobId) } : {})
   });
+}
+
+function getAiQueue(): Queue<AiLearnJobPayload | AiReplyJobPayload> {
+  if (!aiQueue) {
+    aiQueue = new Queue<AiLearnJobPayload | AiReplyJobPayload>("zap-ai-jobs", {
+      connection,
+      defaultJobOptions: {
+        removeOnComplete: 2000,
+        removeOnFail: 5000,
+        attempts: 2,
+        backoff: { type: "exponential", delay: 5000 }
+      }
+    });
+  }
+  return aiQueue;
+}
+
+export function aiReplyJobId(session: string, chatId: string): string {
+  return sanitizeQueueJobId(`ai_reply_${session}_${chatId}`);
+}
+
+export async function enqueueAiLearnJob(payload: AiLearnJobPayload) {
+  const queue = getAiQueue();
+  const jobId = sanitizeQueueJobId(
+    `ai_learn_${payload.session}_${payload.inboxMessageId}`
+  );
+  return queue.add("learn", payload, { jobId });
+}
+
+export async function enqueueAiReplyJob(
+  payload: AiReplyJobPayload,
+  delayMs: number,
+  jobId: string
+) {
+  const queue = getAiQueue();
+  return queue.add("reply", payload, {
+    delay: Math.max(0, delayMs),
+    jobId: sanitizeQueueJobId(jobId)
+  });
+}
+
+export async function cancelAiReplyJob(session: string, chatId: string): Promise<void> {
+  const queue = getAiQueue();
+  const jobId = aiReplyJobId(session, chatId);
+  const job = await queue.getJob(jobId);
+  if (job) await job.remove();
 }

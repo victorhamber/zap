@@ -37,6 +37,7 @@ model InboxMessage {
   chatId      String
   body        String   @default("")
   fromMe      Boolean  @default(false)
+  source      String   @default("webhook")
   type        String   @default("chat")
   mediaUrl    String?
   waMessageId String?
@@ -46,6 +47,73 @@ model InboxMessage {
   @@unique([session, waMessageId])
   @@index([session, chatId, timestamp])
   @@index([session, ownerPhone, chatId, timestamp])
+}
+
+model InstanceAiSettings {
+  id               String   @id @default(cuid())
+  session          String   @unique
+  enabled          Boolean  @default(false)
+  learnEnabled     Boolean  @default(false)
+  autoReplyEnabled Boolean  @default(false)
+  learnTagIds      String[]
+  learnText        Boolean  @default(true)
+  learnImage       Boolean  @default(false)
+  learnAudio       Boolean  @default(false)
+  learnVideo       Boolean  @default(false)
+  replyText        Boolean  @default(true)
+  replyImage       Boolean  @default(false)
+  replyAudio       Boolean  @default(false)
+  replyVideo       Boolean  @default(false)
+  productContext   String   @default("")
+  rulesAllowed     String   @default("")
+  rulesForbidden   String   @default("")
+  officialLinks    Json     @default("[]")
+  openaiApiKeyEnc  String?
+  modelChat        String   @default("gpt-4o-mini")
+  modelVision      String   @default("gpt-4o-mini")
+  modelTranscribe  String   @default("whisper-1")
+  replyDelaySec    Int      @default(60)
+  humanIdleSec     Int      @default(60)
+  maxDailyReplies  Int      @default(200)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model InstanceAiKnowledge {
+  id          String   @id @default(cuid())
+  session     String
+  chatId      String
+  kind        String
+  topic       String?
+  content     String
+  sourceMsgId String?
+  modality    String   @default("text")
+  createdAt   DateTime @default(now())
+
+  @@index([session, chatId])
+  @@index([session, createdAt])
+}
+
+model InstanceAiChatState {
+  session           String
+  chatId            String
+  mode              String    @default("auto")
+  lastHumanAt       DateTime?
+  pendingReplyJobId String?
+  pendingInboundId  String?
+
+  @@unique([session, chatId])
+}
+
+model InstanceAiEvent {
+  id        String   @id @default(cuid())
+  session   String
+  chatId    String?
+  event     String
+  detail    String?
+  createdAt DateTime @default(now())
+
+  @@index([session, createdAt])
 }
 
 model WppInstance {

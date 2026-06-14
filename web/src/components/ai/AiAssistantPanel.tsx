@@ -1,0 +1,532 @@
+import { useCallback, useEffect, useState } from "react";
+import { api } from "../../api/client";
+
+type Tag = { id: string; name: string; color: string };
+
+type OfficialLink = { trigger: string; url: string; label: string };
+
+type AiSettings = {
+  enabled: boolean;
+  learnEnabled: boolean;
+  autoReplyEnabled: boolean;
+  learnTagIds: string[];
+  learnText: boolean;
+  learnImage: boolean;
+  learnAudio: boolean;
+  learnVideo: boolean;
+  replyText: boolean;
+  replyImage: boolean;
+  replyAudio: boolean;
+  replyVideo: boolean;
+  productContext: string;
+  rulesAllowed: string;
+  rulesForbidden: string;
+  officialLinks: OfficialLink[];
+  openaiApiKeyMasked: string | null;
+  hasOpenaiApiKey: boolean;
+  replyDelaySec: number;
+  humanIdleSec: number;
+  maxDailyReplies: number;
+};
+
+type KnowledgeItem = {
+  id: string;
+  kind: string;
+  topic: string | null;
+  content: string;
+  modality: string;
+  createdAt: string;
+};
+
+type AiEvent = {
+  id: string;
+  event: string;
+  detail: string | null;
+  chatId: string | null;
+  createdAt: string;
+};
+
+export function AiAssistantPanel() {
+  const [settings, setSettings] = useState<AiSettings | null>(null);
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [showTagModal, setShowTagModal] = useState(false);
+  const [pendingLearn, setPendingLearn] = useState(false);
+  const [knowledge, setKnowledge] = useState<KnowledgeItem[]>([]);
+  const [events, setEvents] = useState<AiEvent[]>([]);
+  const [testInput, setTestInput] = useState("");
+  const [testReply, setTestReply] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    const [s, t, k, e] = await Promise.all([
+      api<AiSettings>("/api/ai/settings"),
+      api<{ tags: Tag[] }>("/api/tags"),
+      api<{ items: KnowledgeItem[] }>("/api/ai/knowledge?limit=20"),
+      api<{ items: AiEvent[] }>("/api/ai/events?limit=20")
+    ]);
+    setSettings(s);
+    setTags(t.tags);
+    setKnowledge(k.items);
+    setEvents(e.items);
+  }, []);
+
+  useEffect(() => {
+    load().catch((err) => setMessage(err instanceof Error ? err.message : String(err)));
+  }, [load]);
+
+  async function save(partial: Partial<AiSettings> & { openaiApiKey?: string; clearOpenaiApiKey?: boolean }) {
+    if (!settings) return;
+    setSaving(true);
+    setMessage(null);
+    try {
+      const body: Record<string, unknown> = { ...settings, ...partial };
+      if (partial.openaiApiKey !== undefined) {
+        body.openaiApiKey = partial.openaiApiKey;
+      }
+      const updated = await api<AiSettings>("/api/ai/settings", {
+        method: "PUT",
+        body: JSON.stringify(body)
+      });
+      setSettings(updated);
+      if (partial.openaiApiKey) setApiKeyInput("");
+      setMessage("Configurações salvas.");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function clearKnowledge() {
+    if (!confirm("Limpar toda a memória de aprendizado desta instância?")) return;
+    await api("/api/ai/knowledge", { method: "DELETE" });
+    setKnowledge([]);
+    setMessage("Memória limpa.");
+  }
+
+  async function runTestReply() {
+    setTestReply(null);
+    const r = await api<{ reply: string; blocked?: string }>("/api/ai/test-reply", {
+      method: "POST",
+      body: JSON.stringify({ inboundText: testInput })
+    });
+    if (r.blocked) {
+      setTestReply(`Bloqueado: ${r.blocked}\n\n${r.reply}`);
+    } else {
+      setTestReply(r.reply);
+    }
+  }
+
+  function toggleLearn(enabled: boolean) {
+    if (enabled && !requireApiKey("ativar o aprendizado")) return;
+    if (enabled && (!settings?.learnTagIds.length)) {
+      setPendingLearn(true);
+      setShowTagModal(true);
+      return;
+    }
+    void save({ learnEnabled: enabled });
+  }
+
+  function requireApiKey(action: string): boolean {
+    if (settings?.hasOpenaiApiKey) return true;
+    setMessage(`Salve a chave OpenAI desta instância antes de ${action}.`);
+    return false;
+  }
+
+  function confirmTags(selected: string[]) {
+    if (selected.length === 0) {
+      setMessage("Selecione ao menos uma tag.");
+      return;
+    }
+    setShowTagModal(false);
+    void save({ learnTagIds: selected, learnEnabled: pendingLearn || settings?.learnEnabled });
+    setPendingLearn(false);
+  }
+
+  if (!settings) {
+    return <p className="text-sm text-zinc-500">Carregando assistente…</p>;
+  }
+
+  return (
+    <div className="space-y-8">
+      {message && (
+        <p className="text-sm text-emerald-300/90 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
+          {message}
+        </p>
+      )}
+
+      <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-5 space-y-3">
+        <h3 className="font-medium text-white">Chave OpenAI (por instância)</h3>
+        <p className="text-sm text-zinc-400 leading-relaxed">
+          Cada instância WhatsApp usa a chave do próprio usuário. A chave fica criptografada no banco
+          e não é compartilhada entre instâncias.
+        </p>
+        <p className="text-sm text-zinc-500">
+          Chave atual:{" "}
+          {settings.openaiApiKeyMasked ?? (
+            <span className="text-amber-400/90">não configurada — obrigatória para usar o assistente</span>
+          )}
+        </p>
+        <div className="flex gap-2">
+          <input
+            type="password"
+            placeholder="sk-… (chave OpenAI desta instância)"
+            className="flex-1 rounded bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-zinc-100"
+            value={apiKeyInput}
+            onChange={(e) => setApiKeyInput(e.target.value)}
+          />
+          <button
+            type="button"
+            className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm disabled:opacity-50"
+            disabled={!apiKeyInput.trim() || saving}
+            onClick={() => void save({ openaiApiKey: apiKeyInput })}
+          >
+            Salvar chave
+          </button>
+          {settings.hasOpenaiApiKey && (
+            <button
+              type="button"
+              className="px-3 py-2 rounded-lg border border-zinc-600 text-zinc-300 text-sm"
+              onClick={() => void save({ clearOpenaiApiKey: true })}
+            >
+              Remover
+            </button>
+          )}
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-5 space-y-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-medium text-white">Assistente IA</h2>
+            <p className="text-sm text-zinc-400 mt-1">
+              Aprendizado e respostas automáticas escopados à instância WhatsApp ativa.
+            </p>
+          </div>
+          <label className="flex items-center gap-2 text-sm text-zinc-300">
+            <input
+              type="checkbox"
+              checked={settings.enabled}
+              onChange={(e) => {
+                if (e.target.checked && !requireApiKey("ativar o assistente")) return;
+                void save({ enabled: e.target.checked });
+              }}
+            />
+            Ativar
+          </label>
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-5 space-y-4">
+        <h3 className="font-medium text-white">Aprendizado por tags</h3>
+        <label className="flex items-center gap-2 text-sm text-zinc-300">
+          <input
+            type="checkbox"
+            checked={settings.learnEnabled}
+            onChange={(e) => toggleLearn(e.target.checked)}
+            disabled={!settings.enabled}
+          />
+          Aprender com contatos tagueados
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {settings.learnTagIds.map((id) => {
+            const tag = tags.find((t) => t.id === id);
+            return (
+              <span
+                key={id}
+                className="text-xs px-2 py-1 rounded-full border border-zinc-700 text-zinc-300"
+                style={{ borderColor: tag?.color }}
+              >
+                {tag?.name ?? id}
+              </span>
+            );
+          })}
+          <button
+            type="button"
+            className="text-xs text-emerald-400 hover:underline"
+            onClick={() => {
+              setPendingLearn(false);
+              setShowTagModal(true);
+            }}
+          >
+            Editar tags
+          </button>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-sm text-zinc-400">
+          <label className="flex gap-2">
+            <input type="checkbox" checked={settings.learnText} onChange={(e) => void save({ learnText: e.target.checked })} />
+            Texto (aprender)
+          </label>
+          <label className="flex gap-2">
+            <input type="checkbox" checked={settings.learnImage} onChange={(e) => void save({ learnImage: e.target.checked })} />
+            Imagem (aprender)
+          </label>
+          <label className="flex gap-2">
+            <input type="checkbox" checked={settings.learnAudio} onChange={(e) => void save({ learnAudio: e.target.checked })} />
+            Áudio (aprender)
+          </label>
+          <label className="flex gap-2">
+            <input type="checkbox" checked={settings.learnVideo} onChange={(e) => void save({ learnVideo: e.target.checked })} />
+            Vídeo (aprender)
+          </label>
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-5 space-y-3">
+        <h3 className="font-medium text-white">Produto e regras</h3>
+        <label className="block text-sm text-zinc-400">
+          Contexto do produto
+          <textarea
+            className="mt-1 w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-zinc-100 text-sm min-h-24"
+            value={settings.productContext}
+            onChange={(e) => setSettings({ ...settings, productContext: e.target.value })}
+            onBlur={() => void save({ productContext: settings.productContext })}
+          />
+        </label>
+        <label className="block text-sm text-zinc-400">
+          Pode fazer
+          <textarea
+            className="mt-1 w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-zinc-100 text-sm min-h-20"
+            value={settings.rulesAllowed}
+            onChange={(e) => setSettings({ ...settings, rulesAllowed: e.target.value })}
+            onBlur={() => void save({ rulesAllowed: settings.rulesAllowed })}
+          />
+        </label>
+        <label className="block text-sm text-zinc-400">
+          Não pode fazer
+          <textarea
+            className="mt-1 w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-zinc-100 text-sm min-h-20"
+            value={settings.rulesForbidden}
+            onChange={(e) => setSettings({ ...settings, rulesForbidden: e.target.value })}
+            onBlur={() => void save({ rulesForbidden: settings.rulesForbidden })}
+          />
+        </label>
+      </section>
+
+      <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-5 space-y-3">
+        <h3 className="font-medium text-white">Links oficiais</h3>
+        {settings.officialLinks.map((link, i) => (
+          <div key={i} className="grid grid-cols-3 gap-2">
+            <input
+              className="rounded bg-zinc-900 border border-zinc-700 px-2 py-1 text-sm text-zinc-100"
+              placeholder="Gatilho"
+              value={link.trigger}
+              onChange={(e) => {
+                const next = [...settings.officialLinks];
+                next[i] = { ...link, trigger: e.target.value };
+                setSettings({ ...settings, officialLinks: next });
+              }}
+              onBlur={() => void save({ officialLinks: settings.officialLinks })}
+            />
+            <input
+              className="rounded bg-zinc-900 border border-zinc-700 px-2 py-1 text-sm text-zinc-100"
+              placeholder="URL"
+              value={link.url}
+              onChange={(e) => {
+                const next = [...settings.officialLinks];
+                next[i] = { ...link, url: e.target.value };
+                setSettings({ ...settings, officialLinks: next });
+              }}
+              onBlur={() => void save({ officialLinks: settings.officialLinks })}
+            />
+            <input
+              className="rounded bg-zinc-900 border border-zinc-700 px-2 py-1 text-sm text-zinc-100"
+              placeholder="Rótulo"
+              value={link.label}
+              onChange={(e) => {
+                const next = [...settings.officialLinks];
+                next[i] = { ...link, label: e.target.value };
+                setSettings({ ...settings, officialLinks: next });
+              }}
+              onBlur={() => void save({ officialLinks: settings.officialLinks })}
+            />
+          </div>
+        ))}
+        <button
+          type="button"
+          className="text-sm text-emerald-400"
+          onClick={() =>
+            void save({
+              officialLinks: [...settings.officialLinks, { trigger: "", url: "", label: "" }]
+            })
+          }
+        >
+          + Adicionar link
+        </button>
+      </section>
+
+      <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-5 space-y-4">
+        <h3 className="font-medium text-white">Auto-resposta</h3>
+        <label className="flex items-center gap-2 text-sm text-zinc-300">
+          <input
+            type="checkbox"
+            checked={settings.autoReplyEnabled}
+            onChange={(e) => {
+              if (e.target.checked && !requireApiKey("ativar a auto-resposta")) return;
+              void save({ autoReplyEnabled: e.target.checked });
+            }}
+            disabled={!settings.enabled}
+          />
+          Responder automaticamente após delay
+        </label>
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <label className="text-zinc-400">
+            Delay (seg)
+            <input
+              type="number"
+              min={10}
+              className="mt-1 w-full rounded bg-zinc-900 border border-zinc-700 px-2 py-1 text-zinc-100"
+              value={settings.replyDelaySec}
+              onChange={(e) =>
+                setSettings({ ...settings, replyDelaySec: Number(e.target.value) || 60 })
+              }
+              onBlur={() => void save({ replyDelaySec: settings.replyDelaySec })}
+            />
+          </label>
+          <label className="text-zinc-400">
+            Idle humano (seg)
+            <input
+              type="number"
+              min={10}
+              className="mt-1 w-full rounded bg-zinc-900 border border-zinc-700 px-2 py-1 text-zinc-100"
+              value={settings.humanIdleSec}
+              onChange={(e) =>
+                setSettings({ ...settings, humanIdleSec: Number(e.target.value) || 60 })
+              }
+              onBlur={() => void save({ humanIdleSec: settings.humanIdleSec })}
+            />
+          </label>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-sm text-zinc-400">
+          <label className="flex gap-2">
+            <input type="checkbox" checked={settings.replyText} onChange={(e) => void save({ replyText: e.target.checked })} />
+            Texto (resposta)
+          </label>
+          <label className="flex gap-2">
+            <input type="checkbox" checked={settings.replyImage} onChange={(e) => void save({ replyImage: e.target.checked })} />
+            Imagem (resposta)
+          </label>
+          <label className="flex gap-2">
+            <input type="checkbox" checked={settings.replyAudio} onChange={(e) => void save({ replyAudio: e.target.checked })} />
+            Áudio (resposta)
+          </label>
+          <label className="flex gap-2">
+            <input type="checkbox" checked={settings.replyVideo} onChange={(e) => void save({ replyVideo: e.target.checked })} />
+            Vídeo (resposta)
+          </label>
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-5 space-y-3">
+        <h3 className="font-medium text-white">Testar resposta (simulação)</h3>
+        <textarea
+          className="w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-zinc-100 min-h-20"
+          placeholder="Digite uma mensagem do cliente…"
+          value={testInput}
+          onChange={(e) => setTestInput(e.target.value)}
+        />
+        <button
+          type="button"
+          className="px-4 py-2 rounded-lg bg-zinc-800 text-zinc-100 text-sm"
+          onClick={() => void runTestReply().catch((e) => setMessage(String(e)))}
+        >
+          Simular
+        </button>
+        {testReply && (
+          <pre className="text-sm text-zinc-300 whitespace-pre-wrap bg-zinc-900 p-3 rounded-lg border border-zinc-800">
+            {testReply}
+          </pre>
+        )}
+      </section>
+
+      <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-5 space-y-3">
+        <div className="flex justify-between items-center">
+          <h3 className="font-medium text-white">Conhecimento aprendido</h3>
+          <button type="button" className="text-sm text-red-400" onClick={() => void clearKnowledge()}>
+            Limpar memória
+          </button>
+        </div>
+        <ul className="space-y-2 max-h-48 overflow-y-auto text-sm">
+          {knowledge.map((k) => (
+            <li key={k.id} className="border-b border-zinc-800 pb-2 text-zinc-400">
+              <span className="text-emerald-400/80">{k.kind}</span> · {k.topic ?? "—"} ·{" "}
+              {k.content.slice(0, 120)}
+            </li>
+          ))}
+          {knowledge.length === 0 && <li className="text-zinc-600">Nenhum item ainda.</li>}
+        </ul>
+      </section>
+
+      <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-5 space-y-3">
+        <h3 className="font-medium text-white">Log de eventos</h3>
+        <ul className="space-y-1 max-h-40 overflow-y-auto text-xs text-zinc-500">
+          {events.map((ev) => (
+            <li key={ev.id}>
+              {new Date(ev.createdAt).toLocaleString()} · {ev.event}
+              {ev.detail ? ` — ${ev.detail.slice(0, 80)}` : ""}
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      {showTagModal && (
+        <TagSelectModal
+          tags={tags}
+          selected={settings.learnTagIds}
+          onCancel={() => setShowTagModal(false)}
+          onConfirm={confirmTags}
+        />
+      )}
+
+      {saving && <p className="text-xs text-zinc-500">Salvando…</p>}
+    </div>
+  );
+}
+
+function TagSelectModal(props: {
+  tags: Tag[];
+  selected: string[];
+  onCancel: () => void;
+  onConfirm: (ids: string[]) => void;
+}) {
+  const [picked, setPicked] = useState<string[]>(props.selected);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <div className="w-full max-w-md rounded-xl border border-zinc-700 bg-zinc-950 p-5 space-y-4">
+        <h3 className="text-white font-medium">Selecione tags para aprendizado</h3>
+        <p className="text-sm text-zinc-400">Mínimo 1 tag. Só contatos com essas tags entram no aprendizado.</p>
+        <div className="max-h-60 overflow-y-auto space-y-2">
+          {props.tags.map((t) => (
+            <label key={t.id} className="flex items-center gap-2 text-sm text-zinc-300">
+              <input
+                type="checkbox"
+                checked={picked.includes(t.id)}
+                onChange={(e) => {
+                  setPicked((prev) =>
+                    e.target.checked ? [...prev, t.id] : prev.filter((id) => id !== t.id)
+                  );
+                }}
+              />
+              <span style={{ color: t.color }}>{t.name}</span>
+            </label>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2">
+          <button type="button" className="px-3 py-2 text-sm text-zinc-400" onClick={props.onCancel}>
+            Cancelar
+          </button>
+          <button
+            type="button"
+            className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm"
+            onClick={() => props.onConfirm(picked)}
+          >
+            Confirmar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

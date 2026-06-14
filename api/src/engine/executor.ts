@@ -106,6 +106,7 @@ async function persistFlowOutboundMessage(params: {
     chatId: jid,
     body: params.body,
     fromMe: true,
+    source: "flow",
     type: params.type,
     mediaUrl: params.mediaUrl ?? null,
     waMessageId: params.waMessageId ?? null,

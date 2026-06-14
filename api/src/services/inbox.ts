@@ -898,6 +898,7 @@ export async function sendChatMessage(
     chatId: target.jid,
     body: message,
     fromMe: true,
+    source: "manual",
     type: "chat",
     waMessageId
   });
@@ -1100,6 +1101,7 @@ export async function sendChatMedia(
     chatId: target.jid,
     body: labels[type],
     fromMe: true,
+    source: "manual",
     type,
     mediaUrl: toPublicMediaUrl(storedMediaUrl) ?? storedMediaUrl,
     waMessageId,

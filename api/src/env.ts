@@ -62,7 +62,13 @@ const EnvSchema = z.object({
   ADMIN_EMAIL: z.string().email().default("admin@trajettu.com"),
   ADMIN_PASSWORD: z.string().min(6).default("admin123"),
 
-  CORS_ORIGIN: z.string().default("*")
+  CORS_ORIGIN: z.string().default("*"),
+
+  /** Criptografia das chaves OpenAI salvas por instância (não é a chave OpenAI) */
+  AI_ENCRYPTION_KEY: z.string().optional(),
+  AI_REPLY_DELAY_SEC: z.coerce.number().int().positive().default(60),
+  AI_HUMAN_IDLE_SEC: z.coerce.number().int().positive().default(60),
+  AI_MAX_DAILY_REPLIES: z.coerce.number().int().positive().default(200)
 }).superRefine((data, ctx) => {
   if (!isProd) return;
   if (data.WHATSAPP_PROVIDER === "wppconnect") {
