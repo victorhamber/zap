@@ -286,19 +286,10 @@ export function AiAssistantPanel() {
       <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-5 space-y-3">
         <h3 className="font-medium text-white">Chave OpenAI (por instância)</h3>
         <p className="text-sm text-zinc-400 leading-relaxed">
-          Cada instância WhatsApp usa a chave do próprio usuário. A chave fica criptografada no banco
-          e não é compartilhada entre instâncias.
+          Cole aqui a chave OpenAI desta instância — cada usuário usa a sua. Ela fica criptografada no
+          banco e não é compartilhada entre instâncias. Não precisa configurar nada no EasyPanel além do
+          login do Zap.
         </p>
-        {settings.encryptionReady === false && (
-          <p className="text-sm text-amber-300/95 bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-2 leading-relaxed">
-            O servidor ainda não tem <strong className="font-medium">AI_ENCRYPTION_KEY</strong> (64
-            caracteres hex). Adicione no EasyPanel nos serviços <strong className="font-medium">zap</strong> e{" "}
-            <strong className="font-medium">zap-worker</strong>, reinicie e tente de novo. Gere com:{" "}
-            <code className="text-xs font-mono text-amber-200/90">
-              node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&apos;hex&apos;))&quot;
-            </code>
-          </p>
-        )}
         <p className="text-sm text-zinc-500">
           Chave atual:{" "}
           {settings.openaiApiKeyMasked ?? (

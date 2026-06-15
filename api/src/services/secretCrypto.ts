@@ -1,22 +1,33 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { env } from "../env.js";
 
 const ALGO = "aes-256-gcm";
 
-export function isEncryptionConfigured(): boolean {
+/** Chave de 32 bytes: AI_ENCRYPTION_KEY (hex) ou derivada do JWT_SECRET já usado no login. */
+function resolveEncryptionKey(): Buffer | null {
   const hex = env.AI_ENCRYPTION_KEY?.trim();
-  return Boolean(hex && hex.length === 64);
+  if (hex && hex.length === 64) {
+    return Buffer.from(hex, "hex");
+  }
+
+  const jwt = env.JWT_SECRET?.trim();
+  if (jwt && jwt.length >= 32) {
+    return createHash("sha256").update(`zap-secrets:${jwt}`).digest();
+  }
+
+  return null;
 }
 
-function encryptionKey(): Buffer | null {
-  if (!isEncryptionConfigured()) return null;
-  return Buffer.from(env.AI_ENCRYPTION_KEY!.trim(), "hex");
+export function isEncryptionConfigured(): boolean {
+  return resolveEncryptionKey() !== null;
 }
 
 export function encryptSecret(plain: string): string {
-  const key = encryptionKey();
+  const key = resolveEncryptionKey();
   if (!key) {
-    throw new Error("AI_ENCRYPTION_KEY inválida ou ausente (64 caracteres hex no servidor)");
+    throw new Error(
+      "Servidor sem chave de criptografia (defina JWT_SECRET com pelo menos 32 caracteres)"
+    );
   }
   const iv = randomBytes(12);
   const cipher = createCipheriv(ALGO, key, iv);
@@ -26,8 +37,8 @@ export function encryptSecret(plain: string): string {
 }
 
 export function decryptSecret(stored: string): string {
-  const key = encryptionKey();
-  if (!key) throw new Error("AI_ENCRYPTION_KEY inválida ou ausente");
+  const key = resolveEncryptionKey();
+  if (!key) throw new Error("Servidor sem chave de criptografia");
   const [ivHex, tagHex, dataHex] = stored.split(":");
   if (!ivHex || !tagHex || !dataHex) throw new Error("Segredo criptografado inválido");
   const decipher = createDecipheriv(ALGO, key, Buffer.from(ivHex, "hex"));

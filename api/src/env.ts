@@ -64,7 +64,7 @@ const EnvSchema = z.object({
 
   CORS_ORIGIN: z.string().default("*"),
 
-  /** Criptografia das chaves OpenAI salvas por instância (não é a chave OpenAI) */
+  /** Opcional: chave dedicada para criptografar segredos no banco. Se omitida, usa JWT_SECRET. */
   AI_ENCRYPTION_KEY: z.string().optional(),
   AI_REPLY_DELAY_SEC: z.coerce.number().int().positive().default(60),
   AI_HUMAN_IDLE_SEC: z.coerce.number().int().positive().default(60),

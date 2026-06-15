@@ -181,7 +181,7 @@ export async function saveAiSettings(
       openaiApiKeyEnc = encryptApiKey(body.openaiApiKey.trim());
     } catch {
       throw new Error(
-        "Configure AI_ENCRYPTION_KEY (64 caracteres hex) no servidor para salvar a chave OpenAI"
+        "Não foi possível criptografar a chave OpenAI. Verifique JWT_SECRET no servidor (mín. 32 caracteres)."
       );
     }
   }
