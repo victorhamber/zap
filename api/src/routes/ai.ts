@@ -11,6 +11,7 @@ import { simulateReply } from "../services/ai/replyService.js";
 import { importKnowledgeForSession, parseKnowledgeImport } from "../services/ai/knowledgeImport.js";
 import { queueHistoryLearning } from "../services/ai/historyLearn.js";
 import { logAiEvent } from "../services/ai/chatState.js";
+import { getAiStats } from "../services/ai/stats.js";
 
 export async function aiRoutes(app: FastifyInstance) {
   app.addHook("preHandler", requireAuth);
@@ -34,6 +35,11 @@ export async function aiRoutes(app: FastifyInstance) {
     }
   });
 
+  app.get("/api/ai/stats", async () => {
+    const session = await getActiveSessionName();
+    return getAiStats(session);
+  });
+
   app.get("/api/ai/knowledge", async (req) => {
     if (!prisma) return { items: [], total: 0 };
     const session = await getActiveSessionName();
@@ -42,20 +48,17 @@ export async function aiRoutes(app: FastifyInstance) {
     const limit = Math.min(100, Math.max(1, Number(q.limit ?? 30)));
     const skip = (page - 1) * limit;
 
-    const [items, total, learnedEvents] = await Promise.all([
+    const [items, total] = await Promise.all([
       prisma.instanceAiKnowledge.findMany({
         where: { session },
         orderBy: { createdAt: "desc" },
         skip,
         take: limit
       }),
-      prisma.instanceAiKnowledge.count({ where: { session } }),
-      prisma.instanceAiEvent.count({
-        where: { session, event: "learned", createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } }
-      })
+      prisma.instanceAiKnowledge.count({ where: { session } })
     ]);
 
-    return { items, total, page, limit, learnedLast24h: learnedEvents };
+    return { items, total, page, limit };
   });
 
   app.delete("/api/ai/knowledge", async () => {

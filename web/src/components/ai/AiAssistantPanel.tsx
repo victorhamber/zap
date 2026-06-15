@@ -47,6 +47,18 @@ type AiEvent = {
   createdAt: string;
 };
 
+type AiStats = {
+  knowledgeItems: number;
+  messagesLearned: number;
+  byKind: { question: number; answer: number; qa_pair: number; other: number };
+  learnedEvents: number;
+  repliesToday: number;
+  errorsRecent: number;
+  queuePending: number;
+  queueActive: number;
+  lastBackfill: { at: string; detail: string } | null;
+};
+
 export function AiAssistantPanel() {
   const [settings, setSettings] = useState<AiSettings | null>(null);
   const [tags, setTags] = useState<Tag[]>([]);
@@ -58,6 +70,7 @@ export function AiAssistantPanel() {
   const [pendingLearn, setPendingLearn] = useState(false);
   const [knowledge, setKnowledge] = useState<KnowledgeItem[]>([]);
   const [knowledgeTotal, setKnowledgeTotal] = useState(0);
+  const [stats, setStats] = useState<AiStats | null>(null);
   const [events, setEvents] = useState<AiEvent[]>([]);
   const [testInput, setTestInput] = useState("");
   const [testReply, setTestReply] = useState<string | null>(null);
@@ -67,15 +80,18 @@ export function AiAssistantPanel() {
   const importInputRef = useRef<HTMLInputElement>(null);
 
   const refreshProgress = useCallback(async () => {
-    const [k, e] = await Promise.all([
-      api<{ items: KnowledgeItem[]; total: number; learnedLast24h?: number }>(
-        "/api/ai/knowledge?limit=20"
-      ),
-      api<{ items: AiEvent[] }>("/api/ai/events?limit=30")
+    const [k, e, st] = await Promise.all([
+      api<{ items: KnowledgeItem[]; total: number }>("/api/ai/knowledge?limit=20"),
+      api<{ items: AiEvent[] }>("/api/ai/events?limit=30"),
+      api<AiStats>("/api/ai/stats")
     ]);
     setKnowledge(k.items);
     setKnowledgeTotal(k.total);
     setEvents(e.items);
+    setStats(st);
+    if (st.queuePending === 0 && st.queueActive === 0 && st.messagesLearned > 0) {
+      setWatchingBackfill(false);
+    }
     return k.total;
   }, []);
 
@@ -90,12 +106,12 @@ export function AiAssistantPanel() {
   }, [refreshProgress]);
 
   useEffect(() => {
-    if (!watchingBackfill) return;
+    if (!watchingBackfill && !(stats && stats.queuePending > 0)) return;
     const id = window.setInterval(() => {
       refreshProgress().catch(() => {});
     }, 15000);
     return () => window.clearInterval(id);
-  }, [watchingBackfill, refreshProgress]);
+  }, [watchingBackfill, stats?.queuePending, refreshProgress]);
 
   useEffect(() => {
     load().catch((err) =>
@@ -365,6 +381,72 @@ export function AiAssistantPanel() {
             Ativar
           </label>
         </div>
+
+        {stats && (
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-medium text-zinc-200">Progresso desta instância</h3>
+              <button
+                type="button"
+                className="text-xs text-zinc-500 hover:text-zinc-300"
+                onClick={() =>
+                  void refreshProgress()
+                    .then(() => showMessage("Estatísticas atualizadas."))
+                    .catch((e) => showMessage(String(e), true))
+                }
+              >
+                Atualizar
+              </button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <StatCard
+                label="Mensagens aprendidas"
+                value={stats.messagesLearned}
+                hint="Conversas únicas já processadas"
+              />
+              <StatCard
+                label="Itens na memória"
+                value={stats.knowledgeItems}
+                hint={`${stats.byKind.question} perguntas · ${stats.byKind.answer} respostas · ${stats.byKind.qa_pair} pares`}
+              />
+              <StatCard
+                label="Na fila"
+                value={stats.queuePending}
+                hint={
+                  stats.queuePending > 0
+                    ? `${stats.queueActive} processando agora`
+                    : "Nada pendente no worker"
+                }
+                highlight={stats.queuePending > 0 ? "amber" : undefined}
+              />
+              <StatCard
+                label="Respostas hoje"
+                value={stats.repliesToday}
+                hint={
+                  stats.errorsRecent > 0
+                    ? `${stats.errorsRecent} erro(s) nas últimas 24h`
+                    : "Auto-resposta enviada"
+                }
+                highlight={stats.errorsRecent > 0 ? "red" : undefined}
+              />
+            </div>
+            {stats.lastBackfill && (
+              <p className="text-xs text-zinc-500 leading-relaxed">
+                Última extração do histórico:{" "}
+                <span className="text-zinc-400">
+                  {new Date(stats.lastBackfill.at).toLocaleString()}
+                </span>
+                {stats.lastBackfill.detail ? ` — ${stats.lastBackfill.detail}` : ""}
+              </p>
+            )}
+            {stats.queuePending > 0 && stats.messagesLearned === 0 && (
+              <p className="text-xs text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+                Há {stats.queuePending} job(s) na fila. Confirme se o serviço{" "}
+                <strong className="font-medium">zap-worker</strong> está rodando no EasyPanel.
+              </p>
+            )}
+          </div>
+        )}
       </section>
 
       <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-5 space-y-4">
@@ -736,6 +818,28 @@ export function AiAssistantPanel() {
       )}
 
       {saving && <p className="text-xs text-zinc-500">Salvando…</p>}
+    </div>
+  );
+}
+
+function StatCard(props: {
+  label: string;
+  value: number;
+  hint: string;
+  highlight?: "amber" | "red";
+}) {
+  const valueClass =
+    props.highlight === "amber"
+      ? "text-amber-300"
+      : props.highlight === "red"
+        ? "text-red-300"
+        : "text-white";
+
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-2.5">
+      <p className="text-[11px] uppercase tracking-wide text-zinc-500">{props.label}</p>
+      <p className={`text-2xl font-semibold tabular-nums mt-0.5 ${valueClass}`}>{props.value}</p>
+      <p className="text-[11px] text-zinc-600 mt-1 leading-snug">{props.hint}</p>
     </div>
   );
 }

@@ -120,3 +120,13 @@ export async function cancelAiReplyJob(session: string, chatId: string): Promise
   const job = await queue.getJob(jobId);
   if (job) await job.remove();
 }
+
+export async function getAiQueueCounts(): Promise<{ pending: number; active: number }> {
+  const queue = getAiQueue();
+  const [waiting, delayed, active] = await Promise.all([
+    queue.getWaitingCount(),
+    queue.getDelayedCount(),
+    queue.getActiveCount()
+  ]);
+  return { pending: waiting + delayed, active };
+}
