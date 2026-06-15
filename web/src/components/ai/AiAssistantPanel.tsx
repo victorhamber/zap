@@ -78,6 +78,66 @@ export function AiAssistantPanel() {
   const [backfilling, setBackfilling] = useState(false);
   const [watchingBackfill, setWatchingBackfill] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const savedFormRef = useRef<Pick<
+    AiSettings,
+    | "productContext"
+    | "rulesAllowed"
+    | "rulesForbidden"
+    | "officialLinks"
+    | "replyDelaySec"
+    | "humanIdleSec"
+  > | null>(null);
+
+  function syncSavedFormRef(s: AiSettings) {
+    savedFormRef.current = {
+      productContext: s.productContext,
+      rulesAllowed: s.rulesAllowed,
+      rulesForbidden: s.rulesForbidden,
+      officialLinks: s.officialLinks,
+      replyDelaySec: s.replyDelaySec,
+      humanIdleSec: s.humanIdleSec
+    };
+  }
+
+  function isFormDirty(): boolean {
+    if (!settings || !savedFormRef.current) return false;
+    const b = savedFormRef.current;
+    return (
+      settings.productContext !== b.productContext ||
+      settings.rulesAllowed !== b.rulesAllowed ||
+      settings.rulesForbidden !== b.rulesForbidden ||
+      settings.replyDelaySec !== b.replyDelaySec ||
+      settings.humanIdleSec !== b.humanIdleSec ||
+      JSON.stringify(settings.officialLinks) !== JSON.stringify(b.officialLinks)
+    );
+  }
+
+  function discardFormChanges() {
+    if (!settings || !savedFormRef.current) return;
+    const b = savedFormRef.current;
+    setSettings({
+      ...settings,
+      productContext: b.productContext,
+      rulesAllowed: b.rulesAllowed,
+      rulesForbidden: b.rulesForbidden,
+      officialLinks: b.officialLinks,
+      replyDelaySec: b.replyDelaySec,
+      humanIdleSec: b.humanIdleSec
+    });
+    showMessage("Alterações descartadas.");
+  }
+
+  async function saveFormFields() {
+    if (!settings) return;
+    await save({
+      productContext: settings.productContext,
+      rulesAllowed: settings.rulesAllowed,
+      rulesForbidden: settings.rulesForbidden,
+      officialLinks: settings.officialLinks,
+      replyDelaySec: settings.replyDelaySec,
+      humanIdleSec: settings.humanIdleSec
+    });
+  }
 
   const refreshProgress = useCallback(async () => {
     const [k, e, st] = await Promise.all([
@@ -101,6 +161,7 @@ export function AiAssistantPanel() {
       api<{ tags: Tag[] }>("/api/tags")
     ]);
     setSettings(s);
+    syncSavedFormRef(s);
     setTags(t.tags);
     await refreshProgress();
   }, [refreshProgress]);
@@ -139,6 +200,7 @@ export function AiAssistantPanel() {
         body: JSON.stringify(body)
       });
       setSettings(updated);
+      syncSavedFormRef(updated);
       if (partial.openaiApiKey) setApiKeyInput("");
       showMessage(
         partial.openaiApiKey ? "Chave OpenAI salva." : "Configurações salvas."
@@ -306,8 +368,33 @@ export function AiAssistantPanel() {
     return <p className="text-sm text-zinc-500">Carregando assistente…</p>;
   }
 
+  const formDirty = isFormDirty();
+
   return (
     <div className="space-y-8">
+      {formDirty && (
+        <div className="sticky top-2 z-20 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-950/40 px-4 py-3 shadow-lg">
+          <p className="text-sm text-amber-100/90">Você tem alterações não salvas.</p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="px-4 py-2 rounded-lg border border-zinc-600 text-zinc-300 text-sm hover:bg-zinc-900"
+              disabled={saving}
+              onClick={discardFormChanges}
+            >
+              Descartar
+            </button>
+            <button
+              type="button"
+              className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-500 disabled:opacity-50"
+              disabled={saving}
+              onClick={() => void saveFormFields()}
+            >
+              {saving ? "Salvando…" : "Salvar alterações"}
+            </button>
+          </div>
+        </div>
+      )}
       {message && (
         <p
           className={`text-sm rounded-lg px-3 py-2 border ${
@@ -526,13 +613,15 @@ export function AiAssistantPanel() {
 
       <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-5 space-y-3">
         <h3 className="font-medium text-white">Produto e regras</h3>
+        <p className="text-xs text-zinc-500">
+          Edite os campos abaixo e clique em <strong className="text-zinc-400">Salvar alterações</strong>.
+        </p>
         <label className="block text-sm text-zinc-400">
           Contexto do produto
           <textarea
             className="mt-1 w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-zinc-100 text-sm min-h-24"
             value={settings.productContext}
             onChange={(e) => setSettings({ ...settings, productContext: e.target.value })}
-            onBlur={() => void save({ productContext: settings.productContext })}
           />
         </label>
         <label className="block text-sm text-zinc-400">
@@ -541,7 +630,6 @@ export function AiAssistantPanel() {
             className="mt-1 w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-zinc-100 text-sm min-h-20"
             value={settings.rulesAllowed}
             onChange={(e) => setSettings({ ...settings, rulesAllowed: e.target.value })}
-            onBlur={() => void save({ rulesAllowed: settings.rulesAllowed })}
           />
         </label>
         <label className="block text-sm text-zinc-400">
@@ -550,7 +638,6 @@ export function AiAssistantPanel() {
             className="mt-1 w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-zinc-100 text-sm min-h-20"
             value={settings.rulesForbidden}
             onChange={(e) => setSettings({ ...settings, rulesForbidden: e.target.value })}
-            onBlur={() => void save({ rulesForbidden: settings.rulesForbidden })}
           />
         </label>
       </section>
@@ -568,7 +655,6 @@ export function AiAssistantPanel() {
                 next[i] = { ...link, trigger: e.target.value };
                 setSettings({ ...settings, officialLinks: next });
               }}
-              onBlur={() => void save({ officialLinks: settings.officialLinks })}
             />
             <input
               className="rounded bg-zinc-900 border border-zinc-700 px-2 py-1 text-sm text-zinc-100"
@@ -579,7 +665,6 @@ export function AiAssistantPanel() {
                 next[i] = { ...link, url: e.target.value };
                 setSettings({ ...settings, officialLinks: next });
               }}
-              onBlur={() => void save({ officialLinks: settings.officialLinks })}
             />
             <input
               className="rounded bg-zinc-900 border border-zinc-700 px-2 py-1 text-sm text-zinc-100"
@@ -590,7 +675,6 @@ export function AiAssistantPanel() {
                 next[i] = { ...link, label: e.target.value };
                 setSettings({ ...settings, officialLinks: next });
               }}
-              onBlur={() => void save({ officialLinks: settings.officialLinks })}
             />
           </div>
         ))}
@@ -598,7 +682,8 @@ export function AiAssistantPanel() {
           type="button"
           className="text-sm text-emerald-400"
           onClick={() =>
-            void save({
+            setSettings({
+              ...settings,
               officialLinks: [...settings.officialLinks, { trigger: "", url: "", label: "" }]
             })
           }
@@ -632,7 +717,6 @@ export function AiAssistantPanel() {
               onChange={(e) =>
                 setSettings({ ...settings, replyDelaySec: Number(e.target.value) || 60 })
               }
-              onBlur={() => void save({ replyDelaySec: settings.replyDelaySec })}
             />
           </label>
           <label className="text-zinc-400">
@@ -645,7 +729,6 @@ export function AiAssistantPanel() {
               onChange={(e) =>
                 setSettings({ ...settings, humanIdleSec: Number(e.target.value) || 60 })
               }
-              onBlur={() => void save({ humanIdleSec: settings.humanIdleSec })}
             />
           </label>
         </div>
