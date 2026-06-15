@@ -14,6 +14,7 @@ RUN npm run build
 FROM node:20-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+ENV ZAP_ROLE=api
 RUN apt-get update -y && apt-get install -y openssl ffmpeg && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json* ./

@@ -94,6 +94,8 @@ if (prisma) {
   app.log.warn("Sem DATABASE_URL — rotas de persistência indisponíveis");
 }
 
+console.log("[zap] API web iniciada (index.js) — NÃO processa fila zap-ai-jobs");
+
 app.listen({ port, host: "0.0.0.0" }).catch((err) => {
   app.log.error(err);
   process.exit(1);

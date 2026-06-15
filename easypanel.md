@@ -24,8 +24,19 @@ Repositório: https://github.com/victorhamber/zap
 ## App `zap-worker`
 
 - Mesmo repositório e branch
-- Dockerfile: `Dockerfile.worker`
-- Sem domínio público
+- **Dockerfile path: `Dockerfile.worker`** ← obrigatório (não deixe `Dockerfile`)
+- **Sem** domínio público e **sem** porta HTTP exposta
+- Comando de start (se o EasyPanel tiver campo): `node api/dist/worker.js`
+- **Não** use `npx prisma migrate deploy && node api/dist/index.js` no worker
+
+### Como saber se o worker está certo
+
+| Log | Serviço | Situação |
+|-----|---------|----------|
+| `[zap] API web iniciada (index.js)` + `Server listening at :3000` | Rodando **index.js** | Errado no worker |
+| `=== zap-worker (processador de filas) ===` | Rodando **worker.js** | Correto |
+
+Se o serviço `zap-worker` mostrar `Server listening at http://0.0.0.0:3000`, ele está usando o **Dockerfile errado** — troque para `Dockerfile.worker` e redeploy.
 
 ## Variáveis (app `zap` e `zap-worker`)
 

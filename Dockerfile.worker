@@ -12,6 +12,7 @@ RUN npm run build:api
 FROM node:20-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+ENV ZAP_ROLE=worker
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ffmpeg \
@@ -25,4 +26,6 @@ COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
 
+# Não expõe porta — só processa filas (zap-ai-jobs, zap-flow-jobs).
+# EasyPanel: Dockerfile path = Dockerfile.worker (NÃO use Dockerfile).
 CMD ["node", "api/dist/worker.js"]
