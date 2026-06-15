@@ -257,6 +257,31 @@ O bootstrap cria o admin automaticamente. Se precisar resetar senha: `npm run db
 
 Login: `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
 
+## Assistente IA — fila parada (2014 na fila, 0 aprendidas)
+
+O app **`zap`** só **enfileira** jobs. Quem **processa** aprendizado e auto-resposta é o **`zap-worker`**.
+
+| Log | Serviço |
+|-----|---------|
+| `Server listening at http://0.0.0.0:3000` | **zap** (API) — **não** processa IA |
+| `=== zap-worker (processador de filas) ===` | **zap-worker** — processa IA |
+
+No EasyPanel, crie/verifique o serviço **`zap-worker`**:
+
+- Repositório: mesmo do `zap` (`github.com/victorhamber/zap`, branch `main`)
+- **Dockerfile: `Dockerfile.worker`** (não use `Dockerfile`)
+- **Sem domínio** público
+- **Mesmas env vars** do `zap` (`DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, `EVOLUTION_*`, etc.)
+- Status: **Running**
+
+Se o worker estiver ok, o log mostra algo como:
+
+```text
+[worker] Fila zap-ai-jobs: 2014 pendente(s), 3 ativo(s)
+[worker] Zap worker ativo: zap-flow-jobs + zap-flow-starts + zap-ai-jobs
+[worker] AI job concluído (learn) — total 1
+```
+
 ## Diagnóstico no painel
 
 **WhatsApp → Conexão / QR → Testar ligação Zap → WPP** mostra se token, URL e sessão estão corretos.
