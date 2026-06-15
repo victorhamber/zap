@@ -117,10 +117,16 @@ model InstanceAiEvent {
 }
 
 model WppInstance {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  label     String?
-  createdAt DateTime @default(now())
+  id                        String   @id @default(cuid())
+  name                      String   @unique
+  label                     String?
+  /** baileys = QR Evolution | business = API oficial Meta via Evolution */
+  integration               String   @default("baileys")
+  metaPhoneNumberId         String?
+  metaBusinessId            String?
+  metaAccessTokenEnc        String?
+  metaWebhookVerifyTokenEnc String?
+  createdAt                 DateTime @default(now())
 }
 
 model Flow {

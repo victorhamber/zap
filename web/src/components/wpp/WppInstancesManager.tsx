@@ -1,12 +1,25 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../../api/client";
 
+type BusinessConfig = {
+  integration: "baileys" | "business";
+  metaPhoneNumberId: string | null;
+  metaBusinessId: string | null;
+  metaAccessTokenMasked: string | null;
+  metaWebhookVerifyTokenMasked: string | null;
+  hasMetaAccessToken: boolean;
+  hasMetaWebhookVerifyToken: boolean;
+  metaWebhookUrl: string | null;
+};
+
 type Instance = {
   id: string;
   name: string;
   label: string | null;
   isActive: boolean;
   onServer: boolean;
+  integration?: "baileys" | "business";
+  business?: BusinessConfig;
 };
 
 export function WppInstancesManager({ onActivated }: { onActivated?: () => void }) {
@@ -14,10 +27,18 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
   const [active, setActive] = useState("");
   const [newName, setNewName] = useState("");
   const [newLabel, setNewLabel] = useState("");
+  const [newIntegration, setNewIntegration] = useState<"baileys" | "business">("baileys");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+  const [configuring, setConfiguring] = useState<string | null>(null);
+  const [bizForm, setBizForm] = useState({
+    metaPhoneNumberId: "",
+    metaBusinessId: "",
+    metaAccessToken: "",
+    metaWebhookVerifyToken: ""
+  });
 
   const load = useCallback(async () => {
     const r = await api<{
@@ -48,16 +69,79 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
     try {
       await api("/api/wpp/instances", {
         method: "POST",
-        body: JSON.stringify({ name, label: newLabel.trim() || name, connect: false })
+        body: JSON.stringify({
+          name,
+          label: newLabel.trim() || name,
+          connect: false,
+          integration: newIntegration
+        })
       });
       setNewName("");
       setNewLabel("");
       setShowCreate(false);
-      setMsg(`Instância "${name}" criada. Vá em Conexão / QR para escanear o QR.`);
+      setMsg(
+        newIntegration === "business"
+          ? `Instância "${name}" criada. Configure a API oficial Meta abaixo.`
+          : `Instância "${name}" criada. Vá em Conexão / QR para escanear o QR.`
+      );
       await load();
+      if (newIntegration === "business") setConfiguring(name);
       onActivated?.();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Erro ao criar");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function openBusinessConfig(name: string) {
+    setConfiguring(name);
+    setError("");
+    try {
+      const cfg = await api<BusinessConfig>(`/api/wpp/instances/${encodeURIComponent(name)}/business`);
+      setBizForm({
+        metaPhoneNumberId: cfg.metaPhoneNumberId ?? "",
+        metaBusinessId: cfg.metaBusinessId ?? "",
+        metaAccessToken: "",
+        metaWebhookVerifyToken: ""
+      });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Erro ao carregar config");
+    }
+  }
+
+  async function saveBusinessConfig(name: string) {
+    setLoading(true);
+    setError("");
+    setMsg("");
+    try {
+      const r = await api<BusinessConfig & { ok: boolean }>(
+        `/api/wpp/instances/${encodeURIComponent(name)}/business`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            integration: "business",
+            metaPhoneNumberId: bizForm.metaPhoneNumberId.trim(),
+            metaBusinessId: bizForm.metaBusinessId.trim(),
+            ...(bizForm.metaAccessToken.trim()
+              ? { metaAccessToken: bizForm.metaAccessToken.trim() }
+              : {}),
+            ...(bizForm.metaWebhookVerifyToken.trim()
+              ? { metaWebhookVerifyToken: bizForm.metaWebhookVerifyToken.trim() }
+              : {})
+          })
+        }
+      );
+      setMsg(`API oficial configurada para "${name}".`);
+      setBizForm((f) => ({ ...f, metaAccessToken: "", metaWebhookVerifyToken: "" }));
+      await load();
+      if (r.metaWebhookUrl) {
+        setMsg(
+          `Salvo. No Meta Developers, webhook URL: ${r.metaWebhookUrl} — use o mesmo token de verificação que você definiu aqui.`
+        );
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Erro ao salvar");
     } finally {
       setLoading(false);
     }
@@ -99,6 +183,7 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
         `/api/wpp/instances/${encodeURIComponent(name)}`,
         { method: "DELETE" }
       );
+      if (configuring === name) setConfiguring(null);
       await load();
       setMsg(r.message ?? `Instância "${name}" removida.`);
       if (r.warning) setError(r.warning);
@@ -111,6 +196,7 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
   }
 
   const activeInstance = instances.find((i) => i.isActive);
+  const configuringInst = instances.find((i) => i.name === configuring);
 
   return (
     <div className="space-y-4">
@@ -140,9 +226,11 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
               </p>
               <p className="text-sm text-zinc-400 font-mono mt-0.5">{activeInstance.name}</p>
               <p className="text-xs text-zinc-500 mt-2">
-                {activeInstance.onServer
-                  ? "Registrada no servidor Evolution"
-                  : "Cadastrada no painel — conecte em Conexão / QR"}
+                {activeInstance.integration === "business"
+                  ? "API oficial Meta (Cloud API via Evolution)"
+                  : activeInstance.onServer
+                    ? "Evolution Baileys — registrada no servidor"
+                    : "Cadastrada no painel — conecte em Conexão / QR"}
               </p>
             </div>
           </div>
@@ -154,9 +242,7 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
           <div>
             <h2 className="text-base font-semibold text-white">Suas instâncias</h2>
             <p className="text-xs text-zinc-500 mt-0.5">
-              {instances.length === 0
-                ? "Nenhuma cadastrada"
-                : `${instances.length} cadastrada${instances.length > 1 ? "s" : ""}`}
+              Baileys (QR) ou API oficial Meta — credenciais por instância
             </p>
           </div>
           <button
@@ -188,6 +274,27 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
                   placeholder="ex: Atendimento principal"
                   className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500/40"
                 />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-zinc-500 mb-2">Tipo de conexão</label>
+              <div className="flex flex-wrap gap-3 text-sm">
+                <label className="flex items-center gap-2 text-zinc-300">
+                  <input
+                    type="radio"
+                    checked={newIntegration === "baileys"}
+                    onChange={() => setNewIntegration("baileys")}
+                  />
+                  Evolution (QR Code)
+                </label>
+                <label className="flex items-center gap-2 text-zinc-300">
+                  <input
+                    type="radio"
+                    checked={newIntegration === "business"}
+                    onChange={() => setNewIntegration("business")}
+                  />
+                  API oficial Meta
+                </label>
               </div>
             </div>
             <button
@@ -229,11 +336,26 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
                         Ativa
                       </span>
                     )}
+                    {inst.integration === "business" && (
+                      <span className="rounded-full bg-sky-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase text-sky-300">
+                        Meta API
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-zinc-500 font-mono truncate">{inst.name}</p>
                 </div>
               </div>
-              <div className="flex gap-2 shrink-0">
+              <div className="flex flex-wrap gap-2 shrink-0">
+                {inst.integration === "business" && (
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={() => void openBusinessConfig(inst.name)}
+                    className="rounded-lg bg-sky-500/10 border border-sky-500/25 px-3 py-1.5 text-xs font-medium text-sky-300 hover:bg-sky-500/20"
+                  >
+                    API Meta
+                  </button>
+                )}
                 {!inst.isActive && (
                   <button
                     type="button"
@@ -264,6 +386,99 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
           )}
         </ul>
       </div>
+
+      {configuring && configuringInst && (
+        <div className="rounded-2xl border border-sky-500/25 bg-zinc-950/80 p-5 space-y-4">
+          <div className="flex justify-between items-start gap-3">
+            <div>
+              <h3 className="font-medium text-white">API oficial Meta — {configuringInst.label ?? configuring}</h3>
+              <p className="text-xs text-zinc-500 mt-1 leading-relaxed">
+                Credenciais salvas criptografadas no Zap, por instância. Cada usuário usa o próprio app Meta.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="text-xs text-zinc-500 hover:text-zinc-300"
+              onClick={() => setConfiguring(null)}
+            >
+              Fechar
+            </button>
+          </div>
+
+          {configuringInst.business?.metaWebhookUrl && (
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3 text-xs text-zinc-400 space-y-1">
+              <p>
+                <strong className="text-zinc-300">Webhook URL</strong> (Meta Developers → WhatsApp →
+                Configurar):
+              </p>
+              <p className="font-mono text-sky-300 break-all">{configuringInst.business.metaWebhookUrl}</p>
+              <p className="pt-1">
+                Token de verificação: o mesmo que você definir abaixo (cada instância pode ter o seu).
+              </p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-zinc-500 mb-1">Phone Number ID</label>
+              <input
+                value={bizForm.metaPhoneNumberId}
+                onChange={(e) => setBizForm({ ...bizForm, metaPhoneNumberId: e.target.value })}
+                className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm font-mono text-zinc-100"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-zinc-500 mb-1">Business / WABA ID</label>
+              <input
+                value={bizForm.metaBusinessId}
+                onChange={(e) => setBizForm({ ...bizForm, metaBusinessId: e.target.value })}
+                className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm font-mono text-zinc-100"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs text-zinc-500 mb-1">
+              Access Token permanente
+              {configuringInst.business?.hasMetaAccessToken && (
+                <span className="text-zinc-600"> — atual: {configuringInst.business.metaAccessTokenMasked}</span>
+              )}
+            </label>
+            <input
+              type="password"
+              value={bizForm.metaAccessToken}
+              onChange={(e) => setBizForm({ ...bizForm, metaAccessToken: e.target.value })}
+              placeholder="EAAxxxx…"
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-zinc-500 mb-1">
+              Token de verificação do webhook
+              {configuringInst.business?.hasMetaWebhookVerifyToken && (
+                <span className="text-zinc-600">
+                  {" "}
+                  — atual: {configuringInst.business.metaWebhookVerifyTokenMasked}
+                </span>
+              )}
+            </label>
+            <input
+              type="password"
+              value={bizForm.metaWebhookVerifyToken}
+              onChange={(e) => setBizForm({ ...bizForm, metaWebhookVerifyToken: e.target.value })}
+              placeholder="defina um token e use o mesmo no Meta"
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+            />
+          </div>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => void saveBusinessConfig(configuring)}
+            className="rounded-xl bg-sky-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-sky-500 disabled:opacity-50"
+          >
+            Salvar e sincronizar com Evolution
+          </button>
+        </div>
+      )}
 
       {active && (
         <p className="text-center text-xs text-zinc-600">

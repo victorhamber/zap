@@ -5,6 +5,12 @@ import { defaultWhatsAppSession, env } from "../env.js";
 import * as wpp from "../services/whatsapp/index.js";
 import { resetInboxForSession } from "../services/inboxStore.js";
 import { undismissSession } from "../utils/wppDismissed.js";
+import {
+  getBusinessConfigDto,
+  saveBusinessConfig,
+  type BusinessConfigInput,
+  type WppIntegration
+} from "../services/whatsapp/wppInstanceConfig.js";
 
 function buildKeepSessionNames(
   instanceNames: string[],
@@ -41,6 +47,12 @@ export async function wppRoutes(app: FastifyInstance) {
     const instanceNames = instances.map((i) => i.name);
     const keepNames = buildKeepSessionNames(instanceNames, active);
 
+    const configs = await Promise.all(
+      instances.map(async (i) => ({
+        business: await getBusinessConfigDto(i.name)
+      }))
+    );
+
     const { sessions: serverSessions, error: serverError } = await listServerSessionNames();
     const orphanSessions = serverSessions.filter(
       (s) => !keepNames.map((k) => k.toLowerCase()).includes(s.toLowerCase())
@@ -60,12 +72,14 @@ export async function wppRoutes(app: FastifyInstance) {
 
     return {
       active,
-      instances: instances.map((i) => ({
+      instances: instances.map((i, idx) => ({
         id: i.id,
         name: i.name,
         label: i.label,
         isActive: i.name === active,
-        onServer: afterList.sessions.includes(i.name)
+        onServer: afterList.sessions.includes(i.name),
+        integration: configs[idx]?.business.integration ?? "baileys",
+        business: configs[idx]?.business
       })),
       serverSessions: afterList.sessions,
       keepNames,
@@ -80,7 +94,12 @@ export async function wppRoutes(app: FastifyInstance) {
   app.post("/api/wpp/instances", async (req, reply) => {
     if (!prisma) return reply.status(503).send({ error: "Banco indisponível" });
 
-    const body = req.body as { name?: string; label?: string; connect?: boolean };
+    const body = req.body as {
+      name?: string;
+      label?: string;
+      connect?: boolean;
+      integration?: WppIntegration;
+    };
     const name = (body.name ?? "").trim().toLowerCase();
     if (!name) return reply.status(400).send({ error: "Nome da instância obrigatório" });
 
@@ -92,19 +111,33 @@ export async function wppRoutes(app: FastifyInstance) {
 
     const instance = await prisma.wppInstance.upsert({
       where: { name },
-      update: { label: body.label ?? name },
-      create: { name, label: body.label ?? name }
+      update: {
+        label: body.label ?? name,
+        ...(body.integration ? { integration: body.integration } : {})
+      },
+      create: {
+        name,
+        label: body.label ?? name,
+        integration: body.integration === "business" ? "business" : "baileys"
+      }
     });
 
     await wpp.setActiveSession(name);
     await wpp.refreshWppToken(name);
 
     let connectResult: unknown = null;
-    if (body.connect !== false) {
+    const cfg = await getBusinessConfigDto(name);
+    if (body.connect !== false && cfg.integration !== "business") {
       try {
         connectResult = await wpp.startSession();
       } catch {
         /* QR pode ser obtido depois */
+      }
+    } else if (cfg.integration === "business" && cfg.hasMetaAccessToken) {
+      try {
+        connectResult = await wpp.startSession();
+      } catch {
+        /* credenciais incompletas */
       }
     }
 
@@ -114,6 +147,36 @@ export async function wppRoutes(app: FastifyInstance) {
       active: name,
       connect: connectResult
     };
+  });
+
+  app.get("/api/wpp/instances/:name/business", async (req, reply) => {
+    if (!prisma) return reply.status(503).send({ error: "Banco indisponível" });
+    const name = (req.params as { name: string }).name.trim().toLowerCase();
+    const exists = await prisma.wppInstance.findUnique({ where: { name } });
+    if (!exists) return reply.status(404).send({ error: "Instância não encontrada" });
+    return getBusinessConfigDto(name);
+  });
+
+  app.put("/api/wpp/instances/:name/business", async (req, reply) => {
+    if (!prisma) return reply.status(503).send({ error: "Banco indisponível" });
+    const name = (req.params as { name: string }).name.trim().toLowerCase();
+    const exists = await prisma.wppInstance.findUnique({ where: { name } });
+    if (!exists) return reply.status(404).send({ error: "Instância não encontrada" });
+
+    const body = req.body as Partial<BusinessConfigInput> & { integration?: WppIntegration };
+
+    try {
+      const dto = await saveBusinessConfig(name, body);
+      if (dto.integration === "business" && dto.hasMetaAccessToken) {
+        await wpp.setActiveSession(name);
+        await wpp.refreshWppToken(name).catch(() => {});
+        await wpp.startSession().catch(() => {});
+      }
+      return { ok: true, ...dto };
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      return reply.status(400).send({ error: message });
+    }
   });
 
   app.post("/api/wpp/instances/:name/activate", async (req, reply) => {

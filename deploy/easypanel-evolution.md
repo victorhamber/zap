@@ -62,6 +62,21 @@ EVOLUTION_API_KEY=mesma-chave-do-AUTHENTICATION_API_KEY-da-evolution
 
 Pare ou exclua o serviço **wppconnect** no EasyPanel.
 
+### API oficial Meta (por instância no Zap)
+
+Credenciais **não** vão no `.env` da Evolution — cada instância configura no painel Zap → **Instâncias** → **API Meta**:
+
+- Phone Number ID, Business ID, Access Token, Token de verificação do webhook
+
+**Webhook Meta** (cada app/usuário no [Meta Developers](https://developers.facebook.com)):
+
+- URL: `https://zap.trajettu.com/api/webhooks/meta`
+- Token de verificação: o mesmo definido no painel Zap para aquela instância
+
+O Zap valida o token por instância e roteia mensagens pelo Phone Number ID. Envios continuam via Evolution (`WHATSAPP-BUSINESS`).
+
+Requer `AI_ENCRYPTION_KEY` no serviço `zap` (criptografia das credenciais no banco).
+
 ## 4. Conectar WhatsApp
 
 1. Painel Zap → **Configurações** → **Conectar / Mostrar QR**

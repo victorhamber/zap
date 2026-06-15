@@ -432,4 +432,70 @@ export async function webhookRoutes(app: FastifyInstance) {
       });
     }
   });
+
+  app.get("/api/webhooks/meta", async (req, reply) => {
+    const q = req.query as Record<string, unknown>;
+    const challenge = await (
+      await import("../services/whatsapp/metaWebhook.js")
+    ).verifyMetaWebhookChallenge(q);
+    if (challenge) {
+      return reply.status(200).type("text/plain").send(challenge);
+    }
+    return { ok: true, service: "meta-cloud-api" };
+  });
+
+  app.post("/api/webhooks/meta", async (req, reply) => {
+    if (!prisma) return { ok: false };
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const { parseMetaWebhookMessages } = await import("../services/whatsapp/metaWebhook.js");
+    const { ensureInboxCaptureStarted } = await import("../services/inboxStore.js");
+    const {
+      touchWppWebhookReceived,
+      touchWppWebhookSaved,
+      touchWppWebhookSkipped
+    } = await import("../services/wppWebhook.js");
+
+    touchWppWebhookReceived("meta.messages");
+
+    try {
+      const messages = await parseMetaWebhookMessages(body);
+      if (messages.length === 0) {
+        touchWppWebhookSkipped("not_message");
+        return { ok: true, skipped: "not_message" };
+      }
+
+      let saved = 0;
+      for (const parsed of messages) {
+        await ensureInboxCaptureStarted();
+        await saveInboxMessage({
+          chatId: parsed.chatId,
+          body: parsed.text,
+          fromMe: parsed.fromMe,
+          type: parsed.type,
+          waMessageId: parsed.waMessageId,
+          timestamp: parsed.timestamp,
+          sessionName: parsed.session
+        });
+        saved++;
+        touchWppWebhookSaved();
+
+        if (!parsed.fromMe) {
+          await triggerInboundFlows({
+            chatId: parsed.chatId,
+            text: parsed.text,
+            log: req.log
+          });
+        }
+      }
+
+      return { ok: true, saved, count: messages.length };
+    } catch (err) {
+      req.log.error({ err }, "meta webhook handler error");
+      return reply.status(200).send({
+        ok: false,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
+  });
 }

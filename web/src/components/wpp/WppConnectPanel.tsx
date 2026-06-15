@@ -20,6 +20,7 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
   const [noticeText, setNoticeText] = useState(
     'Clique em "Verificar status" para ver se há um aparelho conectado.'
   );
+  const [isBusinessInstance, setIsBusinessInstance] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollConnectingRef = useRef(false);
 
@@ -28,6 +29,15 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
   const loadSettings = useCallback(async () => {
     const s = await api<WppSettings>("/api/settings/wpp");
     setSettings(s);
+    try {
+      const inst = await api<{
+        instances: Array<{ name: string; isActive: boolean; integration?: string }>;
+      }>("/api/wpp/instances");
+      const active = inst.instances.find((i) => i.isActive);
+      setIsBusinessInstance(active?.integration === "business");
+    } catch {
+      setIsBusinessInstance(false);
+    }
   }, []);
 
   const refreshQr = useCallback(async (): Promise<boolean> => {
@@ -461,10 +471,22 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
       </div>
 
       <div className={`mt-4 rounded-xl border px-4 py-3 text-sm ${noticeClass}`}>
-        <p className="font-medium leading-snug">{noticeText}</p>
+        <p className="font-medium leading-snug">
+          {isBusinessInstance
+            ? "Instância API oficial Meta — sem QR Code. Configure credenciais em Instâncias → API Meta e o webhook no painel da Meta."
+            : noticeText}
+        </p>
       </div>
 
-      {qrImage && !isConnected && (
+      {isBusinessInstance && (
+        <p className="mt-3 text-xs text-zinc-500 leading-relaxed">
+          Mensagens recebidas chegam em{" "}
+          <span className="font-mono text-zinc-400">/api/webhooks/meta</span> no Zap (cada instância com
+          seu token de verificação). Envios usam a Evolution com suas credenciais salvas no painel.
+        </p>
+      )}
+
+      {qrImage && !isConnected && !isBusinessInstance && (
         <div className="mt-5 flex flex-col items-center">
           <div className="rounded-2xl bg-white p-3 shadow-lg">
             <img src={qrImage} alt="QR Code WhatsApp" className="h-56 w-56 object-contain" />
@@ -476,7 +498,7 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
       )}
 
       <div className="mt-5 flex flex-wrap gap-2">
-        {!isConnected && (
+        {!isConnected && !isBusinessInstance && (
           <button
             type="button"
             disabled={loading}
@@ -486,7 +508,7 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
             {loading ? "Aguarde…" : qrImage ? "Gerar novo QR" : "Conectar / Mostrar QR"}
           </button>
         )}
-        {qrImage && !isConnected && (
+        {qrImage && !isConnected && !isBusinessInstance && (
           <button
             type="button"
             disabled={loading}
@@ -494,6 +516,16 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
             className="rounded-xl border border-zinc-700 px-4 py-2 text-sm hover:bg-zinc-900 disabled:opacity-50"
           >
             Atualizar QR
+          </button>
+        )}
+        {isBusinessInstance && (
+          <button
+            type="button"
+            disabled={loading}
+            onClick={connect}
+            className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-500 disabled:opacity-50"
+          >
+            Sincronizar API oficial
           </button>
         )}
         <button

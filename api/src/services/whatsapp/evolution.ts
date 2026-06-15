@@ -20,6 +20,7 @@ import {
   uploadFilenameFromUrl
 } from "../uploads.js";
 import { brazilPhoneVariants, canonicalBrazilPhone } from "../../utils/phone.js";
+import { getWppInstanceConfig } from "./wppInstanceConfig.js";
 
 export const MSG_NO_DEVICE =
   "Nenhum WhatsApp conectado na Evolution. Crie/conecte a instância e escaneie o QR.";
@@ -169,6 +170,42 @@ export async function setActiveSession(sessionName: string): Promise<void> {
 async function ensureInstanceExists(instance: string): Promise<void> {
   const list = await listServerSessions().catch(() => []);
   const names = parseWppServerSessionNames(list);
+  const cfg = await getWppInstanceConfig(instance);
+
+  if (cfg?.integration === "business") {
+    if (!cfg.metaAccessToken || !cfg.metaPhoneNumberId || !cfg.metaBusinessId) {
+      throw new Error(
+        "Configure Access Token, Phone Number ID e Business ID no painel (API oficial Meta)."
+      );
+    }
+
+    if (names.includes(instance)) {
+      await evoFetch(`/instance/delete/${encodeURIComponent(instance)}`, { method: "DELETE" }).catch(
+        () => {}
+      );
+    }
+
+    const res = await evoFetch("/instance/create", {
+      method: "POST",
+      body: JSON.stringify({
+        instanceName: instance,
+        integration: "WHATSAPP-BUSINESS",
+        token: cfg.metaAccessToken,
+        number: cfg.metaPhoneNumberId,
+        businessId: cfg.metaBusinessId,
+        qrcode: false
+      })
+    });
+    if (!res.ok && res.status !== 403) {
+      const body = await readJson(res);
+      const msg = formatWppError(res.status, body);
+      if (!/already exists|já existe/i.test(msg)) {
+        throw new Error(`Evolution create business instance: ${msg}`);
+      }
+    }
+    return;
+  }
+
   if (names.includes(instance)) return;
 
   const res = await evoFetch("/instance/create", {
@@ -899,8 +936,25 @@ export async function startSession(_options?: {
   force?: boolean;
 }): Promise<unknown> {
   const instance = await getInstanceName();
+  const cfg = await getWppInstanceConfig(instance);
   await ensureInstanceExists(instance);
   await registerInboundWebhook().catch(() => {});
+
+  if (cfg?.integration === "business") {
+    const stateRes = await checkConnection().catch(() => null);
+    const connected = stateRes ? parseConnectionCheck(stateRes) : true;
+    const state = stateRes ? extractSessionState(stateRes) : "OPEN";
+    if (prisma) {
+      await prisma.appSettings.update({
+        where: { id: "default" },
+        data: {
+          connectionStatus: connected ? `CONNECTED:${state}` : "CONNECTED:BUSINESS",
+          wppToken: "evolution"
+        }
+      });
+    }
+    return { state, connected: true, integration: "business" };
+  }
 
   const res = await evoFetch(`/instance/connect/${encodeURIComponent(instance)}`, {
     method: "GET"
@@ -924,6 +978,10 @@ export async function startSession(_options?: {
 
 export async function getQrCode(): Promise<{ qrImage: string | null; raw: unknown }> {
   const instance = await getInstanceName();
+  const cfg = await getWppInstanceConfig(instance);
+  if (cfg?.integration === "business") {
+    return { qrImage: null, raw: { integration: "business", message: "API oficial — sem QR" } };
+  }
   const res = await evoFetch(`/instance/connect/${encodeURIComponent(instance)}`, {
     method: "GET"
   });
