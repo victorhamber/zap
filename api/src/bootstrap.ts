@@ -1,5 +1,5 @@
-import bcrypt from "bcrypt";
 import { prisma } from "./prisma.js";
+import { syncAdminUserFromEnv } from "./services/adminUser.js";
 import { defaultWhatsAppSession, env, flags } from "./env.js";
 import { isEvolution } from "./services/whatsapp/index.js";
 import { defaultHotmartGraph } from "./engine/graph.js";
@@ -27,12 +27,7 @@ export async function bootstrapDatabase() {
     }
   });
 
-  const hash = await bcrypt.hash(env.ADMIN_PASSWORD, 10);
-  await prisma.user.upsert({
-    where: { email: env.ADMIN_EMAIL },
-    update: { passwordHash: hash },
-    create: { email: env.ADMIN_EMAIL, passwordHash: hash }
-  });
+  await syncAdminUserFromEnv();
   console.log(`[bootstrap] Admin sincronizado: ${env.ADMIN_EMAIL}`);
 
   const instanceCount = await prisma.wppInstance.count();

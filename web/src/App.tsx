@@ -1,5 +1,6 @@
+import { useEffect, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import { getToken } from "./api/client";
+import { api, getToken } from "./api/client";
 import { Layout } from "./components/Layout";
 import { Login } from "./pages/Login";
 import { Dashboard } from "./pages/Dashboard";
@@ -11,7 +12,18 @@ import { WhatsApp } from "./pages/WhatsApp";
 import { MediaLibrary } from "./pages/MediaLibrary";
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
-  if (!getToken()) return <Navigate to="/login" replace />;
+  const token = getToken();
+  const [checked, setChecked] = useState(!token);
+
+  useEffect(() => {
+    if (!token) return;
+    api<{ email: string }>("/api/auth/me")
+      .catch(() => {})
+      .finally(() => setChecked(true));
+  }, [token]);
+
+  if (!token) return <Navigate to="/login" replace />;
+  if (!checked) return null;
   return <>{children}</>;
 }
 

@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import bcrypt from "bcrypt";
 import { prisma } from "../prisma.js";
 import { env } from "../env.js";
-import { signToken } from "../middleware/auth.js";
+import { assertTokenValid, signToken } from "../middleware/auth.js";
 
 export async function authRoutes(app: FastifyInstance) {
   app.post("/api/auth/login", async (req, reply) => {
@@ -18,7 +18,11 @@ export async function authRoutes(app: FastifyInstance) {
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) return reply.status(401).send({ error: "Credenciais inválidas" });
 
-    const token = signToken({ userId: user.id, email: user.email });
+    const token = signToken({
+      userId: user.id,
+      email: user.email,
+      tokenVersion: user.tokenVersion
+    });
     return { token, email: user.email };
   });
 
@@ -27,11 +31,10 @@ export async function authRoutes(app: FastifyInstance) {
     const token = header?.startsWith("Bearer ") ? header.slice(7) : null;
     if (!token) return reply.status(401).send({ error: "Não autorizado" });
     try {
-      const { verifyToken } = await import("../middleware/auth.js");
-      const user = verifyToken(token);
+      const user = await assertTokenValid(token);
       return { email: user.email };
     } catch {
-      return reply.status(401).send({ error: "Token inválido" });
+      return reply.status(401).send({ error: "Sessão expirada" });
     }
   });
 }

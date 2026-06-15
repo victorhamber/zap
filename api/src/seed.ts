@@ -1,6 +1,6 @@
-import bcrypt from "bcrypt";
 import { prisma } from "./prisma.js";
 import { defaultWhatsAppSession, env } from "./env.js";
+import { syncAdminUserFromEnv } from "./services/adminUser.js";
 import { defaultHotmartGraph } from "./engine/graph.js";
 
 async function main() {
@@ -9,12 +9,7 @@ async function main() {
     process.exit(1);
   }
 
-  const hash = await bcrypt.hash(env.ADMIN_PASSWORD, 10);
-  await prisma.user.upsert({
-    where: { email: env.ADMIN_EMAIL },
-    update: { passwordHash: hash },
-    create: { email: env.ADMIN_EMAIL, passwordHash: hash }
-  });
+  await syncAdminUserFromEnv();
 
   await prisma.appSettings.upsert({
     where: { id: "default" },
