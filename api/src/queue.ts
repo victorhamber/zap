@@ -98,7 +98,9 @@ export async function enqueueAiLearnJob(payload: AiLearnJobPayload, delayMs = 0)
   );
   return queue.add("learn", payload, {
     jobId,
-    delay: Math.max(0, delayMs)
+    delay: Math.max(0, delayMs),
+    attempts: 8,
+    backoff: { type: "exponential", delay: 30_000 }
   });
 }
 

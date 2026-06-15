@@ -1,7 +1,7 @@
 import { prisma } from "../../prisma.js";
 import type { AiLearnJobPayload } from "../../types/ai.js";
 import { resolveOpenAiApiKey } from "./settings.js";
-import { extractKnowledge } from "./openaiClient.js";
+import { extractKnowledge, isOpenAiRateLimitError } from "./openaiClient.js";
 import { extractTextFromMessage } from "./mediaExtract.js";
 import { logAiEvent } from "./chatState.js";
 import { knowledgeSourceMsgId } from "./learnGate.js";
@@ -55,6 +55,7 @@ export async function processLearnJob(payload: AiLearnJobPayload): Promise<void>
     });
     if (extracted) text = extracted;
   } catch (err) {
+    if (isOpenAiRateLimitError(err)) throw err;
     await logAiEvent({
       session: payload.session,
       chatId: payload.chatId,

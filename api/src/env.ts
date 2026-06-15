@@ -68,7 +68,13 @@ const EnvSchema = z.object({
   AI_ENCRYPTION_KEY: z.string().optional(),
   AI_REPLY_DELAY_SEC: z.coerce.number().int().positive().default(60),
   AI_HUMAN_IDLE_SEC: z.coerce.number().int().positive().default(60),
-  AI_MAX_DAILY_REPLIES: z.coerce.number().int().positive().default(200)
+  AI_MAX_DAILY_REPLIES: z.coerce.number().int().positive().default(200),
+  /** Intervalo entre jobs de aprendizado enfileirados (backfill). Evita estourar TPM OpenAI. */
+  AI_LEARN_STAGGER_MS: z.coerce.number().int().positive().default(6000),
+  /** Concorrência do worker zap-ai-jobs (1 = mais seguro para rate limit). */
+  AI_WORKER_CONCURRENCY: z.coerce.number().int().positive().default(1),
+  /** Máx. chamadas OpenAI por minuto no worker (BullMQ limiter). */
+  AI_OPENAI_RPM_LIMIT: z.coerce.number().int().positive().default(15)
 }).superRefine((data, ctx) => {
   if (!isProd) return;
   if (data.WHATSAPP_PROVIDER === "wppconnect") {

@@ -4,7 +4,7 @@ import { continueFlowRun } from "./engine/executor.js";
 import type { FlowJobPayload } from "./types/flow.js";
 import type { AiLearnJobPayload, AiReplyJobPayload } from "./types/ai.js";
 import { prisma } from "./prisma.js";
-import { flags } from "./env.js";
+import { flags, env } from "./env.js";
 import { startFlowScheduler } from "./services/flowScheduler.js";
 import { startFlowStartWorker } from "./services/flowStartWorker.js";
 import { processLearnJob } from "./services/ai/learning.js";
@@ -64,10 +64,22 @@ async function main() {
         await processReplyJob(job.data as AiReplyJobPayload);
       }
     },
-    { connection: getRedisConnection(), concurrency: 3 }
+    {
+      connection: getRedisConnection(),
+      concurrency: env.AI_WORKER_CONCURRENCY,
+      limiter: {
+        max: env.AI_OPENAI_RPM_LIMIT,
+        duration: 60_000
+      }
+    }
   );
 
   aiWorker.on("failed", (job, err) => {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("429") || msg.includes("Rate limit")) {
+      console.warn("[worker] AI rate limit — job será reprocessado:", job?.name, job?.id);
+      return;
+    }
     console.error("[worker] AI job falhou", job?.name, job?.id, err);
   });
 
@@ -80,6 +92,9 @@ async function main() {
 
   startFlowStartWorker();
   startFlowScheduler();
+  console.log(
+    `[worker] IA: concurrency=${env.AI_WORKER_CONCURRENCY}, max ${env.AI_OPENAI_RPM_LIMIT} req/min, stagger backfill=${env.AI_LEARN_STAGGER_MS}ms`
+  );
   console.log("[worker] Zap worker ativo: zap-flow-jobs + zap-flow-starts + zap-ai-jobs");
 }
 

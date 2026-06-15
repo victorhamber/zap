@@ -1,3 +1,4 @@
+import { env } from "../../env.js";
 import { prisma } from "../../prisma.js";
 import { enqueueAiLearnJob } from "../../queue.js";
 import { detectModality } from "./mediaExtract.js";
@@ -14,9 +15,12 @@ import {
 import { logAiEvent } from "./chatState.js";
 import { resolveOpenAiApiKey } from "./settings.js";
 
-const STAGGER_MS = 250;
 const DEFAULT_LIMIT = 2000;
 const MAX_LIMIT = 5000;
+
+function learnStaggerMs(): number {
+  return env.AI_LEARN_STAGGER_MS;
+}
 
 export type HistoryLearnResult = {
   queued: number;
@@ -122,7 +126,7 @@ export async function queueHistoryLearning(params: {
           modality,
           kind
         },
-        queued * STAGGER_MS
+        queued * learnStaggerMs()
       );
 
       learnedIds.add(dedupeId);
