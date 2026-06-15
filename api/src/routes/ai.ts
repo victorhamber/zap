@@ -20,13 +20,18 @@ export async function aiRoutes(app: FastifyInstance) {
     return getAiSettings(session);
   });
 
-  app.put("/api/ai/settings", async (req) => {
+  app.put("/api/ai/settings", async (req, reply) => {
     const session = await getActiveSessionName();
     const body = req.body as Partial<AiSettingsDto> & {
       openaiApiKey?: string | null;
       clearOpenaiApiKey?: boolean;
     };
-    return saveAiSettings(session, body);
+    try {
+      return await saveAiSettings(session, body);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      return reply.status(400).send({ error: message });
+    }
   });
 
   app.get("/api/ai/knowledge", async (req) => {

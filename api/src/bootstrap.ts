@@ -60,6 +60,16 @@ export async function bootstrapDatabase() {
 
   console.log(`[bootstrap] WhatsApp provider: ${isEvolution ? "evolution" : "wppconnect"}`);
 
+  if (flags.isProd && !env.AI_ENCRYPTION_KEY?.trim()) {
+    console.warn(
+      "[bootstrap] AVISO: AI_ENCRYPTION_KEY ausente — não será possível salvar chave OpenAI nem credenciais Meta no painel."
+    );
+  } else if (flags.isProd && env.AI_ENCRYPTION_KEY!.trim().length !== 64) {
+    console.warn(
+      "[bootstrap] AVISO: AI_ENCRYPTION_KEY deve ter 64 caracteres hex (32 bytes). Assistente IA e credenciais Meta podem falhar."
+    );
+  }
+
   if (flags.isProd) {
     if (!env.ZAP_INTERNAL_URL?.trim()) {
       console.warn(

@@ -75,7 +75,12 @@ Credenciais **não** vão no `.env` da Evolution — cada instância configura n
 
 O Zap valida o token por instância e roteia mensagens pelo Phone Number ID. Envios continuam via Evolution (`WHATSAPP-BUSINESS`).
 
-Requer `AI_ENCRYPTION_KEY` no serviço `zap` (criptografia das credenciais no banco).
+Requer `AI_ENCRYPTION_KEY` no serviço `zap` **e** `zap-worker` (criptografia das chaves OpenAI e credenciais Meta).
+
+Gere a chave:
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
 
 ## 4. Conectar WhatsApp
 

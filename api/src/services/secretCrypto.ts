@@ -3,10 +3,14 @@ import { env } from "../env.js";
 
 const ALGO = "aes-256-gcm";
 
-function encryptionKey(): Buffer | null {
+export function isEncryptionConfigured(): boolean {
   const hex = env.AI_ENCRYPTION_KEY?.trim();
-  if (!hex || hex.length !== 64) return null;
-  return Buffer.from(hex, "hex");
+  return Boolean(hex && hex.length === 64);
+}
+
+function encryptionKey(): Buffer | null {
+  if (!isEncryptionConfigured()) return null;
+  return Buffer.from(env.AI_ENCRYPTION_KEY!.trim(), "hex");
 }
 
 export function encryptSecret(plain: string): string {

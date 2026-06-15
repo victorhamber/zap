@@ -1,6 +1,7 @@
 import { prisma } from "../../prisma.js";
 import { env } from "../../env.js";
 import type { OfficialLink } from "../../types/ai.js";
+import { isEncryptionConfigured } from "../secretCrypto.js";
 import { decryptApiKey, encryptApiKey, maskApiKey } from "./crypto.js";
 
 export async function getActiveSessionName(): Promise<string> {
@@ -44,6 +45,7 @@ export type AiSettingsDto = {
   officialLinks: OfficialLink[];
   openaiApiKeyMasked: string | null;
   hasOpenaiApiKey: boolean;
+  encryptionReady: boolean;
   modelChat: string;
   modelVision: string;
   modelTranscribe: string;
@@ -82,6 +84,7 @@ function toDto(row: NonNullable<Awaited<ReturnType<typeof loadSettingsRow>>>, se
     officialLinks: parseOfficialLinks(row.officialLinks),
     openaiApiKeyMasked: masked,
     hasOpenaiApiKey: Boolean(row.openaiApiKeyEnc),
+    encryptionReady: isEncryptionConfigured(),
     modelChat: row.modelChat,
     modelVision: row.modelVision,
     modelTranscribe: row.modelTranscribe,

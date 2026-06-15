@@ -24,6 +24,7 @@ type AiSettings = {
   officialLinks: OfficialLink[];
   openaiApiKeyMasked: string | null;
   hasOpenaiApiKey: boolean;
+  encryptionReady?: boolean;
   replyDelaySec: number;
   humanIdleSec: number;
   maxDailyReplies: number;
@@ -51,6 +52,7 @@ export function AiAssistantPanel() {
   const [tags, setTags] = useState<Tag[]>([]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [messageIsError, setMessageIsError] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [showTagModal, setShowTagModal] = useState(false);
   const [pendingLearn, setPendingLearn] = useState(false);
@@ -76,27 +78,37 @@ export function AiAssistantPanel() {
   }, []);
 
   useEffect(() => {
-    load().catch((err) => setMessage(err instanceof Error ? err.message : String(err)));
+    load().catch((err) =>
+      showMessage(err instanceof Error ? err.message : String(err), true)
+    );
   }, [load]);
+
+  function showMessage(text: string, isError = false) {
+    setMessage(text);
+    setMessageIsError(isError);
+  }
 
   async function save(partial: Partial<AiSettings> & { openaiApiKey?: string; clearOpenaiApiKey?: boolean }) {
     if (!settings) return;
     setSaving(true);
     setMessage(null);
+    setMessageIsError(false);
     try {
-      const body: Record<string, unknown> = { ...settings, ...partial };
-      if (partial.openaiApiKey !== undefined) {
-        body.openaiApiKey = partial.openaiApiKey;
-      }
+      const body: Record<string, unknown> =
+        partial.openaiApiKey !== undefined || partial.clearOpenaiApiKey
+          ? { ...partial }
+          : { ...settings, ...partial };
       const updated = await api<AiSettings>("/api/ai/settings", {
         method: "PUT",
         body: JSON.stringify(body)
       });
       setSettings(updated);
       if (partial.openaiApiKey) setApiKeyInput("");
-      setMessage("Configurações salvas.");
+      showMessage(
+        partial.openaiApiKey ? "Chave OpenAI salva." : "Configurações salvas."
+      );
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : String(err));
+      showMessage(err instanceof Error ? err.message : String(err), true);
     } finally {
       setSaving(false);
     }
@@ -260,7 +272,13 @@ export function AiAssistantPanel() {
   return (
     <div className="space-y-8">
       {message && (
-        <p className="text-sm text-emerald-300/90 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
+        <p
+          className={`text-sm rounded-lg px-3 py-2 border ${
+            messageIsError
+              ? "text-red-300/95 bg-red-500/10 border-red-500/25"
+              : "text-emerald-300/90 bg-emerald-500/10 border-emerald-500/20"
+          }`}
+        >
           {message}
         </p>
       )}
@@ -271,6 +289,16 @@ export function AiAssistantPanel() {
           Cada instância WhatsApp usa a chave do próprio usuário. A chave fica criptografada no banco
           e não é compartilhada entre instâncias.
         </p>
+        {settings.encryptionReady === false && (
+          <p className="text-sm text-amber-300/95 bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-2 leading-relaxed">
+            O servidor ainda não tem <strong className="font-medium">AI_ENCRYPTION_KEY</strong> (64
+            caracteres hex). Adicione no EasyPanel nos serviços <strong className="font-medium">zap</strong> e{" "}
+            <strong className="font-medium">zap-worker</strong>, reinicie e tente de novo. Gere com:{" "}
+            <code className="text-xs font-mono text-amber-200/90">
+              node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&apos;hex&apos;))&quot;
+            </code>
+          </p>
+        )}
         <p className="text-sm text-zinc-500">
           Chave atual:{" "}
           {settings.openaiApiKeyMasked ?? (
