@@ -57,25 +57,45 @@ export function AiAssistantPanel() {
   const [showTagModal, setShowTagModal] = useState(false);
   const [pendingLearn, setPendingLearn] = useState(false);
   const [knowledge, setKnowledge] = useState<KnowledgeItem[]>([]);
+  const [knowledgeTotal, setKnowledgeTotal] = useState(0);
   const [events, setEvents] = useState<AiEvent[]>([]);
   const [testInput, setTestInput] = useState("");
   const [testReply, setTestReply] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [backfilling, setBackfilling] = useState(false);
+  const [watchingBackfill, setWatchingBackfill] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
 
+  const refreshProgress = useCallback(async () => {
+    const [k, e] = await Promise.all([
+      api<{ items: KnowledgeItem[]; total: number; learnedLast24h?: number }>(
+        "/api/ai/knowledge?limit=20"
+      ),
+      api<{ items: AiEvent[] }>("/api/ai/events?limit=30")
+    ]);
+    setKnowledge(k.items);
+    setKnowledgeTotal(k.total);
+    setEvents(e.items);
+    return k.total;
+  }, []);
+
   const load = useCallback(async () => {
-    const [s, t, k, e] = await Promise.all([
+    const [s, t] = await Promise.all([
       api<AiSettings>("/api/ai/settings"),
-      api<{ tags: Tag[] }>("/api/tags"),
-      api<{ items: KnowledgeItem[] }>("/api/ai/knowledge?limit=20"),
-      api<{ items: AiEvent[] }>("/api/ai/events?limit=20")
+      api<{ tags: Tag[] }>("/api/tags")
     ]);
     setSettings(s);
     setTags(t.tags);
-    setKnowledge(k.items);
-    setEvents(e.items);
-  }, []);
+    await refreshProgress();
+  }, [refreshProgress]);
+
+  useEffect(() => {
+    if (!watchingBackfill) return;
+    const id = window.setInterval(() => {
+      refreshProgress().catch(() => {});
+    }, 15000);
+    return () => window.clearInterval(id);
+  }, [watchingBackfill, refreshProgress]);
 
   useEffect(() => {
     load().catch((err) =>
@@ -168,11 +188,12 @@ export function AiAssistantPanel() {
         body: JSON.stringify({})
       });
 
-      const k = await api<{ items: KnowledgeItem[] }>("/api/ai/knowledge?limit=20");
-      setKnowledge(k.items);
-      setMessage(
-        `Histórico enfileirado (${result.session}): ${result.queued} mensagens em ${result.chats} chats. ` +
-          `${result.skipped} ignoradas. Aguarde o worker processar.`
+      const k = await refreshProgress();
+      setWatchingBackfill(result.queued > 0);
+      showMessage(
+        `Histórico enfileirado: ${result.queued} mensagens em ${result.chats} chats (${result.skipped} ignoradas). ` +
+          `Itens aprendidos no banco: ${k}. O worker processa em background — atualize em ~1 min ou aguarde o painel atualizar sozinho. ` +
+          `Veja eventos "learned" no log abaixo.`
       );
     } catch (err) {
       setMessage(err instanceof Error ? err.message : String(err));
@@ -593,11 +614,23 @@ export function AiAssistantPanel() {
           <div>
             <h3 className="font-medium text-white">Conhecimento aprendido</h3>
             <p className="text-xs text-zinc-500 mt-1 leading-relaxed">
-              Baixe de uma instância, troque a instância ativa e use <strong className="text-zinc-400">Subir</strong>{" "}
-              para copiar a aprendizagem.
+              {knowledgeTotal > 0
+                ? `${knowledgeTotal} item(ns) no banco — mostrando os 20 mais recentes.`
+                : "Nenhum item processado ainda. Após extrair do histórico, aguarde o zap-worker e veja eventos learned no log."}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 shrink-0">
+            <button
+              type="button"
+              className="text-sm text-zinc-400 hover:text-zinc-200"
+              onClick={() =>
+                void refreshProgress()
+                  .then(() => showMessage("Progresso atualizado."))
+                  .catch((e) => showMessage(String(e), true))
+              }
+            >
+              Atualizar
+            </button>
             <button
               type="button"
               className="text-sm text-emerald-400 hover:text-emerald-300"
@@ -655,14 +688,41 @@ export function AiAssistantPanel() {
       </section>
 
       <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-5 space-y-3">
-        <h3 className="font-medium text-white">Log de eventos</h3>
+        <div className="flex justify-between items-center gap-2">
+          <h3 className="font-medium text-white">Log de eventos</h3>
+          <button
+            type="button"
+            className="text-xs text-zinc-500 hover:text-zinc-300"
+            onClick={() => void refreshProgress()}
+          >
+            Atualizar
+          </button>
+        </div>
+        <p className="text-xs text-zinc-600 leading-relaxed">
+          <strong className="text-zinc-500">learned</strong> = item extraído ·{" "}
+          <strong className="text-zinc-500">replied</strong> = resposta enviada ·{" "}
+          <strong className="text-zinc-500">error</strong> = falha (ex.: worker parado) ·{" "}
+          <strong className="text-zinc-500">cancelled_human</strong> = você respondeu manualmente
+        </p>
         <ul className="space-y-1 max-h-40 overflow-y-auto text-xs text-zinc-500">
           {events.map((ev) => (
-            <li key={ev.id}>
+            <li
+              key={ev.id}
+              className={
+                ev.event === "error"
+                  ? "text-red-400/90"
+                  : ev.event === "replied" || ev.event === "learned"
+                    ? "text-emerald-400/80"
+                    : ev.event === "cancelled_human"
+                      ? "text-amber-400/80"
+                      : ""
+              }
+            >
               {new Date(ev.createdAt).toLocaleString()} · {ev.event}
               {ev.detail ? ` — ${ev.detail.slice(0, 80)}` : ""}
             </li>
           ))}
+          {events.length === 0 && <li className="text-zinc-600">Nenhum evento ainda.</li>}
         </ul>
       </section>
 

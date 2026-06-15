@@ -1,5 +1,6 @@
 import { prisma } from "../../prisma.js";
 import { expandPhoneLookupKeys } from "../../utils/phone.js";
+import { findContactByPhoneLoose } from "../contacts.js";
 
 export async function contactHasLearnTags(
   phone: string,
@@ -7,13 +8,7 @@ export async function contactHasLearnTags(
 ): Promise<boolean> {
   if (!prisma || learnTagIds.length === 0) return false;
 
-  const keys = expandPhoneLookupKeys(phone.replace(/\D/g, ""));
-  if (keys.length === 0) return false;
-
-  const contact = await prisma.contact.findFirst({
-    where: { phone: { in: keys } },
-    include: { tags: true }
-  });
+  const contact = await findContactByPhoneLoose(phone);
   if (!contact) return false;
 
   const tagSet = new Set(contact.tags.map((t) => t.tagId));

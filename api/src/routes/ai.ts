@@ -42,17 +42,20 @@ export async function aiRoutes(app: FastifyInstance) {
     const limit = Math.min(100, Math.max(1, Number(q.limit ?? 30)));
     const skip = (page - 1) * limit;
 
-    const [items, total] = await Promise.all([
+    const [items, total, learnedEvents] = await Promise.all([
       prisma.instanceAiKnowledge.findMany({
         where: { session },
         orderBy: { createdAt: "desc" },
         skip,
         take: limit
       }),
-      prisma.instanceAiKnowledge.count({ where: { session } })
+      prisma.instanceAiKnowledge.count({ where: { session } }),
+      prisma.instanceAiEvent.count({
+        where: { session, event: "learned", createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } }
+      })
     ]);
 
-    return { items, total, page, limit };
+    return { items, total, page, limit, learnedLast24h: learnedEvents };
   });
 
   app.delete("/api/ai/knowledge", async () => {

@@ -1,5 +1,6 @@
 import type { InboxMessageSource } from "../../types/ai.js";
-import { getAiSettings } from "./settings.js";
+import { prisma } from "../../prisma.js";
+import { expandPhoneLookupKeys } from "../../utils/phone.js";
 import {
   contactHasLearnTags,
   isGroupChatId,
@@ -14,6 +15,7 @@ import {
   cancelAiReplyJob,
   aiReplyJobId
 } from "../../queue.js";
+import { getAiSettings } from "./settings.js";
 
 export type SavedInboxMessage = {
   id: string;
@@ -41,6 +43,42 @@ function modalityAllowed(
 export function enqueueAiPipeline(msg: SavedInboxMessage): void {
   void runEnqueue(msg).catch((err) => {
     console.error("[ai] enqueue failed", err);
+  });
+}
+
+/** Reprocessa a última mensagem inbound após tag aplicada no contato. */
+export async function retryAiPipelineForContact(phone: string): Promise<void> {
+  if (!prisma) return;
+
+  const settings = await getAiSettings();
+  if (!settings.enabled) return;
+
+  const keys = expandPhoneLookupKeys(phone.replace(/\D/g, ""));
+  if (keys.length === 0) return;
+
+  const session = settings.session;
+  const lastInbound = await prisma.inboxMessage.findFirst({
+    where: {
+      session,
+      fromMe: false,
+      OR: keys.flatMap((k) => [
+        { chatId: { startsWith: k } },
+        { chatId: k }
+      ])
+    },
+    orderBy: { timestamp: "desc" }
+  });
+  if (!lastInbound) return;
+
+  await runEnqueue({
+    id: lastInbound.id,
+    session: lastInbound.session,
+    chatId: lastInbound.chatId,
+    fromMe: lastInbound.fromMe,
+    source: lastInbound.source as InboxMessageSource,
+    type: lastInbound.type,
+    body: lastInbound.body,
+    waMessageId: lastInbound.waMessageId
   });
 }
 

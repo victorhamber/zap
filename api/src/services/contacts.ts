@@ -92,6 +92,9 @@ export async function upsertContact(
         }).catch(() => {});
       }
     }
+
+    const { retryAiPipelineForContact } = await import("./ai/enqueue.js");
+    await retryAiPipelineForContact(contact.phone).catch(() => {});
   }
 
   return prisma.contact.findUnique({
