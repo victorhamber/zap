@@ -41,6 +41,18 @@ describe("rulesEngine", () => {
     assert.match(prompt, /Nome cadastrado no CRM: Maria/);
   });
 
+  it("inclui tags do lead no prompt", () => {
+    const prompt = buildSystemPrompt({
+      productContext: "Curso X",
+      rulesAllowed: "",
+      rulesForbidden: "",
+      officialLinks: [],
+      leadTags: ["teste pago", "quente"]
+    });
+    assert.match(prompt, /teste pago, quente/);
+    assert.match(prompt, /Não repita informações/);
+  });
+
   it("bloqueia resposta que viola forbidden", () => {
     const r = validateReplyAgainstRules(
       "Sim, garantia vitalícia para sempre!",

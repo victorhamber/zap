@@ -694,13 +694,14 @@ export async function contactHasInboundReply(params: {
 
 export async function listStoredMessages(
   chatId: string,
-  limit = 200
+  limit = 200,
+  sessionName?: string
 ): Promise<{ messages: NormalizedMessage[]; captureSince: string | null }> {
   if (!prisma) {
     return { messages: [], captureSince: null };
   }
 
-  const session = await getSessionName();
+  const session = (sessionName ?? (await getSessionName())).trim().toLowerCase();
   const variants = await chatIdVariantsResolved(session, chatId);
 
   const rows = await prisma.inboxMessage.findMany({

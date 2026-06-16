@@ -6,6 +6,7 @@ export function buildSystemPrompt(params: {
   rulesForbidden: string;
   officialLinks: OfficialLink[];
   clientName?: string | null;
+  leadTags?: string[];
 }): string {
   const clientNameBlock = params.clientName?.trim()
     ? `Nome cadastrado no CRM: ${params.clientName.trim()}`
@@ -18,6 +19,28 @@ export function buildSystemPrompt(params: {
     "- Nunca use o nome do atendente — nem nomes que aparecem nas mensagens do atendente — como se fossem o nome do cliente.",
     "- Não invente nomes."
   ].join("\n");
+
+  const tags = (params.leadTags ?? []).map((t) => t.trim()).filter(Boolean);
+  const tagsBlock =
+    tags.length > 0
+      ? tags.join(", ")
+      : "(nenhuma tag cadastrada no CRM para este lead)";
+
+  const leadTagsRules = [
+    `Tags atuais do lead: ${tagsBlock}`,
+    "- O significado de cada tag está descrito no Contexto do produto.",
+    "- Adapte tom e oferta à fase do lead conforme as tags.",
+    "- Não ofereça novamente produtos ou etapas incompatíveis com as tags (ex.: não ofereça teste pago a quem já tem tag de teste pago ou comprador).",
+    "- As tags têm prioridade sobre suposições genéricas."
+  ].join("\n");
+
+  const conversationRules = [
+    "- Leia todo o histórico da conversa antes de responder.",
+    "- Continue de onde a conversa parou; não reinicie do zero.",
+    "- Não repita informações, links ou ofertas já enviadas neste chat.",
+    "- Se o cliente já comprou ou já recebeu uma oferta, reconheça isso e avance."
+  ].join("\n");
+
   const linksBlock =
     params.officialLinks.length > 0
       ? params.officialLinks
@@ -34,6 +57,12 @@ export function buildSystemPrompt(params: {
     "",
     "## Identificação do cliente",
     clientNameRules,
+    "",
+    "## Tags do lead (CRM)",
+    leadTagsRules,
+    "",
+    "## Continuidade da conversa",
+    conversationRules,
     "",
     "## Contexto do produto",
     params.productContext.trim() || "(não informado)",

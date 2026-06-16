@@ -618,6 +618,10 @@ export function AiAssistantPanel() {
         </p>
         <label className="block text-sm text-zinc-400">
           Contexto do produto
+          <span className="block text-xs text-zinc-500 mt-0.5 mb-1">
+            Descreva o produto e o significado de cada tag do CRM (ex.: teste pago, comprador, quente, frio).
+            A IA lê as tags do lead automaticamente e usa este texto para interpretá-las.
+          </span>
           <textarea
             className="mt-1 w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-zinc-100 text-sm min-h-24"
             value={settings.productContext}

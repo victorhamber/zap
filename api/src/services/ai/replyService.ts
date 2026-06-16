@@ -19,6 +19,11 @@ import {
 import { extractInboundTextForReply } from "./mediaExtract.js";
 import { phoneFromChatId } from "./tagGate.js";
 import { findContactByPhoneLoose } from "../contacts.js";
+import {
+  buildChatHistoryForAi,
+  fetchKnowledgeSnippetsForAi,
+  resolveLeadTagsForAi
+} from "./replyContext.js";
 import type { OfficialLink } from "../../types/ai.js";
 
 async function resolveClientNameForAi(chatId: string): Promise<string | null> {
@@ -154,31 +159,19 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
 
   const officialLinks = parseOfficialLinks(settingsRow.officialLinks);
   const clientName = await resolveClientNameForAi(payload.chatId);
+  const leadTags = await resolveLeadTagsForAi(payload.chatId);
   const systemPrompt =
     buildSystemPrompt({
       productContext: settingsRow.productContext,
       rulesAllowed: settingsRow.rulesAllowed,
       rulesForbidden: settingsRow.rulesForbidden,
       officialLinks,
-      clientName
+      clientName,
+      leadTags
     }) + `\n\nLinks disponíveis: ${injectOfficialLinksHint(officialLinks)}`;
 
-  const historyRows = await prisma.inboxMessage.findMany({
-    where: { session: payload.session, chatId: payload.chatId },
-    orderBy: { timestamp: "desc" },
-    take: 12
-  });
-  historyRows.reverse();
-  const chatHistory = historyRows
-    .map((r) => `${r.fromMe ? "Atendente" : "Cliente"}: ${r.body}`)
-    .join("\n");
-
-  const knowledge = await prisma.instanceAiKnowledge.findMany({
-    where: { session: payload.session, chatId: payload.chatId },
-    orderBy: { createdAt: "desc" },
-    take: 8
-  });
-  const snippets = knowledge.map((k) => `[${k.kind}] ${k.topic ?? ""}: ${k.content}`);
+  const chatHistory = await buildChatHistoryForAi(payload.session, payload.chatId);
+  const snippets = await fetchKnowledgeSnippetsForAi(payload.session, payload.chatId);
 
   const inboundText = await extractInboundTextForReply({
     message: inbound,
@@ -253,23 +246,19 @@ export async function simulateReply(params: {
     rulesAllowed: settings.rulesAllowed,
     rulesForbidden: settings.rulesForbidden,
     officialLinks: settings.officialLinks,
-    clientName: await resolveClientNameForAi(params.chatId)
+    clientName: await resolveClientNameForAi(params.chatId),
+    leadTags: await resolveLeadTagsForAi(params.chatId)
   });
 
-  const knowledge = prisma
-    ? await prisma.instanceAiKnowledge.findMany({
-        where: { session: params.session, chatId: params.chatId },
-        orderBy: { createdAt: "desc" },
-        take: 8
-      })
-    : [];
+  const chatHistory = await buildChatHistoryForAi(params.session, params.chatId);
+  const snippets = await fetchKnowledgeSnippetsForAi(params.session, params.chatId);
 
   const reply = await generateReply({
     apiKey,
     model: settings.modelChat,
     systemPrompt,
-    chatHistory: "",
-    knowledgeSnippets: knowledge.map((k) => `[${k.kind}] ${k.topic ?? ""}: ${k.content}`),
+    chatHistory,
+    knowledgeSnippets: snippets,
     inboundText: params.inboundText
   });
 
