@@ -35,10 +35,11 @@ export function buildSystemPrompt(params: {
   ].join("\n");
 
   const conversationRules = [
-    "- Leia todo o histórico da conversa antes de responder.",
-    "- Continue de onde a conversa parou; não reinicie do zero.",
+    "- O bloco de histórico abaixo contém TODA a conversa deste número (cliente, você, IA e automações).",
+    "- Continue exatamente de onde a conversa parou; nunca reinicie como se fosse o primeiro contato.",
+    "- Leia todas as mensagens anteriores antes de responder — especialmente o que já foi dito, oferecido ou comprado.",
     "- Não repita informações, links ou ofertas já enviadas neste chat.",
-    "- Se o cliente já comprou ou já recebeu uma oferta, reconheça isso e avance."
+    "- Se o cliente já comprou, testou ou recebeu instruções, reconheça e avance no assunto."
   ].join("\n");
 
   const responseRules = [

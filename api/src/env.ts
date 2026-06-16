@@ -74,7 +74,9 @@ const EnvSchema = z.object({
   /** Concorrência do worker zap-ai-jobs (1 = mais seguro para rate limit). */
   AI_WORKER_CONCURRENCY: z.coerce.number().int().positive().default(1),
   /** Máx. chamadas OpenAI por minuto no worker (BullMQ limiter). */
-  AI_OPENAI_RPM_LIMIT: z.coerce.number().int().positive().default(15)
+  AI_OPENAI_RPM_LIMIT: z.coerce.number().int().positive().default(15),
+  /** Quantidade máxima de mensagens do histórico enviadas à IA por conversa. */
+  AI_HISTORY_MESSAGE_LIMIT: z.coerce.number().int().positive().default(200)
 }).superRefine((data, ctx) => {
   if (!isProd) return;
   if (data.WHATSAPP_PROVIDER === "wppconnect") {

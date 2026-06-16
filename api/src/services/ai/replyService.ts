@@ -163,10 +163,7 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
       leadTags
     }) + `\n\nLinks disponíveis: ${injectOfficialLinksHint(officialLinks)}`;
 
-  const chatHistory = await buildChatHistoryForAi(payload.session, payload.chatId, {
-    apiKey,
-    model: settingsRow.modelChat
-  });
+  const chatHistory = await buildChatHistoryForAi(payload.session, payload.chatId);
   const snippets = await fetchKnowledgeSnippetsForAi(payload.session, payload.chatId);
   const recentAiReplies = await getRecentAiReplies(payload.session, payload.chatId);
 
@@ -285,10 +282,7 @@ export async function simulateReply(params: {
     leadTags: await resolveLeadTagsForAi(params.chatId)
   });
 
-  const chatHistory = await buildChatHistoryForAi(params.session, params.chatId, {
-    apiKey,
-    model: settings.modelChat
-  });
+  const chatHistory = await buildChatHistoryForAi(params.session, params.chatId);
   const snippets = await fetchKnowledgeSnippetsForAi(params.session, params.chatId);
 
   const reply = await generateReply({

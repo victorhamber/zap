@@ -1,74 +1,109 @@
 import { prisma } from "../../prisma.js";
-import { listStoredMessages } from "../inboxStore.js";
 import { labelForMediaType } from "../mediaText.js";
-import { openaiChat } from "./openaiClient.js";
-import { findChatState, saveConversationSummary } from "./chatState.js";
+import { expandChatIdVariants } from "../waLidMap.js";
+import { env } from "../../env.js";
 
-const RECENT_MSG_COUNT = 8;
-const SUMMARY_MIN_MESSAGES = 14;
-const SUMMARY_REFRESH_MSGS = 6;
+const MAX_HISTORY_CHARS = 22_000;
 
-function formatLine(fromMe: boolean, body: string, type: string): string {
-  const speaker = fromMe ? "Atendente" : "Cliente";
-  const text = body.trim() || labelForMediaType(type) || "(mensagem)";
-  return `${speaker}: ${text}`;
+type HistoryRow = {
+  id: string;
+  body: string;
+  fromMe: boolean;
+  type: string;
+  source: string;
+  timestamp: Date;
+  waMessageId: string | null;
+};
+
+function speakerLabel(fromMe: boolean, source: string): string {
+  if (!fromMe) return "Cliente";
+  if (source === "ai") return "Atendente (IA)";
+  if (source === "flow") return "Automação";
+  if (source === "manual") return "Atendente (humano)";
+  return "Atendente";
 }
 
-export async function buildCompactChatContext(params: {
-  session: string;
-  chatId: string;
-  apiKey?: string;
-  model?: string;
-}): Promise<string> {
-  const { messages } = await listStoredMessages(params.chatId, 40, params.session);
-  if (messages.length === 0) return "(sem histórico nesta conversa)";
+function formatTs(d: Date): string {
+  return d.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
 
-  const recent = messages.slice(-RECENT_MSG_COUNT);
-  const recentText = recent.map((m) => formatLine(m.fromMe, m.body, m.type)).join("\n");
+function formatHistoryLine(row: HistoryRow): string {
+  const body = row.body.trim() || labelForMediaType(row.type) || "(mensagem)";
+  const who = speakerLabel(row.fromMe, row.source);
+  return `[${formatTs(row.timestamp)}] ${who}: ${body}`;
+}
 
-  if (messages.length <= RECENT_MSG_COUNT) {
-    return recentText;
+function dedupeHistoryRows(rows: HistoryRow[]): HistoryRow[] {
+  const seen = new Set<string>();
+  const out: HistoryRow[] = [];
+
+  for (const r of rows) {
+    const key = r.waMessageId
+      ? `wa:${r.waMessageId}`
+      : `${r.fromMe ? 1 : 0}|${r.type}|${r.body}|${Math.floor(r.timestamp.getTime() / 1000)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(r);
   }
 
-  const state = await findChatState(params.session, params.chatId);
-  const olderCount = messages.length - RECENT_MSG_COUNT;
-  const needsRefresh =
-    !state?.conversationSummary?.trim() ||
-    olderCount - (state.summaryMessageCount ?? 0) >= SUMMARY_REFRESH_MSGS;
+  return out;
+}
 
-  let summary = state?.conversationSummary?.trim() ?? "";
+/** Mantém as mensagens mais recentes se o histórico exceder o limite de caracteres. */
+function trimHistoryToCharBudget(lines: string[], maxChars: number): string {
+  const kept: string[] = [];
+  let size = 0;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    const add = line.length + 1;
+    if (size + add > maxChars && kept.length > 0) break;
+    kept.unshift(line);
+    size += add;
+  }
+  if (kept.length < lines.length && kept.length > 0) {
+    return `(… ${lines.length - kept.length} mensagens mais antigas omitidas por limite técnico)\n${kept.join("\n")}`;
+  }
+  return kept.join("\n");
+}
 
-  if (needsRefresh && params.apiKey && params.model && messages.length >= SUMMARY_MIN_MESSAGES) {
-    const toSummarize = messages.slice(0, -RECENT_MSG_COUNT);
-    const lines = toSummarize.map((m) => formatLine(m.fromMe, m.body, m.type)).join("\n");
-    try {
-      const { text } = await openaiChat({
-        apiKey: params.apiKey,
-        model: params.model,
-        temperature: 0.2,
-        messages: [
-          {
-            role: "system",
-            content:
-              "Resuma conversas de atendimento WhatsApp em português. Inclua: o que o cliente já sabe, ofertas já feitas, compras/status, dúvidas em aberto. Máximo 350 palavras. Não invente fatos."
-          },
-          {
-            role: "user",
-            content: `Resumo anterior:\n${summary || "(nenhum)"}\n\nMensagens:\n${lines.slice(0, 8000)}\n\nResumo atualizado:`
-          }
-        ]
-      });
-      summary = text.trim().slice(0, 2500);
-      await saveConversationSummary(params.session, params.chatId, summary, olderCount);
-    } catch (err) {
-      console.warn("[ai] conversation summary failed", err);
-      if (!summary) summary = lines.slice(0, 2000);
+/**
+ * Histórico completo da conversa (cronológico), com origem de cada mensagem.
+ * Usado na resposta da IA para manter continuidade real do diálogo.
+ */
+export async function buildFullChatHistoryForAi(
+  session: string,
+  chatId: string,
+  messageLimit = env.AI_HISTORY_MESSAGE_LIMIT
+): Promise<string> {
+  if (!prisma) return "(sem histórico nesta conversa)";
+
+  const variants = await expandChatIdVariants(session, chatId);
+  const rows = await prisma.inboxMessage.findMany({
+    where: { session, chatId: { in: variants } },
+    orderBy: { timestamp: "desc" },
+    take: messageLimit,
+    select: {
+      id: true,
+      body: true,
+      fromMe: true,
+      type: true,
+      source: true,
+      timestamp: true,
+      waMessageId: true
     }
-  }
+  });
 
-  if (summary) {
-    return `Resumo das mensagens anteriores:\n${summary}\n\nÚltimas mensagens:\n${recentText}`;
-  }
+  if (rows.length === 0) return "(sem histórico nesta conversa)";
 
-  return recentText;
+  rows.reverse();
+  const deduped = dedupeHistoryRows(rows);
+  const lines = deduped.map(formatHistoryLine);
+  const joined = trimHistoryToCharBudget(lines, MAX_HISTORY_CHARS);
+
+  return joined || "(sem histórico nesta conversa)";
 }
