@@ -107,3 +107,77 @@ export async function hasAiReplyAfterInbound(params: {
   });
   return Boolean(existing);
 }
+
+/** Mensagens do cliente desde a última resposta nossa (ainda sem resposta). */
+export async function collectInboundBatchForReply(params: {
+  session: string;
+  chatId: string;
+  anchorInboundId: string;
+}): Promise<{ combinedText: string; anchorTimestamp: Date }> {
+  if (!prisma) {
+    return { combinedText: "", anchorTimestamp: new Date() };
+  }
+
+  const anchor = await prisma.inboxMessage.findFirst({
+    where: {
+      session: params.session,
+      OR: [{ id: params.anchorInboundId }, { waMessageId: params.anchorInboundId }]
+    }
+  });
+  if (!anchor || anchor.fromMe) {
+    return { combinedText: "", anchorTimestamp: new Date() };
+  }
+
+  const variants = await expandChatIdVariants(params.session, params.chatId);
+  const lastOutbound = await prisma.inboxMessage.findFirst({
+    where: {
+      session: params.session,
+      chatId: { in: variants },
+      fromMe: true,
+      timestamp: { lt: anchor.timestamp }
+    },
+    orderBy: { timestamp: "desc" }
+  });
+
+  const since =
+    lastOutbound?.timestamp ?? new Date(anchor.timestamp.getTime() - 30 * 60_000);
+
+  const inbounds = await prisma.inboxMessage.findMany({
+    where: {
+      session: params.session,
+      chatId: { in: variants },
+      fromMe: false,
+      timestamp: { gte: since, lte: anchor.timestamp }
+    },
+    orderBy: { timestamp: "asc" }
+  });
+
+  const texts = inbounds.map((m) => m.body.trim()).filter(Boolean);
+  const combinedText =
+    texts.length <= 1
+      ? texts[0] ?? anchor.body.trim()
+      : texts.map((t, i) => `${i + 1}. ${t}`).join("\n");
+
+  return { combinedText, anchorTimestamp: anchor.timestamp };
+}
+
+export async function getRecentAiReplies(
+  session: string,
+  chatId: string,
+  limit = 3
+): Promise<string[]> {
+  if (!prisma) return [];
+  const variants = await expandChatIdVariants(session, chatId);
+  const rows = await prisma.inboxMessage.findMany({
+    where: {
+      session,
+      chatId: { in: variants },
+      fromMe: true,
+      source: "ai"
+    },
+    orderBy: { timestamp: "desc" },
+    take: limit,
+    select: { body: true }
+  });
+  return rows.map((r) => r.body.trim()).filter(Boolean);
+}

@@ -6,7 +6,8 @@ import { getAiSettings, resolveOpenAiApiKey } from "./settings.js";
 import {
   buildSystemPrompt,
   validateReplyAgainstRules,
-  injectOfficialLinksHint
+  injectOfficialLinksHint,
+  isRepetitiveReply
 } from "./rulesEngine.js";
 import { generateReply } from "./openaiClient.js";
 import {
@@ -21,7 +22,9 @@ import { phoneFromChatId } from "./tagGate.js";
 import { findContactByPhoneLoose } from "../contacts.js";
 import {
   buildChatHistoryForAi,
+  collectInboundBatchForReply,
   fetchKnowledgeSnippetsForAi,
+  getRecentAiReplies,
   hasAiReplyAfterInbound,
   hasManualReplyAfterInbound,
   resolveLeadTagsForAi
@@ -95,10 +98,16 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
     return;
   }
 
+  const inboundBatch = await collectInboundBatchForReply({
+    session: payload.session,
+    chatId: payload.chatId,
+    anchorInboundId: payload.inboundMessageId
+  });
+
   if (await hasAiReplyAfterInbound({
     session: payload.session,
     chatId: payload.chatId,
-    inboundTimestamp: inbound.timestamp
+    inboundTimestamp: inboundBatch.anchorTimestamp
   })) {
     await clearPendingReply(payload.session, payload.chatId);
     return;
@@ -107,7 +116,7 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
   if (await hasManualReplyAfterInbound({
     session: payload.session,
     chatId: payload.chatId,
-    inboundTimestamp: inbound.timestamp
+    inboundTimestamp: inboundBatch.anchorTimestamp
   })) {
     await logAiEvent({
       session: payload.session,
@@ -159,22 +168,25 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
     model: settingsRow.modelChat
   });
   const snippets = await fetchKnowledgeSnippetsForAi(payload.session, payload.chatId);
+  const recentAiReplies = await getRecentAiReplies(payload.session, payload.chatId);
 
-  let inboundText: string;
-  try {
-    inboundText = await extractInboundTextForReply({
-      message: inbound,
-      settings: settingsRow,
-      apiKey
-    });
-  } catch (err) {
-    await logAiEvent({
-      session: payload.session,
-      chatId: payload.chatId,
-      event: "error",
-      detail: `mediaExtract: ${err instanceof Error ? err.message : String(err)}`
-    });
-    inboundText = inbound.body.trim() || "(mensagem sem texto)";
+  let inboundText = inboundBatch.combinedText;
+  if (!inboundText.trim()) {
+    try {
+      inboundText = await extractInboundTextForReply({
+        message: inbound,
+        settings: settingsRow,
+        apiKey
+      });
+    } catch (err) {
+      await logAiEvent({
+        session: payload.session,
+        chatId: payload.chatId,
+        event: "error",
+        detail: `mediaExtract: ${err instanceof Error ? err.message : String(err)}`
+      });
+      inboundText = inbound.body.trim() || "(mensagem sem texto)";
+    }
   }
 
   let reply: string;
@@ -185,8 +197,22 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
       systemPrompt,
       chatHistory,
       knowledgeSnippets: snippets,
-      inboundText
+      inboundText,
+      recentAiReplies
     });
+
+    if (isRepetitiveReply(reply, recentAiReplies)) {
+      reply = await generateReply({
+        apiKey,
+        model: settingsRow.modelChat,
+        systemPrompt,
+        chatHistory,
+        knowledgeSnippets: snippets,
+        inboundText,
+        recentAiReplies,
+        retryAvoidRepeat: true
+      });
+    }
   } catch (err) {
     await logAiEvent({
       session: payload.session,
@@ -212,7 +238,7 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
   if (await hasAiReplyAfterInbound({
     session: payload.session,
     chatId: payload.chatId,
-    inboundTimestamp: inbound.timestamp
+    inboundTimestamp: inboundBatch.anchorTimestamp
   })) {
     await clearPendingReply(payload.session, payload.chatId);
     return;

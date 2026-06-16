@@ -210,11 +210,27 @@ export async function generateReply(params: {
   chatHistory: string;
   knowledgeSnippets: string[];
   inboundText: string;
+  recentAiReplies?: string[];
+  retryAvoidRepeat?: boolean;
 }): Promise<string> {
   const knowledge =
     params.knowledgeSnippets.length > 0
       ? `\n\nBase de conhecimento:\n${params.knowledgeSnippets.join("\n---\n")}`
       : "";
+
+  const recentBlock =
+    params.recentAiReplies && params.recentAiReplies.length > 0
+      ? `\n\nSuas respostas recentes neste chat (NÃO repita estas frases):\n${params.recentAiReplies.map((r) => `- ${r.slice(0, 200)}`).join("\n")}`
+      : "";
+
+  const repeatHint = params.retryAvoidRepeat
+    ? "\n\nIMPORTANTE: Sua resposta anterior seria repetitiva. Responda de forma diferente e responda diretamente à pergunta do cliente."
+    : "";
+
+  const inboundLabel =
+    params.inboundText.includes("\n")
+      ? "Mensagens recentes do cliente (responda todas):"
+      : "Última mensagem do cliente:";
 
   const { text } = await openaiChat({
     apiKey: params.apiKey,
@@ -223,10 +239,10 @@ export async function generateReply(params: {
       { role: "system", content: params.systemPrompt.slice(0, 8000) },
       {
         role: "user",
-        content: `Histórico desta conversa (mesmo número):\n${params.chatHistory.slice(0, 6000)}${knowledge}\n\nÚltima mensagem do cliente:\n${params.inboundText.slice(0, 4000)}\n\nResponda ao cliente de forma coerente com o histórico e as tags do lead. Não repita ofertas já feitas:`
+        content: `Histórico desta conversa:\n${params.chatHistory.slice(0, 6000)}${knowledge}${recentBlock}\n\n${inboundLabel}\n${params.inboundText.slice(0, 4000)}${repeatHint}\n\nResponda de forma direta e objetiva. Priorize responder perguntas sobre preço/valor/planos se o cliente perguntou. Uma única mensagem concisa:`
       }
     ],
-    temperature: 0.4
+    temperature: params.retryAvoidRepeat ? 0.25 : 0.3
   });
 
   return text.trim();

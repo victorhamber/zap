@@ -41,6 +41,15 @@ export function buildSystemPrompt(params: {
     "- Se o cliente já comprou ou já recebeu uma oferta, reconheça isso e avance."
   ].join("\n");
 
+  const responseRules = [
+    "- Responda primeiro à pergunta direta do cliente (preço, valor, planos, prazo, acesso, suporte).",
+    "- Se o cliente enviou várias mensagens seguidas, responda todas em uma única resposta objetiva.",
+    "- Não ignore perguntas objetivas para fazer perguntas genéricas de follow-up.",
+    "- Não repita frases que você já enviou nesta conversa (ex.: não pergunte de novo se o teste está ok se já perguntou).",
+    "- Se o cliente já disse que comprou o teste ou tem tag de teste pago/comprador, não ofereça teste nem pergunte se quer comprar teste.",
+    "- Seja conciso: uma mensagem curta que resolve o que o cliente pediu."
+  ].join("\n");
+
   const linksBlock =
     params.officialLinks.length > 0
       ? params.officialLinks
@@ -63,6 +72,9 @@ export function buildSystemPrompt(params: {
     "",
     "## Continuidade da conversa",
     conversationRules,
+    "",
+    "## Como responder",
+    responseRules,
     "",
     "## Contexto do produto",
     params.productContext.trim() || "(não informado)",
@@ -107,4 +119,23 @@ export function validateReplyAgainstRules(
 export function injectOfficialLinksHint(officialLinks: OfficialLink[]): string {
   if (officialLinks.length === 0) return "";
   return officialLinks.map((l) => `[${l.trigger}] → ${l.url}`).join("; ");
+}
+
+function normalizeReplyText(text: string): string {
+  return text.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+/** Detecta se a resposta repete quase igual uma mensagem recente da IA. */
+export function isRepetitiveReply(reply: string, recentReplies: string[]): boolean {
+  const norm = normalizeReplyText(reply);
+  if (norm.length < 16) return false;
+
+  for (const prev of recentReplies) {
+    const p = normalizeReplyText(prev);
+    if (p.length < 16) continue;
+    if (norm === p) return true;
+    const head = p.slice(0, Math.min(48, p.length));
+    if (head.length >= 16 && norm.includes(head)) return true;
+  }
+  return false;
 }

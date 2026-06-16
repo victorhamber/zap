@@ -2,7 +2,8 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   buildSystemPrompt,
-  validateReplyAgainstRules
+  validateReplyAgainstRules,
+  isRepetitiveReply
 } from "./rulesEngine.js";
 import { phoneFromChatId, isGroupChatId } from "./tagGate.js";
 
@@ -51,6 +52,25 @@ describe("rulesEngine", () => {
     });
     assert.match(prompt, /teste pago, quente/);
     assert.match(prompt, /Não repita informações/);
+  });
+
+  it("detecta resposta repetitiva", () => {
+    assert.equal(
+      isRepetitiveReply("Sergiomar, tudo certo com o acesso ao teste?", [
+        "Sergiomar, tudo certo com o acesso ao teste? Se tiver dúvida me fala."
+      ]),
+      true
+    );
+  });
+
+  it("inclui regras de resposta direta no prompt", () => {
+    const prompt = buildSystemPrompt({
+      productContext: "Curso X",
+      rulesAllowed: "",
+      rulesForbidden: "",
+      officialLinks: []
+    });
+    assert.match(prompt, /Responda primeiro à pergunta direta/);
   });
 
   it("bloqueia resposta que viola forbidden", () => {
