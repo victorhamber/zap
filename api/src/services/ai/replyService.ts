@@ -12,7 +12,7 @@ import { generateReply } from "./openaiClient.js";
 import {
   clearPendingReply,
   countDailyReplies,
-  getChatState,
+  findChatState,
   logAiEvent,
   resolveChatModeForInbound
 } from "./chatState.js";
@@ -22,36 +22,24 @@ import { findContactByPhoneLoose } from "../contacts.js";
 import {
   buildChatHistoryForAi,
   fetchKnowledgeSnippetsForAi,
+  hasAiReplyAfterInbound,
+  hasManualReplyAfterInbound,
   resolveLeadTagsForAi
 } from "./replyContext.js";
 import type { OfficialLink } from "../../types/ai.js";
 
 async function resolveClientNameForAi(chatId: string): Promise<string | null> {
-  if (!prisma) return null;
-  const phone = phoneFromChatId(chatId);
-  const contact = await findContactByPhoneLoose(phone);
-  const name = contact?.name?.trim();
-  if (!name || name.replace(/\D/g, "") === phone.replace(/\D/g, "")) return null;
-  return name;
-}
-
-async function hasAiReplyAfterInbound(params: {
-  session: string;
-  chatId: string;
-  inboundTimestamp: Date;
-}): Promise<boolean> {
-  if (!prisma) return false;
-  const existing = await prisma.inboxMessage.findFirst({
-    where: {
-      session: params.session,
-      chatId: params.chatId,
-      fromMe: true,
-      source: "ai",
-      timestamp: { gte: params.inboundTimestamp }
-    },
-    select: { id: true }
-  });
-  return Boolean(existing);
+  try {
+    if (!prisma) return null;
+    const phone = phoneFromChatId(chatId);
+    const contact = await findContactByPhoneLoose(phone);
+    const name = contact?.name?.trim();
+    if (!name || name.replace(/\D/g, "") === phone.replace(/\D/g, "")) return null;
+    return name;
+  } catch (err) {
+    console.warn("[ai] resolveClientNameForAi failed", err);
+    return null;
+  }
 }
 
 function parseOfficialLinks(raw: unknown): OfficialLink[] {
@@ -77,10 +65,19 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
   });
   if (!settingsRow?.enabled || !settingsRow.autoReplyEnabled) return;
 
+  const inbound = await prisma.inboxMessage.findFirst({
+    where: {
+      session: payload.session,
+      OR: [{ id: payload.inboundMessageId }, { waMessageId: payload.inboundMessageId }]
+    }
+  });
+  if (!inbound || inbound.fromMe) return;
+
   const mode = await resolveChatModeForInbound(
     payload.session,
     payload.chatId,
-    settingsRow.humanIdleSec
+    settingsRow.humanIdleSec,
+    inbound.timestamp
   );
   if (mode === "human") {
     await logAiEvent({
@@ -93,18 +90,10 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
     return;
   }
 
-  const state = await getChatState(payload.session, payload.chatId);
+  const state = await findChatState(payload.session, payload.chatId);
   if (state?.pendingInboundId && state.pendingInboundId !== payload.inboundMessageId) {
     return;
   }
-
-  const inbound = await prisma.inboxMessage.findFirst({
-    where: {
-      session: payload.session,
-      OR: [{ id: payload.inboundMessageId }, { waMessageId: payload.inboundMessageId }]
-    }
-  });
-  if (!inbound || inbound.fromMe) return;
 
   if (await hasAiReplyAfterInbound({
     session: payload.session,
@@ -115,21 +104,16 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
     return;
   }
 
-  const recentManual = await prisma.inboxMessage.findFirst({
-    where: {
-      session: payload.session,
-      chatId: payload.chatId,
-      fromMe: true,
-      source: "manual",
-      timestamp: { gte: new Date(Date.now() - settingsRow.replyDelaySec * 1000 - 5000) }
-    }
-  });
-  if (recentManual) {
+  if (await hasManualReplyAfterInbound({
+    session: payload.session,
+    chatId: payload.chatId,
+    inboundTimestamp: inbound.timestamp
+  })) {
     await logAiEvent({
       session: payload.session,
       chatId: payload.chatId,
       event: "cancelled_human",
-      detail: "Resposta manual recente"
+      detail: "Atendente já respondeu manualmente"
     });
     await clearPendingReply(payload.session, payload.chatId);
     return;
@@ -170,23 +154,48 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
       leadTags
     }) + `\n\nLinks disponíveis: ${injectOfficialLinksHint(officialLinks)}`;
 
-  const chatHistory = await buildChatHistoryForAi(payload.session, payload.chatId);
+  const chatHistory = await buildChatHistoryForAi(payload.session, payload.chatId, {
+    apiKey,
+    model: settingsRow.modelChat
+  });
   const snippets = await fetchKnowledgeSnippetsForAi(payload.session, payload.chatId);
 
-  const inboundText = await extractInboundTextForReply({
-    message: inbound,
-    settings: settingsRow,
-    apiKey
-  });
+  let inboundText: string;
+  try {
+    inboundText = await extractInboundTextForReply({
+      message: inbound,
+      settings: settingsRow,
+      apiKey
+    });
+  } catch (err) {
+    await logAiEvent({
+      session: payload.session,
+      chatId: payload.chatId,
+      event: "error",
+      detail: `mediaExtract: ${err instanceof Error ? err.message : String(err)}`
+    });
+    inboundText = inbound.body.trim() || "(mensagem sem texto)";
+  }
 
-  const reply = await generateReply({
-    apiKey,
-    model: settingsRow.modelChat,
-    systemPrompt,
-    chatHistory,
-    knowledgeSnippets: snippets,
-    inboundText
-  });
+  let reply: string;
+  try {
+    reply = await generateReply({
+      apiKey,
+      model: settingsRow.modelChat,
+      systemPrompt,
+      chatHistory,
+      knowledgeSnippets: snippets,
+      inboundText
+    });
+  } catch (err) {
+    await logAiEvent({
+      session: payload.session,
+      chatId: payload.chatId,
+      event: "error",
+      detail: err instanceof Error ? err.message : String(err)
+    });
+    throw err;
+  }
 
   const validation = validateReplyAgainstRules(reply, settingsRow.rulesForbidden);
   if (!validation.ok) {
@@ -250,7 +259,10 @@ export async function simulateReply(params: {
     leadTags: await resolveLeadTagsForAi(params.chatId)
   });
 
-  const chatHistory = await buildChatHistoryForAi(params.session, params.chatId);
+  const chatHistory = await buildChatHistoryForAi(params.session, params.chatId, {
+    apiKey,
+    model: settings.modelChat
+  });
   const snippets = await fetchKnowledgeSnippetsForAi(params.session, params.chatId);
 
   const reply = await generateReply({

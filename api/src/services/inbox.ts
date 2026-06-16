@@ -895,12 +895,13 @@ export async function sendChatMessage(
   const target = buildWppSendTarget(chatId, isGroup);
   const waMessageId = await sendWppText(chatId, message, isGroup);
   await saveInboxMessage({
-    chatId: target.jid,
+    chatId,
     body: message,
     fromMe: true,
     source: "manual",
     type: "chat",
-    waMessageId
+    waMessageId,
+    peerJids: [target.jid, chatId]
   });
 }
 

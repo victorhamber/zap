@@ -97,12 +97,15 @@ model InstanceAiKnowledge {
 }
 
 model InstanceAiChatState {
-  session           String
-  chatId            String
-  mode              String    @default("auto")
-  lastHumanAt       DateTime?
-  pendingReplyJobId String?
-  pendingInboundId  String?
+  session              String
+  chatId               String
+  mode                 String    @default("auto")
+  lastHumanAt          DateTime?
+  pendingReplyJobId    String?
+  pendingInboundId     String?
+  conversationSummary  String    @default("")
+  summaryMessageCount  Int       @default(0)
+  summaryUpdatedAt     DateTime?
 
   @@unique([session, chatId])
 }

@@ -123,7 +123,8 @@ async function runEnqueue(msg: SavedInboxMessage): Promise<void> {
   const mode = await resolveChatModeForInbound(
     msg.session,
     msg.chatId,
-    settings.humanIdleSec
+    settings.humanIdleSec,
+    new Date()
   );
   if (mode === "human") return;
 

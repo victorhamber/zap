@@ -1,0 +1,3 @@
+ALTER TABLE "InstanceAiChatState" ADD COLUMN IF NOT EXISTS "conversationSummary" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "InstanceAiChatState" ADD COLUMN IF NOT EXISTS "summaryMessageCount" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "InstanceAiChatState" ADD COLUMN IF NOT EXISTS "summaryUpdatedAt" TIMESTAMP(3);

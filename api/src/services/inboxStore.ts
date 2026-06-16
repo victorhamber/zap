@@ -454,13 +454,21 @@ async function findDuplicateInboxMessage(params: {
   const variants = await chatIdVariantsResolved(params.session, params.chatId);
   const windowStart = new Date(params.timestamp.getTime() - 120_000);
   const windowEnd = new Date(params.timestamp.getTime() + 45_000);
+  const phoneDigits = digitsOnly(params.chatId);
+
+  const chatIdFilter =
+    phoneDigits.length >= 10
+      ? {
+          OR: [{ chatId: { in: variants } }, { chatId: { startsWith: phoneDigits } }]
+        }
+      : { chatId: { in: variants } };
 
   // Mídia (áudio, imagem…) costuma repetir no webhook — deduplica por tipo + janela de tempo.
   if (isMediaMessageType(params.type)) {
     return prisma.inboxMessage.findFirst({
       where: {
         session: params.session,
-        chatId: { in: variants },
+        ...chatIdFilter,
         fromMe: params.fromMe,
         type: params.type,
         timestamp: { gte: windowStart, lte: windowEnd }
@@ -473,7 +481,7 @@ async function findDuplicateInboxMessage(params: {
   return prisma.inboxMessage.findFirst({
     where: {
       session: params.session,
-      chatId: { in: variants },
+      ...chatIdFilter,
       fromMe: params.fromMe,
       type: params.type,
       body: params.body,
@@ -723,7 +731,10 @@ export async function listStoredMessages(
 
     if (!r.waMessageId) {
       const sec = Math.floor(r.timestamp.getTime() / 1000);
-      const contentKey = `${r.fromMe ? 1 : 0}|${r.type}|${r.body}|${sec}|${r.chatId}|${r.id}`;
+      const contentKey =
+        r.fromMe && r.type === "chat"
+          ? `${r.fromMe ? 1 : 0}|${r.type}|${r.body}|${sec}`
+          : `${r.fromMe ? 1 : 0}|${r.type}|${r.body}|${sec}|${r.chatId}|${r.id}`;
       if (seenContent.has(contentKey)) return false;
       seenContent.add(contentKey);
     }

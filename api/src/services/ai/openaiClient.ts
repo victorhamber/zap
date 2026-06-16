@@ -223,7 +223,7 @@ export async function generateReply(params: {
       { role: "system", content: params.systemPrompt.slice(0, 8000) },
       {
         role: "user",
-        content: `Histórico desta conversa (mesmo número):\n${params.chatHistory.slice(0, 12000)}${knowledge}\n\nÚltima mensagem do cliente:\n${params.inboundText.slice(0, 4000)}\n\nResponda ao cliente de forma coerente com o histórico e as tags do lead. Não repita ofertas já feitas:`
+        content: `Histórico desta conversa (mesmo número):\n${params.chatHistory.slice(0, 6000)}${knowledge}\n\nÚltima mensagem do cliente:\n${params.inboundText.slice(0, 4000)}\n\nResponda ao cliente de forma coerente com o histórico e as tags do lead. Não repita ofertas já feitas:`
       }
     ],
     temperature: 0.4

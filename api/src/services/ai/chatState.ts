@@ -1,33 +1,46 @@
 import { prisma } from "../../prisma.js";
+import { expandChatIdVariants } from "../waLidMap.js";
 import { cancelAiReplyJob, aiReplyJobId } from "../../queue.js";
 
 export type ChatMode = "auto" | "human";
 
-export async function getChatState(session: string, chatId: string) {
+export async function resolveCanonicalChatId(session: string, chatId: string): Promise<string> {
+  const variants = await expandChatIdVariants(session, chatId);
+  return (
+    variants.find((v) => v.endsWith("@s.whatsapp.net")) ??
+    variants.find((v) => v.endsWith("@c.us")) ??
+    variants[0] ??
+    chatId
+  );
+}
+
+export async function findChatState(session: string, chatId: string) {
   if (!prisma) return null;
-  return prisma.instanceAiChatState.findUnique({
-    where: { session_chatId: { session, chatId } }
+  const variants = await expandChatIdVariants(session, chatId);
+  return prisma.instanceAiChatState.findFirst({
+    where: { session, chatId: { in: variants } },
+    orderBy: { lastHumanAt: "desc" }
   });
+}
+
+export async function getChatState(session: string, chatId: string) {
+  return findChatState(session, chatId);
 }
 
 export async function setChatModeHuman(session: string, chatId: string): Promise<void> {
   if (!prisma) return;
-  await cancelAiReplyJob(session, chatId);
+  const canonical = await resolveCanonicalChatId(session, chatId);
   await prisma.instanceAiChatState.upsert({
-    where: { session_chatId: { session, chatId } },
+    where: { session_chatId: { session, chatId: canonical } },
     create: {
       session,
-      chatId,
+      chatId: canonical,
       mode: "human",
-      lastHumanAt: new Date(),
-      pendingReplyJobId: null,
-      pendingInboundId: null
+      lastHumanAt: new Date()
     },
     update: {
       mode: "human",
-      lastHumanAt: new Date(),
-      pendingReplyJobId: null,
-      pendingInboundId: null
+      lastHumanAt: new Date()
     }
   });
 }
@@ -35,17 +48,27 @@ export async function setChatModeHuman(session: string, chatId: string): Promise
 export async function resolveChatModeForInbound(
   session: string,
   chatId: string,
-  humanIdleSec: number
+  humanIdleSec: number,
+  inboundTimestamp?: Date
 ): Promise<ChatMode> {
   if (!prisma) return "auto";
-  const state = await getChatState(session, chatId);
+  const state = await findChatState(session, chatId);
   if (!state || state.mode !== "human") return "auto";
 
-  const last = state.lastHumanAt?.getTime() ?? 0;
+  const lastHuman = state.lastHumanAt;
+  if (inboundTimestamp && lastHuman && inboundTimestamp > lastHuman) {
+    await prisma.instanceAiChatState.update({
+      where: { session_chatId: { session: state.session, chatId: state.chatId } },
+      data: { mode: "auto" }
+    });
+    return "auto";
+  }
+
+  const last = lastHuman?.getTime() ?? 0;
   const idleMs = humanIdleSec * 1000;
   if (Date.now() - last >= idleMs) {
     await prisma.instanceAiChatState.update({
-      where: { session_chatId: { session, chatId } },
+      where: { session_chatId: { session: state.session, chatId: state.chatId } },
       data: { mode: "auto" }
     });
     return "auto";
@@ -60,11 +83,12 @@ export async function setPendingReply(
   bullJobId: string
 ): Promise<void> {
   if (!prisma) return;
+  const canonical = await resolveCanonicalChatId(session, chatId);
   await prisma.instanceAiChatState.upsert({
-    where: { session_chatId: { session, chatId } },
+    where: { session_chatId: { session, chatId: canonical } },
     create: {
       session,
-      chatId,
+      chatId: canonical,
       mode: "auto",
       pendingReplyJobId: bullJobId,
       pendingInboundId: inboundMessageId
@@ -78,9 +102,35 @@ export async function setPendingReply(
 
 export async function clearPendingReply(session: string, chatId: string): Promise<void> {
   if (!prisma) return;
+  const variants = await expandChatIdVariants(session, chatId);
   await prisma.instanceAiChatState.updateMany({
-    where: { session, chatId },
+    where: { session, chatId: { in: variants } },
     data: { pendingReplyJobId: null, pendingInboundId: null }
+  });
+}
+
+export async function saveConversationSummary(
+  session: string,
+  chatId: string,
+  summary: string,
+  messageCount: number
+): Promise<void> {
+  if (!prisma) return;
+  const canonical = await resolveCanonicalChatId(session, chatId);
+  await prisma.instanceAiChatState.upsert({
+    where: { session_chatId: { session, chatId: canonical } },
+    create: {
+      session,
+      chatId: canonical,
+      conversationSummary: summary,
+      summaryMessageCount: messageCount,
+      summaryUpdatedAt: new Date()
+    },
+    update: {
+      conversationSummary: summary,
+      summaryMessageCount: messageCount,
+      summaryUpdatedAt: new Date()
+    }
   });
 }
 
@@ -113,3 +163,6 @@ export async function countDailyReplies(session: string): Promise<number> {
     where: { session, event: "replied", createdAt: { gte: start } }
   });
 }
+
+// cancelAiReplyJob ainda usado em outros fluxos
+export { cancelAiReplyJob };

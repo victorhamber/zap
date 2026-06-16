@@ -270,8 +270,8 @@ function mergePendingMessages(server: Message[], pending: Message[]): Message[] 
       (m) =>
         m.fromMe === p.fromMe &&
         m.type === p.type &&
-        m.body === p.body &&
-        Math.abs(m.timestamp - p.timestamp) < 5_000
+        m.body.trim() === p.body.trim() &&
+        Math.abs(m.timestamp - p.timestamp) < 120_000
     );
     if (!duplicated) merged.push(p);
   }
