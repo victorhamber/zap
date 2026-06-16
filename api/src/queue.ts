@@ -112,7 +112,8 @@ export async function enqueueAiReplyJob(
   const queue = getAiQueue();
   return queue.add("reply", payload, {
     delay: Math.max(0, delayMs),
-    jobId: sanitizeQueueJobId(jobId)
+    jobId: sanitizeQueueJobId(jobId),
+    attempts: 1
   });
 }
 

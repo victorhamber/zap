@@ -5,7 +5,19 @@ export function buildSystemPrompt(params: {
   rulesAllowed: string;
   rulesForbidden: string;
   officialLinks: OfficialLink[];
+  clientName?: string | null;
 }): string {
+  const clientNameBlock = params.clientName?.trim()
+    ? `Nome cadastrado no CRM: ${params.clientName.trim()}`
+    : "Nome cadastrado no CRM: (não informado)";
+
+  const clientNameRules = [
+    clientNameBlock,
+    "- Se não houver nome cadastrado, cumprimente de forma neutra (ex.: \"Olá!\", \"Oi, tudo bem?\") sem usar nomes próprios.",
+    "- Use o nome do CRM somente quando estiver cadastrado acima.",
+    "- Nunca use o nome do atendente — nem nomes que aparecem nas mensagens do atendente — como se fossem o nome do cliente.",
+    "- Não invente nomes."
+  ].join("\n");
   const linksBlock =
     params.officialLinks.length > 0
       ? params.officialLinks
@@ -19,6 +31,9 @@ export function buildSystemPrompt(params: {
     "Use apenas informações da base de conhecimento e contexto do produto.",
     "Nunca invente preços, links ou promessas não confirmadas.",
     "Quando o cliente pedir link oficial, use apenas URLs da lista abaixo.",
+    "",
+    "## Identificação do cliente",
+    clientNameRules,
     "",
     "## Contexto do produto",
     params.productContext.trim() || "(não informado)",

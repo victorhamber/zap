@@ -18,6 +18,29 @@ describe("rulesEngine", () => {
     assert.match(prompt, /https:\/\/exemplo.com\/checkout/);
   });
 
+  it("orienta cumprimento neutro sem nome cadastrado", () => {
+    const prompt = buildSystemPrompt({
+      productContext: "Curso X",
+      rulesAllowed: "",
+      rulesForbidden: "",
+      officialLinks: [],
+      clientName: null
+    });
+    assert.match(prompt, /não informado/);
+    assert.match(prompt, /Nunca use o nome do atendente/);
+  });
+
+  it("inclui nome do CRM quando cadastrado", () => {
+    const prompt = buildSystemPrompt({
+      productContext: "Curso X",
+      rulesAllowed: "",
+      rulesForbidden: "",
+      officialLinks: [],
+      clientName: "Maria"
+    });
+    assert.match(prompt, /Nome cadastrado no CRM: Maria/);
+  });
+
   it("bloqueia resposta que viola forbidden", () => {
     const r = validateReplyAgainstRules(
       "Sim, garantia vitalícia para sempre!",

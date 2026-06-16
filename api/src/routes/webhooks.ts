@@ -353,8 +353,10 @@ export async function webhookRoutes(app: FastifyInstance) {
           parsed = parseEvolutionMessagePayload(body, payload);
           if (!parsed) continue;
           lastParsed = parsed;
-          const pushName = String(payload.pushName ?? "").trim();
-          if (pushName && pushName !== "Você") lastPushName = pushName;
+          if (!parsed.fromMe) {
+            const pushName = String(payload.pushName ?? "").trim();
+            if (pushName && pushName !== "Você") lastPushName = pushName;
+          }
 
           await ensureInboxCaptureStarted();
 

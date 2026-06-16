@@ -129,7 +129,7 @@ async function runEnqueue(msg: SavedInboxMessage): Promise<void> {
 
   await cancelAiReplyJob(msg.session, msg.chatId);
 
-  const inboundId = msg.waMessageId ?? msg.id;
+  const inboundId = msg.id;
   const jobId = aiReplyJobId(msg.session, msg.chatId);
   await enqueueAiReplyJob(
     {

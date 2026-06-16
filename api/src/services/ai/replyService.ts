@@ -18,7 +18,36 @@ import {
 } from "./chatState.js";
 import { extractInboundTextForReply } from "./mediaExtract.js";
 import { phoneFromChatId } from "./tagGate.js";
+import { findContactByPhoneLoose } from "../contacts.js";
 import type { OfficialLink } from "../../types/ai.js";
+
+async function resolveClientNameForAi(chatId: string): Promise<string | null> {
+  if (!prisma) return null;
+  const phone = phoneFromChatId(chatId);
+  const contact = await findContactByPhoneLoose(phone);
+  const name = contact?.name?.trim();
+  if (!name || name.replace(/\D/g, "") === phone.replace(/\D/g, "")) return null;
+  return name;
+}
+
+async function hasAiReplyAfterInbound(params: {
+  session: string;
+  chatId: string;
+  inboundTimestamp: Date;
+}): Promise<boolean> {
+  if (!prisma) return false;
+  const existing = await prisma.inboxMessage.findFirst({
+    where: {
+      session: params.session,
+      chatId: params.chatId,
+      fromMe: true,
+      source: "ai",
+      timestamp: { gte: params.inboundTimestamp }
+    },
+    select: { id: true }
+  });
+  return Boolean(existing);
+}
 
 function parseOfficialLinks(raw: unknown): OfficialLink[] {
   if (!Array.isArray(raw)) return [];
@@ -72,6 +101,15 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
   });
   if (!inbound || inbound.fromMe) return;
 
+  if (await hasAiReplyAfterInbound({
+    session: payload.session,
+    chatId: payload.chatId,
+    inboundTimestamp: inbound.timestamp
+  })) {
+    await clearPendingReply(payload.session, payload.chatId);
+    return;
+  }
+
   const recentManual = await prisma.inboxMessage.findFirst({
     where: {
       session: payload.session,
@@ -115,12 +153,14 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
   }
 
   const officialLinks = parseOfficialLinks(settingsRow.officialLinks);
+  const clientName = await resolveClientNameForAi(payload.chatId);
   const systemPrompt =
     buildSystemPrompt({
       productContext: settingsRow.productContext,
       rulesAllowed: settingsRow.rulesAllowed,
       rulesForbidden: settingsRow.rulesForbidden,
-      officialLinks
+      officialLinks,
+      clientName
     }) + `\n\nLinks disponíveis: ${injectOfficialLinksHint(officialLinks)}`;
 
   const historyRows = await prisma.inboxMessage.findMany({
@@ -167,6 +207,15 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
     return;
   }
 
+  if (await hasAiReplyAfterInbound({
+    session: payload.session,
+    chatId: payload.chatId,
+    inboundTimestamp: inbound.timestamp
+  })) {
+    await clearPendingReply(payload.session, payload.chatId);
+    return;
+  }
+
   const waMessageId = await sendText(phoneFromChatId(payload.chatId), reply);
 
   await saveInboxMessage({
@@ -203,7 +252,8 @@ export async function simulateReply(params: {
     productContext: settings.productContext,
     rulesAllowed: settings.rulesAllowed,
     rulesForbidden: settings.rulesForbidden,
-    officialLinks: settings.officialLinks
+    officialLinks: settings.officialLinks,
+    clientName: await resolveClientNameForAi(params.chatId)
   });
 
   const knowledge = prisma

@@ -451,14 +451,24 @@ async function findDuplicateInboxMessage(params: {
     if (byWaId) return byWaId;
   }
 
-  // Mídia (áudio, imagem…) costuma ter o mesmo rótulo ("🎤 Áudio") — só deduplica por waMessageId.
-  if (isMediaMessageType(params.type)) {
-    return null;
-  }
-
   const variants = await chatIdVariantsResolved(params.session, params.chatId);
   const windowStart = new Date(params.timestamp.getTime() - 120_000);
   const windowEnd = new Date(params.timestamp.getTime() + 45_000);
+
+  // Mídia (áudio, imagem…) costuma repetir no webhook — deduplica por tipo + janela de tempo.
+  if (isMediaMessageType(params.type)) {
+    return prisma.inboxMessage.findFirst({
+      where: {
+        session: params.session,
+        chatId: { in: variants },
+        fromMe: params.fromMe,
+        type: params.type,
+        timestamp: { gte: windowStart, lte: windowEnd }
+      },
+      orderBy: { timestamp: "desc" },
+      select: { id: true, waMessageId: true }
+    });
+  }
 
   return prisma.inboxMessage.findFirst({
     where: {
