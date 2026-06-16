@@ -109,11 +109,12 @@ export async function clearPendingReply(session: string, chatId: string): Promis
   });
 }
 
-export async function saveConversationSummary(
+export async function saveConversationMemory(
   session: string,
   chatId: string,
-  summary: string,
-  messageCount: number
+  memory: string,
+  memoryLastMessageId: string | null,
+  summarizedCount: number
 ): Promise<void> {
   if (!prisma) return;
   const canonical = await resolveCanonicalChatId(session, chatId);
@@ -122,16 +123,28 @@ export async function saveConversationSummary(
     create: {
       session,
       chatId: canonical,
-      conversationSummary: summary,
-      summaryMessageCount: messageCount,
-      summaryUpdatedAt: new Date()
+      conversationSummary: memory,
+      summaryMessageCount: summarizedCount,
+      summaryUpdatedAt: new Date(),
+      memoryLastMessageId
     },
     update: {
-      conversationSummary: summary,
-      summaryMessageCount: messageCount,
-      summaryUpdatedAt: new Date()
+      conversationSummary: memory,
+      summaryMessageCount: summarizedCount,
+      summaryUpdatedAt: new Date(),
+      memoryLastMessageId
     }
   });
+}
+
+/** @deprecated use saveConversationMemory */
+export async function saveConversationSummary(
+  session: string,
+  chatId: string,
+  summary: string,
+  messageCount: number
+): Promise<void> {
+  await saveConversationMemory(session, chatId, summary, null, messageCount);
 }
 
 export function expectedReplyJobId(session: string, chatId: string): string {

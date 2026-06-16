@@ -35,10 +35,9 @@ export function buildSystemPrompt(params: {
   ].join("\n");
 
   const conversationRules = [
-    "- O bloco de histórico abaixo contém TODA a conversa deste número (cliente, você, IA e automações).",
-    "- Continue exatamente de onde a conversa parou; nunca reinicie como se fosse o primeiro contato.",
-    "- Leia todas as mensagens anteriores antes de responder — especialmente o que já foi dito, oferecido ou comprado.",
-    "- Não repita informações, links ou ofertas já enviadas neste chat.",
+    "- Use a MEMÓRIA DESTA CONVERSA como contexto gravado do lead (não recomece do zero).",
+    "- As MENSAGENS RECENTES são o trecho literal mais atual — continue a partir delas.",
+    "- Não repita informações, links ou ofertas já registradas na memória ou no histórico recente.",
     "- Se o cliente já comprou, testou ou recebeu instruções, reconheça e avance no assunto."
   ].join("\n");
 

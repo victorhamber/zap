@@ -76,7 +76,11 @@ const EnvSchema = z.object({
   /** Máx. chamadas OpenAI por minuto no worker (BullMQ limiter). */
   AI_OPENAI_RPM_LIMIT: z.coerce.number().int().positive().default(15),
   /** Quantidade máxima de mensagens do histórico enviadas à IA por conversa. */
-  AI_HISTORY_MESSAGE_LIMIT: z.coerce.number().int().positive().default(200)
+  AI_HISTORY_MESSAGE_LIMIT: z.coerce.number().int().positive().default(200),
+  /** Mensagens recentes enviadas literalmente (o resto fica na memória gravada). */
+  AI_MEMORY_RECENT_MESSAGES: z.coerce.number().int().positive().default(12),
+  /** Mínimo de mensagens novas para atualizar a memória com OpenAI. */
+  AI_MEMORY_MIN_NEW_MSGS: z.coerce.number().int().positive().default(2)
 }).superRefine((data, ctx) => {
   if (!isProd) return;
   if (data.WHATSAPP_PROVIDER === "wppconnect") {

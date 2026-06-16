@@ -106,6 +106,8 @@ model InstanceAiChatState {
   conversationSummary  String    @default("")
   summaryMessageCount  Int       @default(0)
   summaryUpdatedAt     DateTime?
+  /** Última mensagem do inbox já incorporada à memória persistente. */
+  memoryLastMessageId  String?
 
   @@unique([session, chatId])
 }

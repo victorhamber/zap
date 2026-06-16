@@ -239,7 +239,7 @@ export async function generateReply(params: {
       { role: "system", content: params.systemPrompt.slice(0, 8000) },
       {
         role: "user",
-        content: `HISTÓRICO COMPLETO desta conversa (cronológico — use tudo para manter coerência):\n${params.chatHistory.slice(0, 20_000)}${knowledge}${recentBlock}\n\n${inboundLabel}\n${params.inboundText.slice(0, 4000)}${repeatHint}\n\nContinue a conversa com base em todo o histórico. Responda de forma direta e objetiva. Priorize perguntas sobre preço/valor/planos se o cliente perguntou. Uma única mensagem concisa:`
+        content: `CONTEXTO DA CONVERSA:\n${params.chatHistory.slice(0, 10_000)}${knowledge}${recentBlock}\n\n${inboundLabel}\n${params.inboundText.slice(0, 4000)}${repeatHint}\n\nContinue a conversa com base na memória gravada e nas mensagens recentes. Responda de forma direta. Uma única mensagem concisa:`
       }
     ],
     temperature: params.retryAvoidRepeat ? 0.25 : 0.3

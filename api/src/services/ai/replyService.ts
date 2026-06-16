@@ -27,6 +27,7 @@ import {
   getRecentAiReplies,
   hasAiReplyAfterInbound,
   hasManualReplyAfterInbound,
+  refreshConversationMemory,
   resolveLeadTagsForAi
 } from "./replyContext.js";
 import type { OfficialLink } from "../../types/ai.js";
@@ -163,7 +164,10 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
       leadTags
     }) + `\n\nLinks disponíveis: ${injectOfficialLinksHint(officialLinks)}`;
 
-  const chatHistory = await buildChatHistoryForAi(payload.session, payload.chatId);
+  const chatHistory = await buildChatHistoryForAi(payload.session, payload.chatId, {
+    apiKey,
+    model: settingsRow.modelChat
+  });
   const snippets = await fetchKnowledgeSnippetsForAi(payload.session, payload.chatId);
   const recentAiReplies = await getRecentAiReplies(payload.session, payload.chatId);
 
@@ -260,6 +264,13 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
     detail: reply.slice(0, 200)
   });
   await clearPendingReply(payload.session, payload.chatId);
+
+  void refreshConversationMemory({
+    session: payload.session,
+    chatId: payload.chatId,
+    apiKey,
+    model: settingsRow.modelChat
+  }).catch((err) => console.warn("[ai] post-reply memory refresh failed", err));
 }
 
 export async function simulateReply(params: {
@@ -282,7 +293,10 @@ export async function simulateReply(params: {
     leadTags: await resolveLeadTagsForAi(params.chatId)
   });
 
-  const chatHistory = await buildChatHistoryForAi(params.session, params.chatId);
+  const chatHistory = await buildChatHistoryForAi(params.session, params.chatId, {
+    apiKey,
+    model: settings.modelChat
+  });
   const snippets = await fetchKnowledgeSnippetsForAi(params.session, params.chatId);
 
   const reply = await generateReply({

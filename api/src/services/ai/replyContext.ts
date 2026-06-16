@@ -4,8 +4,7 @@ import { labelForMediaType } from "../mediaText.js";
 import { expandChatIdVariants } from "../waLidMap.js";
 import { getContactTagNames } from "../contacts.js";
 import { phoneFromChatId } from "./tagGate.js";
-import { buildFullChatHistoryForAi } from "./conversationSummary.js";
-import { env } from "../../env.js";
+import { buildChatContextForReply, refreshConversationMemory } from "./conversationMemory.js";
 
 const DEFAULT_KNOWLEDGE_LIMIT = 6;
 
@@ -25,13 +24,18 @@ export async function resolveLeadTagsForAi(chatId: string): Promise<string[]> {
 export async function buildChatHistoryForAi(
   session: string,
   chatId: string,
-  _options?: { apiKey?: string; model?: string }
+  options?: { apiKey?: string; model?: string }
 ): Promise<string> {
   try {
-    return await buildFullChatHistoryForAi(session, chatId, env.AI_HISTORY_MESSAGE_LIMIT);
+    return await buildChatContextForReply({
+      session,
+      chatId,
+      apiKey: options?.apiKey,
+      model: options?.model
+    });
   } catch (err) {
     console.warn("[ai] buildChatHistoryForAi failed", err);
-    const { messages } = await listStoredMessages(chatId, env.AI_HISTORY_MESSAGE_LIMIT, session);
+    const { messages } = await listStoredMessages(chatId, 20, session);
     if (messages.length === 0) return "(sem histórico nesta conversa)";
     return messages
       .map((m) => {
@@ -42,6 +46,8 @@ export async function buildChatHistoryForAi(
       .join("\n");
   }
 }
+
+export { refreshConversationMemory };
 
 export async function fetchKnowledgeSnippetsForAi(
   session: string,
