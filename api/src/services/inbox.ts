@@ -160,11 +160,12 @@ function isPhoneLikeText(text: string): boolean {
 }
 
 function resolveChatId(chatId: string, isGroup?: boolean): string {
-  if (chatId.includes("@")) return chatId;
+  const raw = extractWaId(chatId) || chatId.trim();
+  if (raw.includes("@")) return normalizeDirectJid(raw);
   const clean = digitsOnly(chatId);
   if (!clean) return chatId;
   if (isGroup) return `${clean}@g.us`;
-  return `${clean}@c.us`;
+  return `${clean}@s.whatsapp.net`;
 }
 
 function detectKind(id: string, o?: Record<string, unknown>): ChatKind {
@@ -886,16 +887,20 @@ export async function sendChatMessage(
   message: string,
   isGroup = false
 ): Promise<void> {
+  const { defaultWhatsAppSession } = await import("../env.js");
+  const { canonicalizeChatId } = await import("./inboxStore.js");
+  const session = defaultWhatsAppSession();
   const target = buildWppSendTarget(chatId, isGroup);
   const waMessageId = await sendWppText(chatId, message, isGroup);
+  const canonical = await canonicalizeChatId(session, chatId, [target.jid, chatId]);
   await saveInboxMessage({
-    chatId,
+    chatId: canonical,
     body: message,
     fromMe: true,
     source: "manual",
     type: "chat",
     waMessageId,
-    peerJids: [target.jid, chatId]
+    peerJids: [target.jid, chatId, canonical]
   });
 }
 
@@ -1092,14 +1097,20 @@ export async function sendChatMedia(
     document: caption || "📎 Documento"
   };
 
+  const { defaultWhatsAppSession } = await import("../env.js");
+  const { canonicalizeChatId } = await import("./inboxStore.js");
+  const session = defaultWhatsAppSession();
+  const canonical = await canonicalizeChatId(session, chatId, [target.jid, chatId]);
+
   await saveInboxMessage({
-    chatId: target.jid,
+    chatId: canonical,
     body: labels[type],
     fromMe: true,
     source: "manual",
     type,
     mediaUrl: toPublicMediaUrl(storedMediaUrl) ?? storedMediaUrl,
     waMessageId,
-    timestamp: sentAt
+    timestamp: sentAt,
+    peerJids: [target.jid, chatId, canonical]
   });
 }

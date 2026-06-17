@@ -1,11 +1,11 @@
 import { prisma } from "../../prisma.js";
-import { findPrimaryChatIdForContact, resolveAllChatIdsForContact } from "../inboxStore.js";
+import { findPrimaryChatIdForContact, resolveAllChatIdsForContact, canonicalizeChatId } from "../inboxStore.js";
 import { cancelAiReplyJob, aiReplyJobId } from "../../queue.js";
 
 export type ChatMode = "auto" | "human";
 
 export async function resolveCanonicalChatId(session: string, chatId: string): Promise<string> {
-  return findPrimaryChatIdForContact(session, chatId);
+  return canonicalizeChatId(session, chatId);
 }
 
 export async function findChatState(session: string, chatId: string) {

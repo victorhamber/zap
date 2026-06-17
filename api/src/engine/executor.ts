@@ -12,7 +12,7 @@ import {
   removeContactTagsByNames
 } from "../services/contacts.js";
 import * as wpp from "../services/whatsapp/index.js";
-import { saveInboxMessage, contactHasInboundReply, findPrimaryChatIdForPhone, resolveAllChatIdsForContact } from "../services/inboxStore.js";
+import { saveInboxMessage, contactHasInboundReply, canonicalizeChatId, resolveAllChatIdsForContact } from "../services/inboxStore.js";
 import { toPublicMediaUrl } from "../services/uploads.js";
 import {
   findFlowTriggerNode,
@@ -99,8 +99,11 @@ async function persistFlowOutboundMessage(params: {
 }): Promise<void> {
   const { defaultWhatsAppSession } = await import("../env.js");
   const session = defaultWhatsAppSession();
-  const chatId = await findPrimaryChatIdForPhone(session, params.phone);
-  const peerJids = await resolveAllChatIdsForContact(session, chatId);
+  const phoneJid = params.phone.includes("@")
+    ? params.phone
+    : `${params.phone.replace(/\D/g, "")}@s.whatsapp.net`;
+  const peerJids = await resolveAllChatIdsForContact(session, phoneJid);
+  const chatId = await canonicalizeChatId(session, phoneJid, [...peerJids, params.phone]);
   await saveInboxMessage({
     chatId,
     body: params.body,
@@ -110,7 +113,7 @@ async function persistFlowOutboundMessage(params: {
     mediaUrl: params.mediaUrl ?? null,
     waMessageId: params.waMessageId ?? null,
     sessionName: session,
-    peerJids: [...new Set([chatId, params.phone, ...peerJids])]
+    peerJids: [...new Set([chatId, params.phone, phoneJid, ...peerJids])]
   });
 }
 

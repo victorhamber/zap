@@ -12,6 +12,7 @@ import { phoneDedupeKey, expandPhoneLookupKeys, canonicalBrazilPhone } from "../
 import { isValidWhatsAppPhoneDigits, normalizeDirectJid } from "./waJid.js";
 import {
   expandChatIdVariants,
+  getLidsMappedToPhone,
   getMappedPhoneJid,
   loadWaLidMap,
   pickPhoneJid,
@@ -91,11 +92,28 @@ export async function resolveAllChatIdsForContact(
     for (const r of rows) out.add(r.chatId);
   }
 
+  const primary = preferPrimaryChatId([...out]);
+  if (primary) {
+    for (const lid of getLidsMappedToPhone(session, primary)) {
+      out.add(lid);
+    }
+    const lidRows = await prisma.inboxMessage.findMany({
+      where: { session: normSession, chatId: { endsWith: "@lid" } },
+      select: { chatId: true },
+      distinct: ["chatId"]
+    });
+    for (const r of lidRows) {
+      const mapped = getMappedPhoneJid(normSession, r.chatId);
+      if (mapped && out.has(mapped)) out.add(r.chatId);
+    }
+  }
+
   return [...out];
 }
 
 function preferPrimaryChatId(ids: string[]): string {
   if (ids.length === 0) return "";
+  const normalized = [...new Set(ids.map((id) => normalizeDirectJid(id.trim())).filter(Boolean))];
   const score = (id: string): number => {
     if (id.endsWith("@s.whatsapp.net")) return 100;
     if (id.endsWith("@c.us")) return 90;
@@ -103,7 +121,19 @@ function preferPrimaryChatId(ids: string[]): string {
     if (id.endsWith("@lid")) return 20;
     return 50;
   };
-  return [...ids].sort((a, b) => score(b) - score(a))[0] ?? ids[0];
+  return normalized.sort((a, b) => score(b) - score(a))[0] ?? "";
+}
+
+/** ID único por contato — telefone @s.whatsapp.net ou grupo @g.us. */
+export async function canonicalizeChatId(
+  session: string,
+  chatId: string,
+  peerJids: string[] = []
+): Promise<string> {
+  await recordWaJidMapping(session, chatId, ...peerJids).catch(() => {});
+  const resolved = await resolveStorageChatId(session, chatId, peerJids);
+  const primary = await findPrimaryChatIdForContact(session, resolved);
+  return primary || normalizeDirectJid(chatId.trim());
 }
 
 /** ChatId canônico para gravar envios (fluxo, manual) no mesmo fio da conversa existente. */
@@ -121,7 +151,8 @@ export async function findPrimaryChatIdForContact(
   chatId: string
 ): Promise<string> {
   const ids = await resolveAllChatIdsForContact(session, chatId);
-  return preferPrimaryChatId(ids) || chatId.trim();
+  const primary = preferPrimaryChatId(ids) || chatId.trim();
+  return normalizeDirectJid(primary) || primary;
 }
 
 async function getSessionName(): Promise<string> {
@@ -145,6 +176,186 @@ export async function normalizeInboxSessionKeys(): Promise<void> {
     where: { id: "default" },
     data: { wppSession: norm }
   });
+}
+
+type CanonicalGroup = { canonical: string; variants: Set<string> };
+
+async function buildCanonicalGroups(session: string): Promise<CanonicalGroup[]> {
+  if (!prisma) return [];
+  await loadWaLidMap(session);
+
+  const distinct = await prisma.inboxMessage.findMany({
+    where: { session },
+    select: { chatId: true },
+    distinct: ["chatId"]
+  });
+
+  const byCanonical = new Map<string, Set<string>>();
+
+  for (const { chatId } of distinct) {
+    const variants = await resolveAllChatIdsForContact(session, chatId);
+    const canonical = await findPrimaryChatIdForContact(session, chatId);
+    const set = byCanonical.get(canonical) ?? new Set<string>();
+    for (const v of variants) set.add(v);
+    byCanonical.set(canonical, set);
+  }
+
+  return [...byCanonical.entries()].map(([canonical, variants]) => ({ canonical, variants }));
+}
+
+async function dedupeInboxRows(session: string, chatId: string): Promise<number> {
+  if (!prisma) return 0;
+
+  const rows = await prisma.inboxMessage.findMany({
+    where: { session, chatId },
+    orderBy: [{ timestamp: "asc" }, { createdAt: "asc" }],
+    select: { id: true, waMessageId: true, fromMe: true, type: true, body: true, timestamp: true }
+  });
+
+  const seen = new Set<string>();
+  const deleteIds: string[] = [];
+
+  for (const row of rows) {
+    const sec = Math.floor(row.timestamp.getTime() / 1000);
+    const key = row.waMessageId
+      ? `wa:${row.waMessageId}`
+      : row.fromMe && row.type === "chat"
+        ? `${row.fromMe}|${row.type}|${row.body}|${sec}`
+        : `${row.fromMe}|${row.type}|${row.body}|${sec}|${row.id}`;
+    if (seen.has(key)) {
+      deleteIds.push(row.id);
+    } else {
+      seen.add(key);
+    }
+  }
+
+  if (deleteIds.length === 0) return 0;
+  await prisma.inboxMessage.deleteMany({ where: { id: { in: deleteIds } } });
+  return deleteIds.length;
+}
+
+async function dedupeInboxByWaMessageId(session: string): Promise<number> {
+  if (!prisma) return 0;
+
+  const dupRows = await prisma.$queryRaw<Array<{ waMessageId: string }>>`
+    SELECT "waMessageId"
+    FROM "InboxMessage"
+    WHERE "session" = ${session} AND "waMessageId" IS NOT NULL
+    GROUP BY "waMessageId"
+    HAVING COUNT(*) > 1
+  `;
+
+  let removed = 0;
+  for (const { waMessageId } of dupRows) {
+    const rows = await prisma.inboxMessage.findMany({
+      where: { session, waMessageId },
+      orderBy: { createdAt: "asc" },
+      select: { id: true }
+    });
+    const toDelete = rows.slice(1).map((r) => r.id);
+    if (toDelete.length === 0) continue;
+    await prisma.inboxMessage.deleteMany({ where: { id: { in: toDelete } } });
+    removed += toDelete.length;
+  }
+  return removed;
+}
+
+async function consolidateAiChatStatesForGroup(
+  session: string,
+  canonical: string,
+  variants: Set<string>
+): Promise<void> {
+  if (!prisma) return;
+
+  const ids = [...variants];
+  const states = await prisma.instanceAiChatState.findMany({
+    where: { session, chatId: { in: ids } }
+  });
+  if (states.length === 0) return;
+
+  const score = (s: (typeof states)[number]) =>
+    Math.max(
+      s.lastHumanAt?.getTime() ?? 0,
+      s.summaryUpdatedAt?.getTime() ?? 0,
+      s.conversationSummary ? 1 : 0
+    );
+
+  const sorted = [...states].sort((a, b) => score(b) - score(a));
+  const best = sorted[0];
+  const merged = {
+    mode: sorted.some((s) => s.mode === "human") ? "human" : best.mode,
+    lastHumanAt: sorted.reduce<Date | null>((max, s) => {
+      if (!s.lastHumanAt) return max;
+      if (!max || s.lastHumanAt > max) return s.lastHumanAt;
+      return max;
+    }, null),
+    pendingReplyJobId: sorted.find((s) => s.pendingReplyJobId)?.pendingReplyJobId ?? null,
+    pendingInboundId: sorted.find((s) => s.pendingInboundId)?.pendingInboundId ?? null,
+    conversationSummary:
+      sorted.find((s) => s.conversationSummary.trim())?.conversationSummary ??
+      best.conversationSummary,
+    summaryMessageCount: Math.max(...sorted.map((s) => s.summaryMessageCount)),
+    summaryUpdatedAt: sorted.reduce<Date | null>((max, s) => {
+      if (!s.summaryUpdatedAt) return max;
+      if (!max || s.summaryUpdatedAt > max) return max;
+      return max;
+    }, null),
+    memoryLastMessageId:
+      sorted.find((s) => s.memoryLastMessageId)?.memoryLastMessageId ?? best.memoryLastMessageId
+  };
+
+  await prisma.instanceAiChatState.upsert({
+    where: { session_chatId: { session, chatId: canonical } },
+    create: { session, chatId: canonical, ...merged },
+    update: merged
+  });
+
+  const staleIds = ids.filter((id) => id !== canonical);
+  if (staleIds.length > 0) {
+    await prisma.instanceAiChatState.deleteMany({
+      where: { session, chatId: { in: staleIds } }
+    });
+  }
+}
+
+/**
+ * Unifica histórico fragmentado (@lid, @c.us, @s.whatsapp.net) em um único chatId por contato.
+ * Idempotente — roda no bootstrap e pode ser chamado de novo com segurança.
+ */
+export async function consolidateInboxChatIds(
+  sessionName?: string
+): Promise<{ merged: number; deduped: number }> {
+  if (!prisma) return { merged: 0, deduped: 0 };
+
+  const session = (sessionName ?? (await getSessionName())).trim().toLowerCase();
+  const groups = await buildCanonicalGroups(session);
+
+  let merged = 0;
+  let contentDeduped = 0;
+  for (const { canonical, variants } of groups) {
+    const stale = [...variants].filter((id) => id !== canonical);
+    if (stale.length > 0) {
+      const moved = await prisma.inboxMessage.updateMany({
+        where: { session, chatId: { in: stale } },
+        data: { chatId: canonical }
+      });
+      merged += moved.count;
+
+      await prisma.instanceAiKnowledge.updateMany({
+        where: { session, chatId: { in: stale } },
+        data: { chatId: canonical }
+      });
+    }
+
+    await consolidateAiChatStatesForGroup(session, canonical, variants);
+    contentDeduped += await dedupeInboxRows(session, canonical);
+  }
+
+  const waDeduped = await dedupeInboxByWaMessageId(session);
+  const deduped = contentDeduped + waDeduped;
+  console.log(`[inbox] consolidate session=${session} merged=${merged} deduped=${deduped}`);
+
+  return { merged, deduped };
 }
 
 async function getCaptureSince(): Promise<Date | null> {
@@ -234,13 +445,13 @@ async function resolveStorageChatId(
 ): Promise<string> {
   await recordWaJidMapping(session, chatId, ...peerJids);
   const mapped = getMappedPhoneJid(session, chatId);
-  if (mapped) return mapped;
+  if (mapped) return normalizeDirectJid(mapped);
   const phone = pickPhoneJid([chatId, ...peerJids]);
   if (phone) {
     await recordWaJidMapping(session, chatId, phone, ...peerJids);
-    return phone;
+    return normalizeDirectJid(phone);
   }
-  return chatId;
+  return normalizeDirectJid(chatId);
 }
 
 export type InboxOwnerSyncResult = {
@@ -584,7 +795,7 @@ export async function saveInboxMessage(params: {
   const ownerPhone = await resolveOwnerPhoneForSave(session, params.ownerPhone);
   const rawChatId = normalizeDirectJid(extractWaId(params.chatId) || params.chatId.trim());
   if (!rawChatId || rawChatId.includes("status@broadcast")) return null;
-  const chatId = await resolveStorageChatId(session, rawChatId, params.peerJids ?? []);
+  const chatId = await canonicalizeChatId(session, rawChatId, params.peerJids ?? []);
 
   const type = params.type ?? "chat";
   const source: InboxMessageSource = params.source ?? "webhook";
@@ -682,43 +893,60 @@ export async function listStoredChatSummaries(): Promise<NormalizedChat[]> {
   const session = await getSessionName();
   await loadWaLidMap(session);
 
-  const rows = await prisma.$queryRaw<
-    Array<{ chatId: string; body: string; timestamp: Date }>
-  >`
-    SELECT DISTINCT ON ("chatId") "chatId", "body", "timestamp"
-    FROM "InboxMessage"
-    WHERE "session" = ${session}
-    ORDER BY "chatId", "timestamp" DESC
-  `;
+  const distinct = await prisma.inboxMessage.findMany({
+    where: { session },
+    select: { chatId: true },
+    distinct: ["chatId"]
+  });
 
-  const merged = new Map<string, NormalizedChat>();
-  for (const r of rows) {
-    let id = r.chatId;
-    const mapped = getMappedPhoneJid(session, id);
-    if (mapped) id = mapped;
-    const isGroup = id.includes("@g.us");
-    const phoneDigits = digitsOnly(id.replace(/@.*/, "")) || id.replace(/@.*/, "");
+  const groupIds = new Map<string, Set<string>>();
+  const primaryByKey = new Map<string, string>();
+
+  for (const { chatId: rawId } of distinct) {
+    const variants = await resolveAllChatIdsForContact(session, rawId);
+    const primary = preferPrimaryChatId(variants) || rawId;
+    const isGroup = primary.includes("@g.us");
+    const phoneDigits = digitsOnly(primary.replace(/@.*/, "")) || primary.replace(/@.*/, "");
     const mapKey =
       !isGroup && isValidWhatsAppPhoneDigits(phoneDigits)
         ? `p:${phoneDedupeKey(phoneDigits)}`
-        : `id:${id}`;
-    const entry: NormalizedChat = {
-      id,
+        : `id:${primary}`;
+
+    const set = groupIds.get(mapKey) ?? new Set<string>();
+    for (const v of variants) set.add(v);
+    groupIds.set(mapKey, set);
+    if (!primaryByKey.has(mapKey)) primaryByKey.set(mapKey, primary);
+  }
+
+  const merged: NormalizedChat[] = [];
+  for (const [mapKey, ids] of groupIds) {
+    const idList = [...ids];
+    if (idList.length === 0) continue;
+
+    const latest = await prisma.inboxMessage.findFirst({
+      where: { session, chatId: { in: idList } },
+      orderBy: { timestamp: "desc" },
+      select: { body: true, timestamp: true }
+    });
+    if (!latest) continue;
+
+    const primary = primaryByKey.get(mapKey) ?? idList[0];
+    const isGroup = primary.includes("@g.us");
+    const phoneDigits = digitsOnly(primary.replace(/@.*/, "")) || primary.replace(/@.*/, "");
+
+    merged.push({
+      id: primary,
       phone: phoneDigits,
       name: phoneDigits,
-      lastMessage: r.body.slice(0, 120),
-      timestamp: r.timestamp.getTime(),
+      lastMessage: latest.body.slice(0, 120),
+      timestamp: latest.timestamp.getTime(),
       isGroup,
       kind: isGroup ? ("group" as const) : ("direct" as const),
       unreadCount: 0
-    };
-    const prev = merged.get(mapKey);
-    if (!prev || entry.timestamp >= prev.timestamp) {
-      merged.set(mapKey, prev ? { ...entry, lastMessage: entry.lastMessage || prev.lastMessage } : entry);
-    }
+    });
   }
 
-  return [...merged.values()];
+  return merged;
 }
 
 /** Contato enviou alguma mensagem recebida (fromMe=false) no inbox. */

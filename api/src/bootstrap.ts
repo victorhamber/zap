@@ -9,7 +9,8 @@ import {
 } from "./services/wppReconnect.js";
 import {
   ensureInboxCaptureStarted,
-  normalizeInboxSessionKeys
+  normalizeInboxSessionKeys,
+  consolidateInboxChatIds
 } from "./services/inboxStore.js";
 import { startFlowScheduler } from "./services/flowScheduler.js";
 import { startFlowStartWorker } from "./services/flowStartWorker.js";
@@ -52,6 +53,7 @@ export async function bootstrapDatabase() {
   }
 
   await normalizeInboxSessionKeys();
+  await consolidateInboxChatIds();
 
   const settings = await prisma.appSettings.findUnique({ where: { id: "default" } });
   if (settings?.connectionStatus?.startsWith("CONNECTED")) {
