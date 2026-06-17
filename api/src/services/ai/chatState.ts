@@ -1,22 +1,16 @@
 import { prisma } from "../../prisma.js";
-import { expandChatIdVariants } from "../waLidMap.js";
+import { findPrimaryChatIdForContact, resolveAllChatIdsForContact } from "../inboxStore.js";
 import { cancelAiReplyJob, aiReplyJobId } from "../../queue.js";
 
 export type ChatMode = "auto" | "human";
 
 export async function resolveCanonicalChatId(session: string, chatId: string): Promise<string> {
-  const variants = await expandChatIdVariants(session, chatId);
-  return (
-    variants.find((v) => v.endsWith("@s.whatsapp.net")) ??
-    variants.find((v) => v.endsWith("@c.us")) ??
-    variants[0] ??
-    chatId
-  );
+  return findPrimaryChatIdForContact(session, chatId);
 }
 
 export async function findChatState(session: string, chatId: string) {
   if (!prisma) return null;
-  const variants = await expandChatIdVariants(session, chatId);
+  const variants = await resolveAllChatIdsForContact(session, chatId);
   return prisma.instanceAiChatState.findFirst({
     where: { session, chatId: { in: variants } },
     orderBy: { lastHumanAt: "desc" }
@@ -102,7 +96,7 @@ export async function setPendingReply(
 
 export async function clearPendingReply(session: string, chatId: string): Promise<void> {
   if (!prisma) return;
-  const variants = await expandChatIdVariants(session, chatId);
+  const variants = await resolveAllChatIdsForContact(session, chatId);
   await prisma.instanceAiChatState.updateMany({
     where: { session, chatId: { in: variants } },
     data: { pendingReplyJobId: null, pendingInboundId: null }

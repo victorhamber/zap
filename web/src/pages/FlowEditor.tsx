@@ -64,6 +64,10 @@ function summaryFor(type: string, data: Record<string, unknown>): string {
     const days = Number(data.withinDays ?? 0);
     return days > 0 ? `Resposta ${since} · ${days}d` : `Resposta ${since}`;
   }
+  if (type === "split_round_robin") {
+    const n = Math.min(4, Math.max(2, Number(data.branchCount) || 2));
+    return `Round robin · ${n} ramos`;
+  }
   if (type === "trigger_hotmart_pending") return "PIX / boleto gerado";
   if (type === "tag_action") {
     const mode = data.mode === "remove" ? "Remover" : "Adicionar";

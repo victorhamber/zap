@@ -8,6 +8,7 @@ export type NodeType =
   | "condition_offer_code"
   | "condition_contact_tag"
   | "condition_contact_replied"
+  | "split_round_robin"
   | "tag_action"
   | "start_flow"
   | "delay"
@@ -72,6 +73,13 @@ export type ConditionContactRepliedData = {
   sinceFlowStart?: boolean;
   /** Janela extra em dias (0 = sem limite além de sinceFlowStart) */
   withinDays?: number;
+};
+
+/** Divide o fluxo em N ramos iguais — cada execução segue o próximo ramo (round robin). */
+export type SplitRoundRobinData = {
+  branchCount: 2 | 3 | 4;
+  /** Nome de cada saída (apenas visual / log) */
+  labels?: string[];
 };
 
 export type TagActionData = {

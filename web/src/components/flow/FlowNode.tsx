@@ -88,6 +88,35 @@ function OfferOutputRow({
   );
 }
 
+function RoundRobinOutputRow({
+  outputNumber,
+  title
+}: {
+  outputNumber: number;
+  title: string;
+}) {
+  return (
+    <div
+      className="border-b border-zinc-700/40 last:border-b-0 bg-violet-500/[0.05]"
+      style={{ height: OFFER_ROW_H, paddingTop: OFFER_ROW_PAD_TOP, paddingBottom: 14 }}
+    >
+      <div
+        className="flex items-center gap-2 px-3"
+        style={{ height: OFFER_TITLE_LINE_H }}
+      >
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-violet-500/15 text-[11px] font-bold text-violet-300 ring-1 ring-violet-500/30">
+          {outputNumber}
+        </div>
+        <div className="min-w-0 flex-1 truncate text-[13px] font-semibold leading-none text-white">
+          {title}
+        </div>
+        <div className="w-4 shrink-0" aria-hidden />
+      </div>
+      <div className="mt-2.5 px-3 pl-[46px] text-[10px] text-violet-400/75">rotação automática</div>
+    </div>
+  );
+}
+
 export function FlowNodeComponent({ data, selected }: NodeProps) {
   const type = String(data.nodeType ?? "node");
   const label = NODE_LABELS[type] ?? type;
@@ -101,6 +130,70 @@ export function FlowNodeComponent({ data, selected }: NodeProps) {
     type === "condition_contact_tag"
       ? ((config.tagNames as string[] | undefined) ?? [])
       : [];
+
+  const roundRobinCount =
+    type === "split_round_robin"
+      ? Math.min(4, Math.max(2, Number(config.branchCount) || 2))
+      : 0;
+  const roundRobinLabels =
+    type === "split_round_robin"
+      ? Array.from({ length: roundRobinCount }, (_, i) => {
+          const custom = (config.labels as string[] | undefined)?.[i]?.trim();
+          return custom || `Mensagem ${i + 1}`;
+        })
+      : [];
+
+  if (type === "split_round_robin") {
+    const slots = roundRobinLabels.map((title, index) => ({
+      key: `branch_${index}`,
+      handleId: `branch_${index}`,
+      outputNumber: index + 1,
+      title
+    }));
+
+    return (
+      <div
+        className={`flow-offer-node relative w-[260px] overflow-visible rounded-xl border text-sm shadow-lg ${
+          selected ? "border-violet-400 bg-zinc-900" : "border-violet-500/40 bg-zinc-950"
+        }`}
+      >
+        <Handle
+          type="target"
+          position={Position.Left}
+          className="!bg-violet-400"
+          style={{ top: OFFER_HEADER_H / 2 }}
+        />
+
+        <div
+          className="border-b border-zinc-700/40 px-3 py-3"
+          style={{ height: OFFER_HEADER_H }}
+        >
+          <div className="text-xs font-medium text-violet-300/90">{label}</div>
+          <div className="mt-1.5 text-[10px] leading-snug text-zinc-600">
+            {roundRobinCount} ramos · alterna a cada contato
+          </div>
+        </div>
+
+        {slots.map((slot) => (
+          <RoundRobinOutputRow key={slot.key} outputNumber={slot.outputNumber} title={slot.title} />
+        ))}
+
+        {slots.map((slot, index) => (
+          <Handle
+            key={`handle-${slot.handleId}`}
+            type="source"
+            position={Position.Right}
+            id={slot.handleId}
+            className="flow-offer-handle !h-3.5 !w-3.5 !border-2 !border-zinc-950 !bg-violet-400"
+            style={{
+              top: handleTopForRow(index),
+              right: -7
+            }}
+          />
+        ))}
+      </div>
+    );
+  }
 
   if (type === "condition_contact_tag" || type === "condition_contact_replied") {
     const isReply = type === "condition_contact_replied";

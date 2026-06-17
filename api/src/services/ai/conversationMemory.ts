@@ -1,6 +1,6 @@
 import { prisma } from "../../prisma.js";
 import { labelForMediaType } from "../mediaText.js";
-import { expandChatIdVariants } from "../waLidMap.js";
+import { resolveAllChatIdsForContact } from "../inboxStore.js";
 import { env } from "../../env.js";
 import { openaiChat } from "./openaiClient.js";
 import { findChatState, saveConversationMemory } from "./chatState.js";
@@ -63,7 +63,7 @@ export async function fetchChatHistoryRows(
 ): Promise<HistoryRow[]> {
   if (!prisma) return [];
 
-  const variants = await expandChatIdVariants(session, chatId);
+  const variants = await resolveAllChatIdsForContact(session, chatId);
   const rows = await prisma.inboxMessage.findMany({
     where: { session, chatId: { in: variants } },
     orderBy: { timestamp: "desc" },

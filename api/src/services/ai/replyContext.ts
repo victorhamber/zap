@@ -1,7 +1,6 @@
 import { prisma } from "../../prisma.js";
-import { listStoredMessages } from "../inboxStore.js";
+import { listStoredMessages, resolveAllChatIdsForContact } from "../inboxStore.js";
 import { labelForMediaType } from "../mediaText.js";
-import { expandChatIdVariants } from "../waLidMap.js";
 import { getContactTagNames } from "../contacts.js";
 import { phoneFromChatId } from "./tagGate.js";
 import { buildChatContextForReply, refreshConversationMemory } from "./conversationMemory.js";
@@ -9,7 +8,7 @@ import { buildChatContextForReply, refreshConversationMemory } from "./conversat
 const DEFAULT_KNOWLEDGE_LIMIT = 6;
 
 export async function resolveChatIdVariants(session: string, chatId: string): Promise<string[]> {
-  return expandChatIdVariants(session, chatId);
+  return resolveAllChatIdsForContact(session, chatId);
 }
 
 export async function resolveLeadTagsForAi(chatId: string): Promise<string[]> {
@@ -57,7 +56,7 @@ export async function fetchKnowledgeSnippetsForAi(
   if (!prisma) return [];
 
   try {
-    const variants = await expandChatIdVariants(session, chatId);
+    const variants = await resolveAllChatIdsForContact(session, chatId);
     const rows = await prisma.instanceAiKnowledge.findMany({
       where: { session, chatId: { in: variants } },
       orderBy: { createdAt: "desc" },
@@ -76,7 +75,7 @@ export async function hasManualReplyAfterInbound(params: {
   inboundTimestamp: Date;
 }): Promise<boolean> {
   if (!prisma) return false;
-  const variants = await expandChatIdVariants(params.session, params.chatId);
+  const variants = await resolveAllChatIdsForContact(params.session, params.chatId);
   const row = await prisma.inboxMessage.findFirst({
     where: {
       session: params.session,
@@ -96,7 +95,7 @@ export async function hasAiReplyAfterInbound(params: {
   inboundTimestamp: Date;
 }): Promise<boolean> {
   if (!prisma) return false;
-  const variants = await expandChatIdVariants(params.session, params.chatId);
+  const variants = await resolveAllChatIdsForContact(params.session, params.chatId);
   const existing = await prisma.inboxMessage.findFirst({
     where: {
       session: params.session,
@@ -130,7 +129,7 @@ export async function collectInboundBatchForReply(params: {
     return { combinedText: "", anchorTimestamp: new Date() };
   }
 
-  const variants = await expandChatIdVariants(params.session, params.chatId);
+  const variants = await resolveAllChatIdsForContact(params.session, params.chatId);
   const lastOutbound = await prisma.inboxMessage.findFirst({
     where: {
       session: params.session,
@@ -169,7 +168,7 @@ export async function getRecentAiReplies(
   limit = 3
 ): Promise<string[]> {
   if (!prisma) return [];
-  const variants = await expandChatIdVariants(session, chatId);
+  const variants = await resolveAllChatIdsForContact(session, chatId);
   const rows = await prisma.inboxMessage.findMany({
     where: {
       session,

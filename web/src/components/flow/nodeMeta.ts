@@ -8,6 +8,7 @@ export const NODE_LABELS: Record<string, string> = {
   condition_offer_code: "Código da oferta",
   condition_contact_tag: "Contato tem tag?",
   condition_contact_replied: "Contato respondeu?",
+  split_round_robin: "Dividir rotativo",
   tag_action: "Tag",
   start_flow: "Iniciar fluxo",
   delay: "Aguardar",
@@ -56,6 +57,7 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
       { type: "condition_offer_code", label: "Código da oferta" },
       { type: "condition_contact_tag", label: "Contato tem tag?" },
       { type: "condition_contact_replied", label: "Contato respondeu?" },
+      { type: "split_round_robin", label: "Dividir rotativo (A/B/C)" },
       { type: "start_flow", label: "Iniciar outro fluxo" },
       { type: "delay", label: "Aguardar tempo" },
       { type: "schedule_at", label: "Agendar data" }
@@ -99,6 +101,8 @@ export function defaultNodeData(type: string): Record<string, unknown> {
       return { matchMode: "any", tagNames: [] as string[] };
     case "condition_contact_replied":
       return { sinceFlowStart: true, withinDays: 0 };
+    case "split_round_robin":
+      return { branchCount: 2, labels: ["Mensagem 1", "Mensagem 2"] };
     case "trigger_tag":
       return { tags: [] as string[] };
     case "trigger_broadcast":

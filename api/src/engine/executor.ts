@@ -12,7 +12,7 @@ import {
   removeContactTagsByNames
 } from "../services/contacts.js";
 import * as wpp from "../services/whatsapp/index.js";
-import { saveInboxMessage, contactHasInboundReply } from "../services/inboxStore.js";
+import { saveInboxMessage, contactHasInboundReply, findPrimaryChatIdForPhone, resolveAllChatIdsForContact } from "../services/inboxStore.js";
 import { toPublicMediaUrl } from "../services/uploads.js";
 import {
   findFlowTriggerNode,
@@ -32,6 +32,7 @@ import type {
   ScheduleAtNodeData,
   SendMediaNodeData,
   SendTextNodeData,
+  SplitRoundRobinData,
   StartFlowData,
   TagActionData,
   TriggerHotmartData,
@@ -88,11 +89,6 @@ async function sendMediaWithRetries(
   await sendWithRetries(send);
 }
 
-function contactStorageJid(phone: string): string {
-  const digits = phone.replace(/\D/g, "");
-  return `${digits}@s.whatsapp.net`;
-}
-
 /** Grava no inbox imediatamente — não depende só do webhook (evita sumir no próximo poll). */
 async function persistFlowOutboundMessage(params: {
   phone: string;
@@ -101,16 +97,20 @@ async function persistFlowOutboundMessage(params: {
   mediaUrl?: string | null;
   waMessageId?: string | null;
 }): Promise<void> {
-  const jid = contactStorageJid(params.phone);
+  const { defaultWhatsAppSession } = await import("../env.js");
+  const session = defaultWhatsAppSession();
+  const chatId = await findPrimaryChatIdForPhone(session, params.phone);
+  const peerJids = await resolveAllChatIdsForContact(session, chatId);
   await saveInboxMessage({
-    chatId: jid,
+    chatId,
     body: params.body,
     fromMe: true,
     source: "flow",
     type: params.type,
     mediaUrl: params.mediaUrl ?? null,
     waMessageId: params.waMessageId ?? null,
-    peerJids: [jid, params.phone]
+    sessionName: session,
+    peerJids: [...new Set([chatId, params.phone, ...peerJids])]
   });
 }
 
@@ -295,6 +295,52 @@ async function executeNode(
     );
 
     const nextId = getNextNodeIdByHandle(graph, nodeId, matchedHandle);
+    if (!nextId) {
+      await finishRun(flowRunId, "completed");
+      return;
+    }
+
+    if (prisma) {
+      await prisma.flowRun.update({
+        where: { id: flowRunId },
+        data: { currentNodeId: nextId, status: "running" }
+      });
+    }
+
+    await executeNode(graph, flowRunId, nextId, vars);
+    return;
+  }
+
+  if (node.type === "split_round_robin") {
+    const data = node.data as unknown as SplitRoundRobinData;
+    const branchCount = Math.min(4, Math.max(2, Number(data.branchCount) || 2));
+    const labels = Array.from({ length: branchCount }, (_, i) => {
+      const custom = data.labels?.[i]?.trim();
+      return custom || `Mensagem ${i + 1}`;
+    });
+
+    let flowId = "unknown";
+    if (prisma) {
+      const run = await prisma.flowRun.findUnique({
+        where: { id: flowRunId },
+        select: { flowId: true }
+      });
+      flowId = run?.flowId ?? flowId;
+    }
+
+    const { reserveRoundRobinBranch } = await import("../services/flowRoundRobin.js");
+    const index = await reserveRoundRobinBranch(flowId, nodeId, branchCount);
+    const handle = `branch_${index}`;
+    const label = labels[index] ?? `Mensagem ${index + 1}`;
+
+    await logStep(flowRunId, nodeId, node.type, "ok", `Round robin → ${label} (${index + 1}/${branchCount})`, {
+      branch: handle,
+      branchIndex: index,
+      branchCount,
+      label
+    });
+
+    const nextId = getNextNodeIdByHandle(graph, nodeId, handle);
     if (!nextId) {
       await finishRun(flowRunId, "completed");
       return;

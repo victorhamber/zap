@@ -841,16 +841,10 @@ export async function fetchMessages(
 
   try {
     const { syncRecentMessagesFromWpp } = await import("./inboxSync.js");
-    const { expandChatIdVariants } = await import("./waLidMap.js");
-    const syncTargets = [...new Set([chatId, options.chatId, ...(mapped ? [mapped] : [])])];
-    for (const target of syncTargets) {
+    const { resolveAllChatIdsForContact } = await import("./inboxStore.js");
+    const syncTargets = await resolveAllChatIdsForContact(session, chatId);
+    for (const target of [...new Set([...syncTargets, options.chatId])]) {
       await syncRecentMessagesFromWpp(target, options.isGroup, 50);
-    }
-    const variants = await expandChatIdVariants(session, chatId);
-    for (const variant of variants) {
-      if (!syncTargets.includes(variant)) {
-        await syncRecentMessagesFromWpp(variant, options.isGroup, 50);
-      }
     }
   } catch {
     /* webhook é o caminho principal; sync é fallback */

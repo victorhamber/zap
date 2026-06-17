@@ -81,6 +81,8 @@ export function FlowNodeProperties({
     onUpdate({ [field]: current + snippet });
   }
   const offerBranches = (config.branches as OfferBranch[] | undefined) ?? [];
+  const roundRobinCount = Math.min(4, Math.max(2, Number(config.branchCount) || 2));
+  const roundRobinLabels = (config.labels as string[] | undefined) ?? [];
   const selectedTagNames = (config.tagNames as string[] | undefined) ?? [];
   const triggerTags = (config.tags as string[] | undefined) ?? [];
 
@@ -149,6 +151,20 @@ export function FlowNodeProperties({
 
   function updateOfferBranches(next: OfferBranch[]) {
     onUpdate({ branches: next });
+  }
+
+  function setRoundRobinCount(count: number) {
+    const n = Math.min(4, Math.max(2, count));
+    const labels = Array.from({ length: n }, (_, i) => roundRobinLabels[i]?.trim() || `Mensagem ${i + 1}`);
+    onUpdate({ branchCount: n, labels });
+  }
+
+  function patchRoundRobinLabel(index: number, label: string) {
+    const labels = Array.from({ length: roundRobinCount }, (_, i) => {
+      if (i === index) return label;
+      return roundRobinLabels[i]?.trim() || `Mensagem ${i + 1}`;
+    });
+    onUpdate({ labels });
   }
 
   function addOfferBranch() {
@@ -788,6 +804,51 @@ export function FlowNodeProperties({
               <p className="text-zinc-600 pt-1">
                 Reações (emoji) só contam se aparecerem como mensagem no inbox.
               </p>
+            </div>
+          </>
+        )}
+
+        {nodeType === "split_round_robin" && (
+          <>
+            <p className="text-xs text-zinc-500 leading-relaxed">
+              Divide o fluxo em <strong>2 a 4 ramos iguais</strong>. A cada novo contato que passar por
+              aqui, o sistema escolhe o <strong>próximo ramo</strong> automaticamente (round robin).
+              Ideal para alternar textos de boas-vindas e reduzir risco de spam.
+            </p>
+            <label className="text-xs text-zinc-500">Quantidade de ramos</label>
+            <select
+              value={roundRobinCount}
+              onChange={(e) => setRoundRobinCount(Number(e.target.value))}
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-white"
+            >
+              <option value={2}>2 ramos (A / B)</option>
+              <option value={3}>3 ramos (A / B / C)</option>
+              <option value={4}>4 ramos (A / B / C / D)</option>
+            </select>
+            <div className="space-y-3">
+              {Array.from({ length: roundRobinCount }, (_, index) => (
+                <div
+                  key={`rr_${index}`}
+                  className="rounded-xl border border-violet-500/25 border-l-[3px] border-l-violet-500 bg-zinc-900/40 p-3 space-y-2"
+                >
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-violet-400">
+                    Saída {index + 1} · bolinha roxa
+                  </div>
+                  <label className="text-xs text-zinc-500">Nome desta saída (aparece no bloco)</label>
+                  <input
+                    value={roundRobinLabels[index]?.trim() || `Mensagem ${index + 1}`}
+                    onChange={(e) => patchRoundRobinLabel(index, e.target.value)}
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
+                    placeholder={`Ex.: Boas-vindas ${String.fromCharCode(65 + index)}`}
+                  />
+                  <p className="text-[10px] text-zinc-600">
+                    Conecte um bloco de texto (ou sequência) na saída {index + 1} do canvas.
+                  </p>
+                </div>
+              ))}
+            </div>
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 text-[11px] text-zinc-500">
+              Exemplo: contato 1 → saída 1, contato 2 → saída 2, contato 3 → saída 3, contato 4 → saída 1…
             </div>
           </>
         )}

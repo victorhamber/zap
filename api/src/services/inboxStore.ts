@@ -8,7 +8,7 @@ import {
   labelForMediaType,
   mimeFromMessageType
 } from "./mediaText.js";
-import { phoneDedupeKey, expandPhoneLookupKeys } from "../utils/phone.js";
+import { phoneDedupeKey, expandPhoneLookupKeys, canonicalBrazilPhone } from "../utils/phone.js";
 import { isValidWhatsAppPhoneDigits, normalizeDirectJid } from "./waJid.js";
 import {
   expandChatIdVariants,
@@ -60,6 +60,68 @@ function chatIdVariants(chatId: string): string[] {
 async function chatIdVariantsResolved(session: string, chatId: string): Promise<string[]> {
   await loadWaLidMap(session);
   return expandChatIdVariants(session, chatId);
+}
+
+/** Todos os chatId do Postgres + variantes JID para o mesmo contato (fluxo vs webhook). */
+export async function resolveAllChatIdsForContact(
+  session: string,
+  chatId: string
+): Promise<string[]> {
+  const normSession = session.trim().toLowerCase();
+  const variants = await chatIdVariantsResolved(normSession, chatId);
+  const out = new Set(variants);
+
+  if (!prisma) return [...out];
+
+  const rawDigits = digitsOnly(chatId.replace(/@.*/, ""));
+  const phoneKeys = rawDigits.length >= 10 ? expandPhoneLookupKeys(canonicalBrazilPhone(rawDigits)) : [];
+
+  if (phoneKeys.length > 0) {
+    const rows = await prisma.inboxMessage.findMany({
+      where: {
+        session: normSession,
+        OR: phoneKeys.flatMap((k) => [
+          { chatId: { startsWith: k } },
+          { chatId: k }
+        ])
+      },
+      select: { chatId: true },
+      distinct: ["chatId"]
+    });
+    for (const r of rows) out.add(r.chatId);
+  }
+
+  return [...out];
+}
+
+function preferPrimaryChatId(ids: string[]): string {
+  if (ids.length === 0) return "";
+  const score = (id: string): number => {
+    if (id.endsWith("@s.whatsapp.net")) return 100;
+    if (id.endsWith("@c.us")) return 90;
+    if (id.endsWith("@g.us")) return 80;
+    if (id.endsWith("@lid")) return 20;
+    return 50;
+  };
+  return [...ids].sort((a, b) => score(b) - score(a))[0] ?? ids[0];
+}
+
+/** ChatId canônico para gravar envios (fluxo, manual) no mesmo fio da conversa existente. */
+export async function findPrimaryChatIdForPhone(
+  session: string,
+  phone: string
+): Promise<string> {
+  const digits = canonicalBrazilPhone(phone.replace(/\D/g, ""));
+  const fallback = digits ? `${digits}@s.whatsapp.net` : phone.trim();
+  return findPrimaryChatIdForContact(session, fallback);
+}
+
+export async function findPrimaryChatIdForContact(
+  session: string,
+  chatId: string
+): Promise<string> {
+  const ids = await resolveAllChatIdsForContact(session, chatId);
+  return preferPrimaryChatId(ids) || chatId.trim();
 }
 
 async function getSessionName(): Promise<string> {
@@ -451,7 +513,7 @@ async function findDuplicateInboxMessage(params: {
     if (byWaId) return byWaId;
   }
 
-  const variants = await chatIdVariantsResolved(params.session, params.chatId);
+  const variants = await resolveAllChatIdsForContact(params.session, params.chatId);
   const windowStart = new Date(params.timestamp.getTime() - 120_000);
   const windowEnd = new Date(params.timestamp.getTime() + 45_000);
   const phoneDigits = digitsOnly(params.chatId);
@@ -682,7 +744,7 @@ export async function contactHasInboundReply(params: {
 
   const allVariants: string[] = [];
   for (const id of chatIds) {
-    const expanded = await chatIdVariantsResolved(session, id);
+    const expanded = await resolveAllChatIdsForContact(session, id);
     for (const v of expanded) allVariants.push(v);
   }
   const unique = [...new Set(allVariants)];
@@ -710,7 +772,7 @@ export async function listStoredMessages(
   }
 
   const session = (sessionName ?? (await getSessionName())).trim().toLowerCase();
-  const variants = await chatIdVariantsResolved(session, chatId);
+  const variants = await resolveAllChatIdsForContact(session, chatId);
 
   const rows = await prisma.inboxMessage.findMany({
     where: {
