@@ -569,6 +569,49 @@ export async function inboxRoutes(app: FastifyInstance) {
     }
   });
 
+  app.get("/api/contacts/:phone/profile", async (req, reply) => {
+    const phone = decodeURIComponent((req.params as { phone: string }).phone);
+    const q = req.query as { chatId?: string; isGroup?: string };
+    try {
+      const { getContactProfile } = await import("../services/contactProfile.js");
+      const profile = await getContactProfile({
+        key: phone,
+        chatId: q.chatId,
+        isGroup: q.isGroup === "1" || q.isGroup === "true"
+      });
+      if (!profile) return reply.status(503).send({ ok: false, error: "Indisponível" });
+      return { ok: true, profile };
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return reply.status(400).send({ ok: false, error: message });
+    }
+  });
+
+  app.delete("/api/inbox/conversations/:chatId", async (req, reply) => {
+    const chatId = decodeURIComponent((req.params as { chatId: string }).chatId);
+    if (!chatId.trim()) return reply.status(400).send({ ok: false, error: "chatId obrigatório" });
+    try {
+      const { deleteInboxConversation } = await import("../services/inboxStore.js");
+      const deleted = await deleteInboxConversation(chatId);
+      return { ok: true, deleted };
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return reply.status(400).send({ ok: false, error: message });
+    }
+  });
+
+  app.delete("/api/contacts/:phone/crm", async (req, reply) => {
+    const phone = decodeURIComponent((req.params as { phone: string }).phone);
+    try {
+      const { removeContactFromCrm } = await import("../services/inboxStore.js");
+      const result = await removeContactFromCrm(phone);
+      return { ok: true, ...result };
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return reply.status(400).send({ ok: false, error: message });
+    }
+  });
+
   app.get("/api/flows/enabled", async () => {
     if (!prisma) return { flows: [] };
     const flows = await prisma.flow.findMany({

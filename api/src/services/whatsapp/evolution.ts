@@ -1582,3 +1582,66 @@ export async function downloadEvolutionInboundMedia(
   if (!res.ok) throw new Error(formatWppError(res.status, data));
   return data;
 }
+
+/** Grupos em que o telefone participa (Evolution fetchAllGroups + participantes). */
+export async function fetchGroupsForPhone(
+  phone: string
+): Promise<Array<{ id: string; name: string }>> {
+  const { phoneDedupeKey, phoneDigits, expandPhoneLookupKeys, canonicalBrazilPhone } = await import(
+    "../../utils/phone.js"
+  );
+  const targetKeys = new Set(
+    expandPhoneLookupKeys(canonicalBrazilPhone(phone.replace(/\D/g, ""))).map((k) =>
+      phoneDedupeKey(phoneDigits(k))
+    )
+  );
+  if (targetKeys.size === 0) return [];
+
+  try {
+    const instance = await getInstanceName();
+    const res = await evoFetch(
+      `/group/fetchAllGroups/${encodeURIComponent(instance)}?getParticipants=true`
+    );
+    const data = await readJson(res);
+    if (!res.ok) return [];
+
+    const list = extractEvolutionChatList(data);
+    const out: Array<{ id: string; name: string }> = [];
+
+    for (const item of list) {
+      const id = String(
+        item.id ??
+          item.jid ??
+          (item.key as Record<string, unknown> | undefined)?.remoteJid ??
+          ""
+      ).trim();
+      if (!id.includes("@g.us")) continue;
+
+      const participants = item.participants;
+      if (!Array.isArray(participants)) continue;
+
+      let member = false;
+      for (const p of participants) {
+        const pid =
+          typeof p === "string"
+            ? p
+            : String((p as Record<string, unknown>).id ?? (p as Record<string, unknown>).jid ?? "");
+        const pk = phoneDedupeKey(digitsOnly(pid.replace(/@.*/, "")));
+        if (pk && targetKeys.has(pk)) {
+          member = true;
+          break;
+        }
+      }
+      if (!member) continue;
+
+      const name = String(
+        item.subject ?? item.name ?? item.pushName ?? item.formattedTitle ?? ""
+      ).trim();
+      out.push({ id, name: name || id.replace(/@.*/, "") });
+    }
+
+    return out.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  } catch {
+    return [];
+  }
+}

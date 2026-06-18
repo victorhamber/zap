@@ -1152,3 +1152,43 @@ export function parseWppWebhookMessage(body: Record<string, unknown>): {
     timestamp: new Date(ts)
   };
 }
+
+/** Apaga todas as mensagens locais de uma conversa (todos os chatId variantes). */
+export async function deleteInboxConversation(chatId: string): Promise<number> {
+  if (!prisma) return 0;
+  const session = await getSessionName();
+  const variants = await resolveAllChatIdsForContact(session, chatId);
+  const result = await prisma.inboxMessage.deleteMany({
+    where: { session, chatId: { in: variants } }
+  });
+  return result.count;
+}
+
+/** Remove contato do CRM: mensagens, registro, tags e memória IA. */
+export async function removeContactFromCrm(phone: string): Promise<{
+  messagesDeleted: number;
+  contactDeleted: boolean;
+}> {
+  if (!prisma) return { messagesDeleted: 0, contactDeleted: false };
+
+  const session = await getSessionName();
+  const { findContactByPhoneLoose } = await import("./contacts.js");
+  const { purgeAiForContact } = await import("./ai/purge.js");
+
+  const seed = phone.includes("@") ? phone : `${phone.replace(/\D/g, "")}@s.whatsapp.net`;
+  const canonical = await findPrimaryChatIdForContact(session, seed);
+  const variants = await resolveAllChatIdsForContact(session, canonical);
+
+  const deleted = await prisma.inboxMessage.deleteMany({
+    where: { session, chatId: { in: variants } }
+  });
+
+  await purgeAiForContact(session, variants);
+
+  const contact = await findContactByPhoneLoose(phone);
+  if (contact) {
+    await prisma.contact.delete({ where: { id: contact.id } });
+  }
+
+  return { messagesDeleted: deleted.count, contactDeleted: Boolean(contact) };
+}

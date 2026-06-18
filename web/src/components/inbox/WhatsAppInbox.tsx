@@ -7,6 +7,7 @@ import { WaAudioPlayer } from "./WaAudioPlayer";
 import { WaMediaViewer } from "./WaMediaViewer";
 import { WhatsAppAvatar } from "./WhatsAppAvatar";
 import { ForwardMessageModal } from "./ForwardMessageModal";
+import { ContactProfilePanel } from "./ContactProfilePanel";
 import { LinkifyText } from "./LinkifyText";
 
 type Tag = { id: string; name: string; color: string };
@@ -17,6 +18,7 @@ type ContactInfo = {
   id: string;
   phone: string;
   name: string | null;
+  notes?: string | null;
   tags: Tag[];
 };
 
@@ -460,6 +462,7 @@ export function WhatsAppInbox() {
   const [sendError, setSendError] = useState("");
   const [forwardMessage, setForwardMessage] = useState<Message | null>(null);
   const [forwardNotice, setForwardNotice] = useState("");
+  const [showContactProfile, setShowContactProfile] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastMsgCountRef = useRef(0);
   const activeChatIdRef = useRef<string | null>(null);
@@ -980,6 +983,76 @@ export function WhatsAppInbox() {
     void saveContactTags(selected, next);
   }
 
+  useEffect(() => {
+    setShowContactProfile(false);
+  }, [selected?.id]);
+
+  function handleProfileContactUpdated(contact: ContactInfo) {
+    if (!selected) return;
+    setChats((prev) =>
+      prev.map((c) =>
+        c.id === selected.id
+          ? {
+              ...c,
+              name: contact.name?.trim() || c.name,
+              contact
+            }
+          : c
+      )
+    );
+    setSelected((s) =>
+      s
+        ? {
+            ...s,
+            name: contact.name?.trim() || s.name,
+            contact
+          }
+        : s
+    );
+  }
+
+  function handleProfileDeleteConversation() {
+    if (!selected) return;
+    setMessages([]);
+    setChats((prev) =>
+      prev.map((c) =>
+        c.id === selected.id ? { ...c, lastMessage: "", timestamp: c.timestamp } : c
+      )
+    );
+    void loadChats(true);
+  }
+
+  function handleProfileRemoveFromCrm() {
+    if (!selected) return;
+    const removedId = selected.id;
+    setSelected(null);
+    setMessages([]);
+    setChats((prev) => prev.filter((c) => c.id !== removedId));
+    void loadChats(true);
+  }
+
+  function handleOpenGroupFromProfile(groupId: string, groupName: string) {
+    setShowContactProfile(false);
+    const existing = chats.find((c) => c.id === groupId);
+    if (existing) {
+      setSelected(existing);
+      return;
+    }
+    const synthetic: Chat = {
+      id: groupId,
+      phone: groupId.replace(/@.*/, ""),
+      name: groupName,
+      lastMessage: "",
+      timestamp: Date.now(),
+      isGroup: true,
+      kind: "group",
+      unreadCount: 0,
+      contact: null
+    };
+    setChats((prev) => [synthetic, ...prev]);
+    setSelected(synthetic);
+  }
+
   const activeTags = selected?.contact?.tags ?? [];
 
   const visibleMessages = useMemo(() => {
@@ -1170,7 +1243,7 @@ export function WhatsAppInbox() {
             </div>
           </div>
         ) : (
-          <div key={selected.id} className="flex flex-1 flex-col min-h-0 min-w-0">
+          <div key={selected.id} className="relative flex flex-1 flex-col min-h-0 min-w-0">
             <header className="h-[52px] px-3 flex items-center gap-3 bg-[#202c33] shrink-0 border-l border-[#2a3942]">
               <WhatsAppAvatar
                 key={selected.id}
@@ -1179,13 +1252,18 @@ export function WhatsAppInbox() {
                 name={selected.name}
                 size={40}
               />
-              <div className="flex-1 min-w-0">
+              <button
+                type="button"
+                onClick={() => setShowContactProfile(true)}
+                className="flex-1 min-w-0 text-left rounded-lg px-1 py-0.5 hover:bg-[#374955]/60 transition"
+                title="Ver perfil do contato"
+              >
                 <div className="font-medium truncate">{sanitizeChatName(selected.name, selected.kind)}</div>
                 <div className="text-xs text-[#8696a0] truncate">
                   {chatKindLabel(selected.kind)}
                   {selected.phone ? ` · ${formatPhoneDisplay(selected.phone)}` : ""}
                 </div>
-              </div>
+              </button>
               <button
                 type="button"
                 onClick={() => loadMessages(selected)}
@@ -1554,11 +1632,23 @@ export function WhatsAppInbox() {
               onDraftChange={setDraft}
               onSendText={() => void sendMessage()}
               onSendMedia={(type, url, caption, filename) =>
-                void sendMedia(type, url, caption, filename)
+                sendMedia(type, url, caption, filename)
               }
               quickReplies={quickReplies}
               onUseQuickReply={(reply) => applyQuickReply(reply)}
             />
+
+            {showContactProfile && (
+              <ContactProfilePanel
+                chat={selected}
+                allTags={tags}
+                onClose={() => setShowContactProfile(false)}
+                onContactUpdated={handleProfileContactUpdated}
+                onDeleteConversation={handleProfileDeleteConversation}
+                onRemoveFromCrm={handleProfileRemoveFromCrm}
+                onOpenGroup={handleOpenGroupFromProfile}
+              />
+            )}
           </div>
         )}
       </section>
