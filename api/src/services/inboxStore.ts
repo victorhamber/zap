@@ -9,7 +9,7 @@ import {
   mimeFromMessageType
 } from "./mediaText.js";
 import { phoneDedupeKey, expandPhoneLookupKeys, canonicalBrazilPhone } from "../utils/phone.js";
-import { isValidWhatsAppPhoneDigits, normalizeDirectJid } from "./waJid.js";
+import { isValidWhatsAppPhoneDigits, normalizeDirectJid, isLikelyInternalLidJid } from "./waJid.js";
 import {
   expandChatIdVariants,
   getLidsMappedToPhone,
@@ -374,7 +374,12 @@ export async function getInboxCaptureSince(): Promise<Date | null> {
   return getCaptureSince();
 }
 
-type SessionInboxState = { ownerPhone?: string; captureSince?: string };
+type SessionInboxState = {
+  ownerPhone?: string;
+  captureSince?: string;
+  /** phoneDedupeKey ou id:@lid — contatos removidos do CRM do inbox */
+  hiddenContacts?: string[];
+};
 
 function parseInboxSessionState(raw: unknown): Record<string, SessionInboxState> {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
@@ -419,6 +424,7 @@ async function setSessionInboxState(
   const settings = await prisma.appSettings.findUnique({ where: { id: "default" } });
   const map = parseInboxSessionState(settings?.inboxSessionState);
   map[norm] = {
+    ...map[norm],
     ownerPhone: data.ownerPhone,
     captureSince: data.captureSince.toISOString()
   };
@@ -436,6 +442,67 @@ async function setSessionInboxState(
         : {})
     }
   });
+}
+
+function hiddenKeysForContact(phone: string, chatId?: string): string[] {
+  const out = new Set<string>();
+  const raw = phone.replace(/@.*/, "").replace(/\D/g, "") || phone.replace(/@.*/, "");
+  const keys = raw.length >= 10 ? expandPhoneLookupKeys(canonicalBrazilPhone(raw)) : [];
+  for (const k of keys) {
+    const d = digitsOnly(k);
+    if (isValidWhatsAppPhoneDigits(d)) out.add(`p:${phoneDedupeKey(d)}`);
+  }
+  const cid = chatId?.trim();
+  if (cid && (cid.endsWith("@lid") || isLikelyInternalLidJid(cid))) {
+    out.add(`id:${normalizeDirectJid(cid)}`);
+  }
+  return [...out];
+}
+
+async function readInboxSessionMap(): Promise<Record<string, SessionInboxState>> {
+  if (!prisma) return {};
+  const settings = await prisma.appSettings.findUnique({ where: { id: "default" } });
+  return parseInboxSessionState(settings?.inboxSessionState);
+}
+
+async function writeInboxSessionMap(map: Record<string, SessionInboxState>): Promise<void> {
+  if (!prisma) return;
+  await prisma.appSettings.update({
+    where: { id: "default" },
+    data: { inboxSessionState: map }
+  });
+}
+
+/** Contatos ocultos do inbox (removidos do CRM — ainda existem no WhatsApp). */
+export async function getHiddenInboxContactKeys(session: string): Promise<Set<string>> {
+  const norm = session.trim().toLowerCase();
+  const map = await readInboxSessionMap();
+  return new Set(map[norm]?.hiddenContacts ?? []);
+}
+
+export async function hideContactFromInbox(
+  session: string,
+  phone: string,
+  chatId?: string
+): Promise<void> {
+  const norm = session.trim().toLowerCase();
+  const map = await readInboxSessionMap();
+  const entry = map[norm] ?? {};
+  const hidden = new Set(entry.hiddenContacts ?? []);
+  for (const k of hiddenKeysForContact(phone, chatId)) hidden.add(k);
+  map[norm] = { ...entry, hiddenContacts: [...hidden] };
+  await writeInboxSessionMap(map);
+}
+
+export async function unhideContactFromInbox(session: string, phone: string): Promise<void> {
+  const norm = session.trim().toLowerCase();
+  const map = await readInboxSessionMap();
+  const entry = map[norm];
+  if (!entry?.hiddenContacts?.length) return;
+  const remove = new Set(hiddenKeysForContact(phone));
+  const hidden = entry.hiddenContacts.filter((k) => !remove.has(k));
+  map[norm] = { ...entry, hiddenContacts: hidden.length > 0 ? hidden : undefined };
+  await writeInboxSessionMap(map);
 }
 
 async function resolveStorageChatId(
@@ -854,6 +921,13 @@ export async function saveInboxMessage(params: {
       waMessageId
     };
 
+    if (!params.fromMe) {
+      const unhidePhone = pickPhoneJid([chatId, ...(params.peerJids ?? []), params.chatId]);
+      if (unhidePhone) {
+        await unhideContactFromInbox(session, unhidePhone).catch(() => {});
+      }
+    }
+
     const { enqueueAiPipeline } = await import("./ai/enqueue.js");
     enqueueAiPipeline(saved);
 
@@ -1189,6 +1263,8 @@ export async function removeContactFromCrm(phone: string): Promise<{
   if (contact) {
     await prisma.contact.delete({ where: { id: contact.id } });
   }
+
+  await hideContactFromInbox(session, phone, canonical);
 
   return { messagesDeleted: deleted.count, contactDeleted: Boolean(contact) };
 }

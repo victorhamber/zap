@@ -798,9 +798,17 @@ export async function fetchChats(): Promise<FetchChatsResult> {
       })),
       session
     );
+
+    const { getHiddenInboxContactKeys } = await import("./inboxStore.js");
+    const hiddenKeys = await getHiddenInboxContactKeys(session);
+    const visibleChats =
+      hiddenKeys.size === 0
+        ? chats
+        : chats.filter((c) => !hiddenKeys.has(chatDedupeKey(c, session)));
+
     await flushWaLidMap(session);
     return {
-      chats,
+      chats: visibleChats,
       sourcesOk,
       errors,
       connected: true,

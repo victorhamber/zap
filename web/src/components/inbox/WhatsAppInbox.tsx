@@ -1024,11 +1024,18 @@ export function WhatsAppInbox() {
 
   function handleProfileRemoveFromCrm() {
     if (!selected) return;
+    const removedPhone = selected.phone;
     const removedId = selected.id;
     setSelected(null);
     setMessages([]);
-    setChats((prev) => prev.filter((c) => c.id !== removedId));
-    void loadChats(true);
+    setShowContactProfile(false);
+    setChats((prev) =>
+      prev.filter((c) => {
+        if (c.id === removedId) return false;
+        if (!c.isGroup && removedPhone && c.phone === removedPhone) return false;
+        return true;
+      })
+    );
   }
 
   function handleOpenGroupFromProfile(groupId: string, groupName: string) {
