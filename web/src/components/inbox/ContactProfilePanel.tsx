@@ -194,7 +194,7 @@ export function ContactProfilePanel({
     setError("");
     try {
       const r = await api<{ ok: boolean; error?: string }>(
-        `/api/contacts/${encodeURIComponent(contactKey)}/crm`,
+        `/api/contacts/${encodeURIComponent(contactKey)}/crm?chatId=${encodeURIComponent(chat.id)}`,
         { method: "DELETE" }
       );
       if (!r.ok) {

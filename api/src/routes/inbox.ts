@@ -175,6 +175,14 @@ export async function inboxRoutes(app: FastifyInstance) {
     try {
       const { chats, sourcesOk, errors, ownerPhone, ownerPhoneChanged, connected } =
         await inbox.fetchChats();
+      const { getHiddenInboxContactKeys, isChatHiddenFromInbox, getInboxSessionName } =
+        await import("../services/inboxStore.js");
+      const session = await getInboxSessionName();
+      const hiddenKeys = await getHiddenInboxContactKeys(session);
+      const visibleChats =
+        hiddenKeys.size === 0
+          ? chats
+          : chats.filter((c) => !isChatHiddenFromInbox(c, hiddenKeys, session));
       const contacts = await listContactsWithTags();
       const byKey = new Map<string, ReturnType<typeof contactToJson>>();
       for (const c of contacts) {
@@ -213,7 +221,7 @@ export async function inboxRoutes(app: FastifyInstance) {
         ownerPhone,
         ownerPhoneChanged: ownerPhoneChanged === true,
         chats: dedupeInboxChatRows(
-          chats.map((ch) => {
+          visibleChats.map((ch) => {
             const phone =
               ch.kind === "direct" && ch.phone ? canonicalBrazilPhone(ch.phone) : ch.phone;
             const contact = resolveChatContact({ ...ch, phone });
@@ -602,9 +610,10 @@ export async function inboxRoutes(app: FastifyInstance) {
 
   app.delete("/api/contacts/:phone/crm", async (req, reply) => {
     const phone = decodeURIComponent((req.params as { phone: string }).phone);
+    const q = req.query as { chatId?: string };
     try {
       const { removeContactFromCrm } = await import("../services/inboxStore.js");
-      const result = await removeContactFromCrm(phone);
+      const result = await removeContactFromCrm(phone, q.chatId);
       return { ok: true, ...result };
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);

@@ -701,8 +701,8 @@ export async function fetchChats(): Promise<FetchChatsResult> {
     };
   }
 
-  const { defaultWhatsAppSession } = await import("../env.js");
-  const session = defaultWhatsAppSession();
+  const { getInboxSessionName } = await import("./inboxStore.js");
+  const session = await getInboxSessionName();
   const { ensureInboxOwnerPhone } = await import("./inboxStore.js");
   const ownerSync = await ensureInboxOwnerPhone();
   await loadWaLidMap(session);
@@ -799,12 +799,12 @@ export async function fetchChats(): Promise<FetchChatsResult> {
       session
     );
 
-    const { getHiddenInboxContactKeys } = await import("./inboxStore.js");
+    const { getHiddenInboxContactKeys, isChatHiddenFromInbox } = await import("./inboxStore.js");
     const hiddenKeys = await getHiddenInboxContactKeys(session);
     const visibleChats =
       hiddenKeys.size === 0
         ? chats
-        : chats.filter((c) => !hiddenKeys.has(chatDedupeKey(c, session)));
+        : chats.filter((c) => !isChatHiddenFromInbox(c, hiddenKeys, session));
 
     await flushWaLidMap(session);
     return {

@@ -156,9 +156,14 @@ export async function findPrimaryChatIdForContact(
 }
 
 async function getSessionName(): Promise<string> {
-  if (!prisma) return "default";
+  const { defaultWhatsAppSession } = await import("../env.js");
+  if (!prisma) return defaultWhatsAppSession();
   const s = await prisma.appSettings.findUnique({ where: { id: "default" } });
-  return (s?.wppSession ?? "default").trim().toLowerCase();
+  return (s?.wppSession ?? defaultWhatsAppSession()).trim().toLowerCase();
+}
+
+export async function getInboxSessionName(): Promise<string> {
+  return getSessionName();
 }
 
 /** Corrige sessão salva com maiúsculas (mensagens não apareciam no inbox). */
@@ -453,10 +458,72 @@ function hiddenKeysForContact(phone: string, chatId?: string): string[] {
     if (isValidWhatsAppPhoneDigits(d)) out.add(`p:${phoneDedupeKey(d)}`);
   }
   const cid = chatId?.trim();
-  if (cid && (cid.endsWith("@lid") || isLikelyInternalLidJid(cid))) {
-    out.add(`id:${normalizeDirectJid(cid)}`);
+  if (cid) {
+    const norm = normalizeDirectJid(cid);
+    out.add(`id:${norm}`);
+    if (norm.endsWith("@lid") || isLikelyInternalLidJid(norm)) {
+      out.add(`id:${norm}`);
+    }
   }
   return [...out];
+}
+
+/** Todas as chaves de visibilidade para um contato (@lid, telefone, variantes BR). */
+export async function collectHiddenKeysForContact(
+  session: string,
+  phone: string,
+  chatId?: string
+): Promise<string[]> {
+  const out = new Set(hiddenKeysForContact(phone, chatId));
+  const seed =
+    chatId?.trim() ||
+    (phone.includes("@") ? phone : `${canonicalBrazilPhone(phone.replace(/\D/g, ""))}@s.whatsapp.net`);
+  const variants = await resolveAllChatIdsForContact(session, seed);
+  for (const vid of variants) {
+    const norm = normalizeDirectJid(vid);
+    out.add(`id:${norm}`);
+    const d = digitsOnly(norm.replace(/@.*/, ""));
+    if (isValidWhatsAppPhoneDigits(d)) {
+      out.add(`p:${phoneDedupeKey(d)}`);
+      for (const lk of expandPhoneLookupKeys(d)) {
+        const ld = digitsOnly(lk);
+        if (isValidWhatsAppPhoneDigits(ld)) out.add(`p:${phoneDedupeKey(ld)}`);
+      }
+    }
+  }
+  return [...out];
+}
+
+export function isChatHiddenFromInbox(
+  chat: { id: string; phone: string; isGroup: boolean; kind?: string },
+  hidden: Set<string>,
+  session?: string
+): boolean {
+  if (chat.isGroup || chat.kind === "group" || chat.kind === "community") return false;
+  if (hidden.size === 0) return false;
+
+  const idNorm = normalizeDirectJid(chat.id);
+  if (hidden.has(`id:${idNorm}`)) return true;
+
+  if (session) {
+    const mapped = getMappedPhoneJid(session, chat.id);
+    if (mapped) {
+      const md = digitsOnly(mapped);
+      if (isValidWhatsAppPhoneDigits(md) && hidden.has(`p:${phoneDedupeKey(md)}`)) return true;
+    }
+  }
+
+  const candidates = [digitsOnly(chat.id.replace(/@.*/, "")), digitsOnly(chat.phone)];
+  for (const d of candidates) {
+    if (!isValidWhatsAppPhoneDigits(d)) continue;
+    if (hidden.has(`p:${phoneDedupeKey(d)}`)) return true;
+    for (const lk of expandPhoneLookupKeys(d)) {
+      const ld = digitsOnly(lk);
+      if (isValidWhatsAppPhoneDigits(ld) && hidden.has(`p:${phoneDedupeKey(ld)}`)) return true;
+    }
+  }
+
+  return false;
 }
 
 async function readInboxSessionMap(): Promise<Record<string, SessionInboxState>> {
@@ -474,10 +541,13 @@ async function writeInboxSessionMap(map: Record<string, SessionInboxState>): Pro
 }
 
 /** Contatos ocultos do inbox (removidos do CRM — ainda existem no WhatsApp). */
-export async function getHiddenInboxContactKeys(session: string): Promise<Set<string>> {
-  const norm = session.trim().toLowerCase();
+export async function getHiddenInboxContactKeys(_session?: string): Promise<Set<string>> {
   const map = await readInboxSessionMap();
-  return new Set(map[norm]?.hiddenContacts ?? []);
+  const out = new Set<string>();
+  for (const entry of Object.values(map)) {
+    for (const k of entry.hiddenContacts ?? []) out.add(k);
+  }
+  return out;
 }
 
 export async function hideContactFromInbox(
@@ -489,7 +559,7 @@ export async function hideContactFromInbox(
   const map = await readInboxSessionMap();
   const entry = map[norm] ?? {};
   const hidden = new Set(entry.hiddenContacts ?? []);
-  for (const k of hiddenKeysForContact(phone, chatId)) hidden.add(k);
+  for (const k of await collectHiddenKeysForContact(session, phone, chatId)) hidden.add(k);
   map[norm] = { ...entry, hiddenContacts: [...hidden] };
   await writeInboxSessionMap(map);
 }
@@ -1239,7 +1309,10 @@ export async function deleteInboxConversation(chatId: string): Promise<number> {
 }
 
 /** Remove contato do CRM: mensagens, registro, tags e memória IA. */
-export async function removeContactFromCrm(phone: string): Promise<{
+export async function removeContactFromCrm(
+  phone: string,
+  chatIdHint?: string
+): Promise<{
   messagesDeleted: number;
   contactDeleted: boolean;
 }> {
@@ -1249,7 +1322,9 @@ export async function removeContactFromCrm(phone: string): Promise<{
   const { findContactByPhoneLoose } = await import("./contacts.js");
   const { purgeAiForContact } = await import("./ai/purge.js");
 
-  const seed = phone.includes("@") ? phone : `${phone.replace(/\D/g, "")}@s.whatsapp.net`;
+  const seed =
+    chatIdHint?.trim() ||
+    (phone.includes("@") ? phone : `${phone.replace(/\D/g, "")}@s.whatsapp.net`);
   const canonical = await findPrimaryChatIdForContact(session, seed);
   const variants = await resolveAllChatIdsForContact(session, canonical);
 
@@ -1264,7 +1339,7 @@ export async function removeContactFromCrm(phone: string): Promise<{
     await prisma.contact.delete({ where: { id: contact.id } });
   }
 
-  await hideContactFromInbox(session, phone, canonical);
+  await hideContactFromInbox(session, phone || canonical, canonical);
 
   return { messagesDeleted: deleted.count, contactDeleted: Boolean(contact) };
 }

@@ -288,6 +288,54 @@ function chatPhoneDigits(chat: Pick<Chat, "id" | "phone">): string {
   return (chat.phone ?? "").replace(/\D/g, "") || chat.id.replace(/@.*/, "").replace(/\D/g, "");
 }
 
+const CLIENT_HIDDEN_KEY = "zap-inbox-hidden-contacts";
+
+function loadClientHiddenContacts(): Set<string> {
+  try {
+    const raw = sessionStorage.getItem(CLIENT_HIDDEN_KEY);
+    if (!raw) return new Set();
+    const list = JSON.parse(raw) as string[];
+    return new Set(Array.isArray(list) ? list : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveClientHiddenContacts(hidden: Set<string>): void {
+  sessionStorage.setItem(CLIENT_HIDDEN_KEY, JSON.stringify([...hidden]));
+}
+
+function hiddenKeysForChat(chat: Chat): string[] {
+  const keys = new Set<string>([chat.id]);
+  const digits = chatPhoneDigits(chat);
+  if (digits.length >= 10) keys.add(digits);
+  return [...keys];
+}
+
+function isClientHiddenChat(chat: Chat, hidden: Set<string>): boolean {
+  if (chat.isGroup) return false;
+  return hiddenKeysForChat(chat).some((k) => hidden.has(k));
+}
+
+function markChatHiddenLocally(chat: Chat): void {
+  const hidden = loadClientHiddenContacts();
+  for (const k of hiddenKeysForChat(chat)) hidden.add(k);
+  saveClientHiddenContacts(hidden);
+}
+
+function filterClientVisibleChats(chats: Chat[]): Chat[] {
+  const hidden = loadClientHiddenContacts();
+  if (hidden.size === 0) return chats;
+  const visible = chats.filter((c) => !isClientHiddenChat(c, hidden));
+  for (const c of chats) {
+    if (c.unreadCount > 0) {
+      for (const k of hiddenKeysForChat(c)) hidden.delete(k);
+    }
+  }
+  saveClientHiddenContacts(hidden);
+  return visible;
+}
+
 function findMatchingChat(chats: Chat[], current: Chat): Chat | undefined {
   const digits = chatPhoneDigits(current);
   return chats.find(
@@ -514,12 +562,12 @@ export function WhatsAppInbox() {
 
       const connected = r.connected ?? sessionProfile?.connected ?? false;
       setWaConnected(connected);
-      const nextChats = r.chats ?? [];
+      const nextChats = filterClientVisibleChats(r.chats ?? []);
       setChats(nextChats);
       setSelected((sel) => {
-        if (!sel) return sel;
+        if (!sel) return null;
         const updated = findMatchingChat(nextChats, sel);
-        if (!updated) return sel;
+        if (!updated) return null;
         if (updated.id !== sel.id) {
           activeChatIdRef.current = updated.id;
         }
@@ -1024,17 +1072,22 @@ export function WhatsAppInbox() {
 
   function handleProfileRemoveFromCrm() {
     if (!selected) return;
+    markChatHiddenLocally(selected);
     const removedPhone = selected.phone;
     const removedId = selected.id;
     setSelected(null);
     setMessages([]);
     setShowContactProfile(false);
     setChats((prev) =>
-      prev.filter((c) => {
-        if (c.id === removedId) return false;
-        if (!c.isGroup && removedPhone && c.phone === removedPhone) return false;
-        return true;
-      })
+      filterClientVisibleChats(
+        prev.filter((c) => {
+          if (c.id === removedId) return false;
+          if (!c.isGroup && removedPhone && chatPhoneDigits(c) === chatPhoneDigits(selected)) {
+            return false;
+          }
+          return true;
+        })
+      )
     );
   }
 
