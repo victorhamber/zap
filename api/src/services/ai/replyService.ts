@@ -168,7 +168,6 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
     apiKey,
     model: settingsRow.modelChat
   });
-  const snippets = await fetchKnowledgeSnippetsForAi(payload.session, payload.chatId);
   const recentAiReplies = await getRecentAiReplies(payload.session, payload.chatId);
 
   let inboundText = inboundBatch.combinedText;
@@ -189,6 +188,10 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
       inboundText = inbound.body.trim() || "(mensagem sem texto)";
     }
   }
+
+  const snippets = await fetchKnowledgeSnippetsForAi(payload.session, payload.chatId, {
+    inboundText
+  });
 
   let reply: string;
   try {
@@ -277,7 +280,7 @@ export async function simulateReply(params: {
   session: string;
   chatId: string;
   inboundText: string;
-}): Promise<{ reply: string; blocked?: string }> {
+}): Promise<{ reply: string; blocked?: string; knowledgeUsed?: number }> {
   const settings = await getAiSettings(params.session);
   const apiKey = await resolveOpenAiApiKey(params.session);
   if (!apiKey) throw new Error("Configure a chave OpenAI desta instância no painel");
@@ -295,7 +298,9 @@ export async function simulateReply(params: {
     apiKey,
     model: settings.modelChat
   });
-  const snippets = await fetchKnowledgeSnippetsForAi(params.session, params.chatId);
+  const snippets = await fetchKnowledgeSnippetsForAi(params.session, params.chatId, {
+    inboundText: params.inboundText
+  });
 
   const reply = await generateReply({
     apiKey,
@@ -308,7 +313,7 @@ export async function simulateReply(params: {
 
   const validation = validateReplyAgainstRules(reply, settings.rulesForbidden);
   if (!validation.ok) {
-    return { reply, blocked: validation.reason };
+    return { reply, blocked: validation.reason, knowledgeUsed: snippets.length };
   }
-  return { reply };
+  return { reply, knowledgeUsed: snippets.length };
 }

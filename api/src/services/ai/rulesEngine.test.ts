@@ -63,14 +63,15 @@ describe("rulesEngine", () => {
     );
   });
 
-  it("inclui regras de resposta direta no prompt", () => {
+  it("prioriza aprendizado histórico no prompt", () => {
     const prompt = buildSystemPrompt({
       productContext: "Curso X",
       rulesAllowed: "",
       rulesForbidden: "",
       officialLinks: []
     });
-    assert.match(prompt, /Responda primeiro à pergunta direta/);
+    assert.match(prompt, /APRENDIZADO DE CONVERSAS ANTERIORES/);
+    assert.match(prompt, /complementar/);
   });
 
   it("bloqueia resposta que viola forbidden", () => {

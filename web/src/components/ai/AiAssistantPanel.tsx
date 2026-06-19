@@ -327,14 +327,21 @@ export function AiAssistantPanel() {
 
   async function runTestReply() {
     setTestReply(null);
-    const r = await api<{ reply: string; blocked?: string }>("/api/ai/test-reply", {
-      method: "POST",
-      body: JSON.stringify({ inboundText: testInput })
-    });
+    const r = await api<{ reply: string; blocked?: string; knowledgeUsed?: number }>(
+      "/api/ai/test-reply",
+      {
+        method: "POST",
+        body: JSON.stringify({ inboundText: testInput })
+      }
+    );
+    const prefix =
+      typeof r.knowledgeUsed === "number"
+        ? `[${r.knowledgeUsed} item(ns) do aprendizado histórico]\n\n`
+        : "";
     if (r.blocked) {
-      setTestReply(`Bloqueado: ${r.blocked}\n\n${r.reply}`);
+      setTestReply(`${prefix}Bloqueado: ${r.blocked}\n\n${r.reply}`);
     } else {
-      setTestReply(r.reply);
+      setTestReply(`${prefix}${r.reply}`);
     }
   }
 
@@ -763,6 +770,10 @@ export function AiAssistantPanel() {
 
       <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-5 space-y-3">
         <h3 className="font-medium text-white">Testar resposta (simulação)</h3>
+        <p className="text-xs text-zinc-500 leading-relaxed">
+          Usa o aprendizado histórico de todas as conversas (até 20 itens relevantes), com prioridade
+          sobre o contexto do produto — igual à auto-resposta.
+        </p>
         <textarea
           className="w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-zinc-100 min-h-20"
           placeholder="Digite uma mensagem do cliente…"

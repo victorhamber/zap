@@ -5,8 +5,6 @@ import { getContactTagNames } from "../contacts.js";
 import { phoneFromChatId } from "./tagGate.js";
 import { buildChatContextForReply, refreshConversationMemory } from "./conversationMemory.js";
 
-const DEFAULT_KNOWLEDGE_LIMIT = 6;
-
 export async function resolveChatIdVariants(session: string, chatId: string): Promise<string[]> {
   return resolveAllChatIdsForContact(session, chatId);
 }
@@ -51,18 +49,16 @@ export { refreshConversationMemory };
 export async function fetchKnowledgeSnippetsForAi(
   session: string,
   chatId: string,
-  limit = DEFAULT_KNOWLEDGE_LIMIT
+  options?: { inboundText?: string; limit?: number }
 ): Promise<string[]> {
-  if (!prisma) return [];
-
   try {
-    const variants = await resolveAllChatIdsForContact(session, chatId);
-    const rows = await prisma.instanceAiKnowledge.findMany({
-      where: { session, chatId: { in: variants } },
-      orderBy: { createdAt: "desc" },
-      take: limit
+    const { fetchSessionKnowledgeForReply } = await import("./knowledgeRetrieval.js");
+    return fetchSessionKnowledgeForReply({
+      session,
+      chatId,
+      inboundText: options?.inboundText,
+      limit: options?.limit
     });
-    return rows.map((k) => `[${k.kind}] ${k.topic ?? ""}: ${k.content}`);
   } catch (err) {
     console.warn("[ai] fetchKnowledgeSnippetsForAi failed", err);
     return [];

@@ -213,14 +213,20 @@ export async function generateReply(params: {
   recentAiReplies?: string[];
   retryAvoidRepeat?: boolean;
 }): Promise<string> {
-  const knowledge =
+  const knowledgeBlock =
     params.knowledgeSnippets.length > 0
-      ? `\n\nBase de conhecimento:\n${params.knowledgeSnippets.join("\n---\n")}`
-      : "";
+      ? [
+          "## APRENDIZADO DE CONVERSAS ANTERIORES (PRIORIDADE MÁXIMA)",
+          "Use estas perguntas e respostas reais como modelo principal. Replique o estilo e os fatos do atendimento humano.",
+          "Se houver qa_pair relevante, baseie sua resposta nele.",
+          "",
+          params.knowledgeSnippets.join("\n---\n")
+        ].join("\n")
+      : "## APRENDIZADO DE CONVERSAS ANTERIORES\n(nenhum item relevante no histórico — use o contexto do produto com cautela)";
 
   const recentBlock =
     params.recentAiReplies && params.recentAiReplies.length > 0
-      ? `\n\nSuas respostas recentes neste chat (NÃO repita estas frases):\n${params.recentAiReplies.map((r) => `- ${r.slice(0, 200)}`).join("\n")}`
+      ? `\n\n## Suas respostas recentes neste chat (NÃO repita estas frases)\n${params.recentAiReplies.map((r) => `- ${r.slice(0, 200)}`).join("\n")}`
       : "";
 
   const repeatHint = params.retryAvoidRepeat
@@ -239,7 +245,19 @@ export async function generateReply(params: {
       { role: "system", content: params.systemPrompt.slice(0, 8000) },
       {
         role: "user",
-        content: `CONTEXTO DA CONVERSA:\n${params.chatHistory.slice(0, 10_000)}${knowledge}${recentBlock}\n\n${inboundLabel}\n${params.inboundText.slice(0, 4000)}${repeatHint}\n\nContinue a conversa com base na memória gravada e nas mensagens recentes. Responda de forma direta. Uma única mensagem concisa:`
+        content: [
+          knowledgeBlock,
+          "",
+          "## MEMÓRIA E MENSAGENS DESTA CONVERSA",
+          params.chatHistory.slice(0, 8000) || "(primeiro contato — sem histórico nesta conversa)",
+          recentBlock,
+          "",
+          `## ${inboundLabel}`,
+          params.inboundText.slice(0, 4000),
+          repeatHint,
+          "",
+          "Responda em uma única mensagem concisa, priorizando o aprendizado histórico acima:"
+        ].join("\n")
       }
     ],
     temperature: params.retryAvoidRepeat ? 0.25 : 0.3
