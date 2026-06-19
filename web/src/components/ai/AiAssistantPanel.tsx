@@ -348,6 +348,11 @@ export function AiAssistantPanel() {
     void save({ learnEnabled: enabled });
   }
 
+  function toggleAutoReply(enabled: boolean) {
+    if (enabled && !requireApiKey("ativar a auto-resposta")) return;
+    void save({ autoReplyEnabled: enabled });
+  }
+
   function requireApiKey(action: string): boolean {
     if (settings?.hasOpenaiApiKey) return true;
     setMessage(`Salve a chave OpenAI desta instância antes de ${action}.`);
@@ -449,24 +454,32 @@ export function AiAssistantPanel() {
       </section>
 
       <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-5 space-y-4">
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h2 className="text-lg font-medium text-white">Assistente IA</h2>
             <p className="text-sm text-zinc-400 mt-1">
-              Aprendizado e respostas automáticas escopados à instância WhatsApp ativa.
+              Aprendizado e respostas automáticas escopados à instância WhatsApp ativa — cada função
+              pode ser ligada ou desligada de forma independente.
             </p>
           </div>
-          <label className="flex items-center gap-2 text-sm text-zinc-300">
-            <input
-              type="checkbox"
-              checked={settings.enabled}
-              onChange={(e) => {
-                if (e.target.checked && !requireApiKey("ativar o assistente")) return;
-                void save({ enabled: e.target.checked });
-              }}
-            />
-            Ativar
-          </label>
+          <div className="flex flex-wrap gap-4 shrink-0">
+            <label className="flex items-center gap-2 text-sm text-zinc-300">
+              <input
+                type="checkbox"
+                checked={settings.learnEnabled}
+                onChange={(e) => toggleLearn(e.target.checked)}
+              />
+              Aprendizado
+            </label>
+            <label className="flex items-center gap-2 text-sm text-zinc-300">
+              <input
+                type="checkbox"
+                checked={settings.autoReplyEnabled}
+                onChange={(e) => toggleAutoReply(e.target.checked)}
+              />
+              Auto-resposta
+            </label>
+          </div>
         </div>
 
         {stats && (
@@ -537,16 +550,12 @@ export function AiAssistantPanel() {
       </section>
 
       <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-5 space-y-4">
-        <h3 className="font-medium text-white">Aprendizado por tags</h3>
-        <label className="flex items-center gap-2 text-sm text-zinc-300">
-          <input
-            type="checkbox"
-            checked={settings.learnEnabled}
-            onChange={(e) => toggleLearn(e.target.checked)}
-            disabled={!settings.enabled}
-          />
-          Aprender com contatos tagueados
-        </label>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="font-medium text-white">Aprendizado por tags</h3>
+          {!settings.learnEnabled && (
+            <span className="text-xs text-zinc-500">Ative &quot;Aprendizado&quot; acima para coletar</span>
+          )}
+        </div>
         <div className="flex flex-wrap gap-2">
           {settings.learnTagIds.map((id) => {
             const tag = tags.find((t) => t.id === id);
@@ -598,7 +607,6 @@ export function AiAssistantPanel() {
             type="button"
             className="px-4 py-2 rounded-lg bg-zinc-800 text-zinc-100 text-sm hover:bg-zinc-700 disabled:opacity-50"
             disabled={
-              !settings.enabled ||
               !settings.learnEnabled ||
               !settings.hasOpenaiApiKey ||
               backfilling ||
@@ -697,19 +705,16 @@ export function AiAssistantPanel() {
       </section>
 
       <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-5 space-y-4">
-        <h3 className="font-medium text-white">Auto-resposta</h3>
-        <label className="flex items-center gap-2 text-sm text-zinc-300">
-          <input
-            type="checkbox"
-            checked={settings.autoReplyEnabled}
-            onChange={(e) => {
-              if (e.target.checked && !requireApiKey("ativar a auto-resposta")) return;
-              void save({ autoReplyEnabled: e.target.checked });
-            }}
-            disabled={!settings.enabled}
-          />
-          Responder automaticamente após delay
-        </label>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="font-medium text-white">Auto-resposta</h3>
+          {!settings.autoReplyEnabled && (
+            <span className="text-xs text-zinc-500">Ative &quot;Auto-resposta&quot; acima para enviar</span>
+          )}
+        </div>
+        <p className="text-sm text-zinc-400">
+          Responde automaticamente após o delay configurado, respeitando o modo humano quando você
+          envia mensagem manual.
+        </p>
         <div className="grid grid-cols-2 gap-4 text-sm">
           <label className="text-zinc-400">
             Delay (seg)

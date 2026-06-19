@@ -39,8 +39,8 @@ export async function queueHistoryLearning(params: {
   const limit = Math.min(MAX_LIMIT, Math.max(1, params.limit ?? DEFAULT_LIMIT));
 
   const settings = await prisma.instanceAiSettings.findUnique({ where: { session } });
-  if (!settings?.enabled || !settings.learnEnabled) {
-    throw new Error("Ative o assistente e o aprendizado antes de extrair do histórico");
+  if (!settings?.learnEnabled) {
+    throw new Error("Ative o aprendizado antes de extrair do histórico");
   }
   if (settings.learnTagIds.length === 0) {
     throw new Error("Selecione ao menos uma tag para o aprendizado");

@@ -14,7 +14,7 @@ export async function processLearnJob(payload: AiLearnJobPayload): Promise<void>
   const settings = await prisma.instanceAiSettings.findUnique({
     where: { session: payload.session }
   });
-  if (!settings?.enabled || !settings.learnEnabled) return;
+  if (!settings?.learnEnabled) return;
 
   const msg = await prisma.inboxMessage.findUnique({
     where: { id: payload.inboxMessageId }

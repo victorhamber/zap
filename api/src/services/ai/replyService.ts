@@ -67,7 +67,7 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
   const settingsRow = await prisma.instanceAiSettings.findUnique({
     where: { session: payload.session }
   });
-  if (!settingsRow?.enabled || !settingsRow.autoReplyEnabled) return;
+  if (!settingsRow?.autoReplyEnabled) return;
 
   const inbound = await prisma.inboxMessage.findFirst({
     where: {
@@ -279,8 +279,6 @@ export async function simulateReply(params: {
   inboundText: string;
 }): Promise<{ reply: string; blocked?: string }> {
   const settings = await getAiSettings(params.session);
-  if (!settings.enabled) throw new Error("Assistente desativado");
-
   const apiKey = await resolveOpenAiApiKey(params.session);
   if (!apiKey) throw new Error("Configure a chave OpenAI desta instância no painel");
 

@@ -172,8 +172,8 @@ export async function saveAiSettings(
   let openaiApiKeyEnc = existing?.openaiApiKeyEnc ?? null;
 
   if (body.clearOpenaiApiKey) {
-    if (existing?.enabled || existing?.learnEnabled || existing?.autoReplyEnabled) {
-      throw new Error("Desative o assistente antes de remover a chave OpenAI");
+    if (existing?.learnEnabled || existing?.autoReplyEnabled) {
+      throw new Error("Desative o aprendizado e a auto-resposta antes de remover a chave OpenAI");
     }
     openaiApiKeyEnc = null;
   } else if (body.openaiApiKey?.trim()) {
@@ -187,7 +187,6 @@ export async function saveAiSettings(
   }
 
   const data = {
-    enabled: body.enabled ?? existing?.enabled ?? false,
     learnEnabled: body.learnEnabled ?? existing?.learnEnabled ?? false,
     autoReplyEnabled: body.autoReplyEnabled ?? existing?.autoReplyEnabled ?? false,
     learnTagIds: body.learnTagIds ?? existing?.learnTagIds ?? [],
@@ -212,20 +211,24 @@ export async function saveAiSettings(
     maxDailyReplies: body.maxDailyReplies ?? existing?.maxDailyReplies ?? env.AI_MAX_DAILY_REPLIES
   };
 
+  const enabled = data.learnEnabled || data.autoReplyEnabled;
+
   if (data.learnEnabled && data.learnTagIds.length === 0) {
     throw new Error("Selecione ao menos uma tag para o aprendizado");
   }
 
-  if ((data.enabled || data.learnEnabled || data.autoReplyEnabled) && !openaiApiKeyEnc) {
+  if (enabled && !openaiApiKeyEnc) {
     throw new Error(
       "Configure a chave OpenAI desta instância (cada instância usa a chave do próprio usuário)"
     );
   }
 
+  const persist = { ...data, enabled };
+
   await prisma.instanceAiSettings.upsert({
     where: { session: s },
-    create: { session: s, ...data },
-    update: data
+    create: { session: s, ...persist },
+    update: persist
   });
 
   return getAiSettings(s);

@@ -51,7 +51,7 @@ export async function retryAiPipelineForContact(phone: string): Promise<void> {
   if (!prisma) return;
 
   const settings = await getAiSettings();
-  if (!settings.enabled) return;
+  if (!settings.learnEnabled && !settings.autoReplyEnabled) return;
 
   const keys = expandPhoneLookupKeys(phone.replace(/\D/g, ""));
   if (keys.length === 0) return;
@@ -84,7 +84,7 @@ export async function retryAiPipelineForContact(phone: string): Promise<void> {
 
 async function runEnqueue(msg: SavedInboxMessage): Promise<void> {
   const settings = await getAiSettings(msg.session);
-  if (!settings.enabled) return;
+  if (!settings.learnEnabled && !settings.autoReplyEnabled) return;
   if (isGroupChatId(msg.chatId)) return;
 
   const phone = phoneFromChatId(msg.chatId);
