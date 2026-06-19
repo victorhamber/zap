@@ -1,6 +1,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { formatKnowledgeSnippet, type KnowledgeRow } from "./knowledgeRetrieval.js";
+import {
+  formatKnowledgeSnippet,
+  isKnownWrongCapitalMinimum,
+  type KnowledgeRow
+} from "./knowledgeRetrieval.js";
 
 describe("knowledgeRetrieval", () => {
   it("formata qa_pair legível para o modelo", () => {
@@ -18,5 +22,20 @@ describe("knowledgeRetrieval", () => {
     const text = formatKnowledgeSnippet(row);
     assert.match(text, /Pergunta: Qual a política de reembolso/);
     assert.match(text, /7 dias após a compra/);
+  });
+
+  it("detecta capital mínimo incorreto em reais", () => {
+    assert.equal(
+      isKnownWrongCapitalMinimum("Recomenda-se capital mínimo de pelo menos R$ 1.000"),
+      true
+    );
+    assert.equal(
+      isKnownWrongCapitalMinimum("Conta cent: capital mínimo USD 50"),
+      false
+    );
+    assert.equal(
+      isKnownWrongCapitalMinimum("Conta standard: USD 3.000 ou acima"),
+      false
+    );
   });
 });

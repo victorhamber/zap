@@ -40,6 +40,7 @@ export type AiSettingsDto = {
   replyAudio: boolean;
   replyVideo: boolean;
   productContext: string;
+  officialFacts: string;
   rulesAllowed: string;
   rulesForbidden: string;
   officialLinks: OfficialLink[];
@@ -79,6 +80,7 @@ function toDto(row: NonNullable<Awaited<ReturnType<typeof loadSettingsRow>>>, se
     replyAudio: row.replyAudio,
     replyVideo: row.replyVideo,
     productContext: row.productContext,
+    officialFacts: row.officialFacts,
     rulesAllowed: row.rulesAllowed,
     rulesForbidden: row.rulesForbidden,
     officialLinks: parseOfficialLinks(row.officialLinks),
@@ -120,6 +122,7 @@ export async function getAiSettings(session?: string): Promise<AiSettingsDto> {
         replyAudio: false,
         replyVideo: false,
         productContext: "",
+        officialFacts: "",
         rulesAllowed: "",
         rulesForbidden: "",
         officialLinks: [],
@@ -199,6 +202,7 @@ export async function saveAiSettings(
     replyAudio: body.replyAudio ?? existing?.replyAudio ?? false,
     replyVideo: body.replyVideo ?? existing?.replyVideo ?? false,
     productContext: body.productContext ?? existing?.productContext ?? "",
+    officialFacts: body.officialFacts ?? existing?.officialFacts ?? "",
     rulesAllowed: body.rulesAllowed ?? existing?.rulesAllowed ?? "",
     rulesForbidden: body.rulesForbidden ?? existing?.rulesForbidden ?? "",
     officialLinks: body.officialLinks ?? parseOfficialLinks(existing?.officialLinks) ?? [],

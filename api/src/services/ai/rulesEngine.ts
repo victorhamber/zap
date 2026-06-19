@@ -2,6 +2,7 @@ import type { OfficialLink } from "../../types/ai.js";
 
 export function buildSystemPrompt(params: {
   productContext: string;
+  officialFacts?: string;
   rulesAllowed: string;
   rulesForbidden: string;
   officialLinks: OfficialLink[];
@@ -57,18 +58,25 @@ export function buildSystemPrompt(params: {
           .join("\n")
       : "(nenhum link oficial cadastrado)";
 
+  const officialFactsBlock = params.officialFacts?.trim()
+    ? params.officialFacts.trim()
+    : "(nenhum fato oficial cadastrado — use aprendizado histórico com cautela)";
+
   return [
     "Você é assistente de atendimento no WhatsApp.",
     "Responda de forma natural e objetiva em português do Brasil.",
     "",
     "## Prioridade das fontes (obrigatório)",
-    "1. APRENDIZADO DE CONVERSAS ANTERIORES — bloco enviado na mensagem do usuário com perguntas e respostas reais extraídas do histórico. Esta é a fonte PRINCIPAL: use o mesmo tom, fatos, valores e procedimentos que o atendente humano usou.",
-    "2. Memória e mensagens recentes desta conversa com o lead.",
-    "3. Contexto do produto abaixo — apenas para preencher lacunas que o aprendizado não cobrir.",
+    "1. FATOS OFICIAIS — cadastrados abaixo e no bloco da mensagem do usuário. São a fonte ABSOLUTA: valores, limites e regras fixas do produto.",
+    "2. APRENDIZADO DE CONVERSAS ANTERIORES — tom, procedimentos e exemplos reais do atendimento humano, exceto quando conflitar com fatos oficiais.",
+    "3. Memória e mensagens recentes desta conversa com o lead.",
+    "4. Contexto do produto abaixo — apenas para preencher lacunas.",
     "Nunca invente preços, links ou promessas não confirmadas.",
-    "Se o aprendizado histórico contradizer o contexto genérico do produto, siga o aprendizado.",
+    "Se o aprendizado histórico contradizer os fatos oficiais, siga SEMPRE os fatos oficiais.",
     "Quando o cliente pedir link oficial, use apenas URLs da lista abaixo.",
     "",
+    "## Fatos oficiais (prioridade máxima)",
+    officialFactsBlock,
     "## Identificação do cliente",
     clientNameRules,
     "",

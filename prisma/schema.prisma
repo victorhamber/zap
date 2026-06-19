@@ -67,6 +67,8 @@ model InstanceAiSettings {
   replyAudio       Boolean  @default(false)
   replyVideo       Boolean  @default(false)
   productContext   String   @default("")
+  /** Fatos oficiais fixos — prioridade sobre aprendizado histórico (ex.: capital mínimo por tipo de conta). */
+  officialFacts    String   @default("")
   rulesAllowed     String   @default("")
   rulesForbidden   String   @default("")
   officialLinks    Json     @default("[]")

@@ -69,6 +69,36 @@ function parseQaPair(content: string): { question: string; answerBase: string } 
   }
 }
 
+export function extractKnowledgeSearchText(row: KnowledgeRow): string {
+  if (row.kind === "qa_pair") {
+    const qa = parseQaPair(row.content);
+    if (qa) return `${qa.question} ${qa.answerBase} ${row.topic ?? ""}`;
+  }
+  return `${row.content} ${row.topic ?? ""}`;
+}
+
+/** Remove aprendizado obsoleto (ex.: capital mínimo de R$ 1.000). */
+export function isKnownWrongCapitalMinimum(text: string): boolean {
+  const n = normalizeText(text);
+  const hasCapitalContext =
+    /capital|deposito|minimo|minima|conta|investir|comecar|cent|standard|usd|dolar|reais/.test(n);
+  const wrongReais =
+    /r\$\s*1[\s.,]*0{3}|1[\s.,]*0{3}\s*reais|mil\s*reais|pelo\s*menos\s*r\$/.test(n);
+
+  if (/capital\s+minim/.test(n) && /1[\s.,]*0{3}|mil\s*reais|r\$/.test(n)) return true;
+  if (wrongReais && hasCapitalContext) return true;
+  return false;
+}
+
+export function buildOfficialFactsBlock(officialFacts: string): string {
+  const lines = officialFacts
+    .split(/\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (lines.length === 0) return "";
+  return lines.join("\n");
+}
+
 function scoreKnowledgeRow(
   row: KnowledgeRow,
   tokens: string[],
@@ -175,6 +205,7 @@ export async function fetchSessionKnowledgeForReply(params: {
       row,
       score: scoreKnowledgeRow(row, tokens, sameChatIds.has(row.chatId))
     }))
+    .filter(({ row }) => !isKnownWrongCapitalMinimum(extractKnowledgeSearchText(row)))
     .sort((a, b) => b.score - a.score || b.row.createdAt.getTime() - a.row.createdAt.getTime());
 
   const picked = dedupeSnippets(ranked.map((r) => r.row)).slice(0, limit);

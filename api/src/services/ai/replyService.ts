@@ -9,6 +9,7 @@ import {
   injectOfficialLinksHint,
   isRepetitiveReply
 } from "./rulesEngine.js";
+import { buildOfficialFactsBlock } from "./knowledgeRetrieval.js";
 import { generateReply } from "./openaiClient.js";
 import {
   clearPendingReply,
@@ -157,6 +158,7 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
   const systemPrompt =
     buildSystemPrompt({
       productContext: settingsRow.productContext,
+      officialFacts: settingsRow.officialFacts,
       rulesAllowed: settingsRow.rulesAllowed,
       rulesForbidden: settingsRow.rulesForbidden,
       officialLinks,
@@ -192,6 +194,7 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
   const snippets = await fetchKnowledgeSnippetsForAi(payload.session, payload.chatId, {
     inboundText
   });
+  const officialFacts = buildOfficialFactsBlock(settingsRow.officialFacts);
 
   let reply: string;
   try {
@@ -200,6 +203,7 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
       model: settingsRow.modelChat,
       systemPrompt,
       chatHistory,
+      officialFacts,
       knowledgeSnippets: snippets,
       inboundText,
       recentAiReplies
@@ -211,6 +215,7 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
         model: settingsRow.modelChat,
         systemPrompt,
         chatHistory,
+        officialFacts,
         knowledgeSnippets: snippets,
         inboundText,
         recentAiReplies,
@@ -287,6 +292,7 @@ export async function simulateReply(params: {
 
   const systemPrompt = buildSystemPrompt({
     productContext: settings.productContext,
+    officialFacts: settings.officialFacts,
     rulesAllowed: settings.rulesAllowed,
     rulesForbidden: settings.rulesForbidden,
     officialLinks: settings.officialLinks,
@@ -301,12 +307,14 @@ export async function simulateReply(params: {
   const snippets = await fetchKnowledgeSnippetsForAi(params.session, params.chatId, {
     inboundText: params.inboundText
   });
+  const officialFacts = buildOfficialFactsBlock(settings.officialFacts);
 
   const reply = await generateReply({
     apiKey,
     model: settings.modelChat,
     systemPrompt,
     chatHistory,
+    officialFacts,
     knowledgeSnippets: snippets,
     inboundText: params.inboundText
   });

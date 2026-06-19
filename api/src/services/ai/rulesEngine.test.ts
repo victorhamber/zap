@@ -63,14 +63,17 @@ describe("rulesEngine", () => {
     );
   });
 
-  it("prioriza aprendizado histórico no prompt", () => {
+  it("prioriza fatos oficiais sobre aprendizado histórico", () => {
     const prompt = buildSystemPrompt({
       productContext: "Curso X",
+      officialFacts: "Conta cent: USD 50. Conta standard: USD 3.000.",
       rulesAllowed: "",
       rulesForbidden: "",
       officialLinks: []
     });
-    assert.match(prompt, /APRENDIZADO DE CONVERSAS ANTERIORES/);
+    assert.match(prompt, /FATOS OFICIAIS/);
+    assert.match(prompt, /USD 50/);
+    assert.match(prompt, /siga SEMPRE os fatos oficiais/);
     assert.match(prompt, /complementar/);
   });
 

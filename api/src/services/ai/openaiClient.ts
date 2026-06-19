@@ -208,21 +208,33 @@ export async function generateReply(params: {
   model: string;
   systemPrompt: string;
   chatHistory: string;
+  officialFacts?: string;
   knowledgeSnippets: string[];
   inboundText: string;
   recentAiReplies?: string[];
   retryAvoidRepeat?: boolean;
 }): Promise<string> {
-  const knowledgeBlock =
+  const officialBlock = params.officialFacts?.trim()
+    ? [
+        "## FATOS OFICIAIS (PRIORIDADE ABSOLUTA — sobrescrevem aprendizado histórico)",
+        "Use estes valores e regras fixas. Ignore qualquer aprendizado histórico que contradiga estes fatos.",
+        "",
+        params.officialFacts.trim()
+      ].join("\n")
+    : "";
+
+  const learnedBlock =
     params.knowledgeSnippets.length > 0
       ? [
-          "## APRENDIZADO DE CONVERSAS ANTERIORES (PRIORIDADE MÁXIMA)",
-          "Use estas perguntas e respostas reais como modelo principal. Replique o estilo e os fatos do atendimento humano.",
+          "## APRENDIZADO DE CONVERSAS ANTERIORES",
+          "Use como modelo de tom e procedimentos, exceto quando conflitar com os fatos oficiais acima.",
           "Se houver qa_pair relevante, baseie sua resposta nele.",
           "",
           params.knowledgeSnippets.join("\n---\n")
         ].join("\n")
-      : "## APRENDIZADO DE CONVERSAS ANTERIORES\n(nenhum item relevante no histórico — use o contexto do produto com cautela)";
+      : "## APRENDIZADO DE CONVERSAS ANTERIORES\n(nenhum item relevante no histórico)";
+
+  const knowledgeBlock = [officialBlock, learnedBlock].filter(Boolean).join("\n\n");
 
   const recentBlock =
     params.recentAiReplies && params.recentAiReplies.length > 0

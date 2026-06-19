@@ -19,6 +19,7 @@ type AiSettings = {
   replyAudio: boolean;
   replyVideo: boolean;
   productContext: string;
+  officialFacts: string;
   rulesAllowed: string;
   rulesForbidden: string;
   officialLinks: OfficialLink[];
@@ -81,6 +82,7 @@ export function AiAssistantPanel() {
   const savedFormRef = useRef<Pick<
     AiSettings,
     | "productContext"
+    | "officialFacts"
     | "rulesAllowed"
     | "rulesForbidden"
     | "officialLinks"
@@ -91,6 +93,7 @@ export function AiAssistantPanel() {
   function syncSavedFormRef(s: AiSettings) {
     savedFormRef.current = {
       productContext: s.productContext,
+      officialFacts: s.officialFacts,
       rulesAllowed: s.rulesAllowed,
       rulesForbidden: s.rulesForbidden,
       officialLinks: s.officialLinks,
@@ -104,6 +107,7 @@ export function AiAssistantPanel() {
     const b = savedFormRef.current;
     return (
       settings.productContext !== b.productContext ||
+      settings.officialFacts !== b.officialFacts ||
       settings.rulesAllowed !== b.rulesAllowed ||
       settings.rulesForbidden !== b.rulesForbidden ||
       settings.replyDelaySec !== b.replyDelaySec ||
@@ -118,6 +122,7 @@ export function AiAssistantPanel() {
     setSettings({
       ...settings,
       productContext: b.productContext,
+      officialFacts: b.officialFacts,
       rulesAllowed: b.rulesAllowed,
       rulesForbidden: b.rulesForbidden,
       officialLinks: b.officialLinks,
@@ -131,6 +136,7 @@ export function AiAssistantPanel() {
     if (!settings) return;
     await save({
       productContext: settings.productContext,
+      officialFacts: settings.officialFacts,
       rulesAllowed: settings.rulesAllowed,
       rulesForbidden: settings.rulesForbidden,
       officialLinks: settings.officialLinks,
@@ -641,6 +647,21 @@ export function AiAssistantPanel() {
             className="mt-1 w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-zinc-100 text-sm min-h-24"
             value={settings.productContext}
             onChange={(e) => setSettings({ ...settings, productContext: e.target.value })}
+          />
+        </label>
+        <label className="block text-sm text-zinc-400">
+          Fatos oficiais (prioridade máxima)
+          <span className="block text-xs text-zinc-500 mt-0.5 mb-1">
+            Valores e regras fixas do produto. Sobrescrevem o aprendizado histórico quando houver conflito
+            (ex.: capital mínimo por tipo de conta).
+          </span>
+          <textarea
+            className="mt-1 w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-zinc-100 text-xs min-h-24 font-mono"
+            placeholder={
+              "Conta cent: capital mínimo USD 50.\nConta standard: capital mínimo USD 3.000 ou acima.\nNunca mencionar R$ 1.000 como capital mínimo."
+            }
+            value={settings.officialFacts}
+            onChange={(e) => setSettings({ ...settings, officialFacts: e.target.value })}
           />
         </label>
         <label className="block text-sm text-zinc-400">
