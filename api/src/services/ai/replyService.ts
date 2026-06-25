@@ -18,7 +18,7 @@ import {
   logAiEvent,
   resolveChatModeForInbound
 } from "./chatState.js";
-import { extractInboundTextForReply } from "./mediaExtract.js";
+import { detectModality, extractInboundTextForReply } from "./mediaExtract.js";
 import { phoneFromChatId } from "./tagGate.js";
 import { findContactByPhoneLoose } from "../contacts.js";
 import {
@@ -173,13 +173,22 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
   const recentAiReplies = await getRecentAiReplies(payload.session, payload.chatId);
 
   let inboundText = inboundBatch.combinedText;
-  if (!inboundText.trim()) {
+  // Mídia (imagem/áudio/vídeo) entra no body como placeholder ("📷 Imagem"),
+  // então combinedText não fica vazio e a extração nunca rodava. Força extração
+  // quando a mensagem âncora é mídia para transcrever/descrever o conteúdo real.
+  const inboundIsMedia = detectModality(inbound.type) !== "text";
+  if (!inboundText.trim() || inboundIsMedia) {
     try {
-      inboundText = await extractInboundTextForReply({
+      const extracted = await extractInboundTextForReply({
         message: inbound,
         settings: settingsRow,
         apiKey
       });
+      if (extracted && extracted !== "(mensagem sem texto)") {
+        inboundText = extracted;
+      } else if (!inboundText.trim()) {
+        inboundText = extracted;
+      }
     } catch (err) {
       await logAiEvent({
         session: payload.session,
@@ -187,7 +196,7 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
         event: "error",
         detail: `mediaExtract: ${err instanceof Error ? err.message : String(err)}`
       });
-      inboundText = inbound.body.trim() || "(mensagem sem texto)";
+      if (!inboundText.trim()) inboundText = inbound.body.trim() || "(mensagem sem texto)";
     }
   }
 

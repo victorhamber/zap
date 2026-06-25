@@ -541,9 +541,15 @@ async function writeInboxSessionMap(map: Record<string, SessionInboxState>): Pro
 }
 
 /** Contatos ocultos do inbox (removidos do CRM — ainda existem no WhatsApp). */
-export async function getHiddenInboxContactKeys(_session?: string): Promise<Set<string>> {
+export async function getHiddenInboxContactKeys(session?: string): Promise<Set<string>> {
   const map = await readInboxSessionMap();
   const out = new Set<string>();
+  // Escopo por sessão: ocultos de outra instância não devem sumir conversas da atual.
+  if (session) {
+    const entry = map[session.trim().toLowerCase()];
+    for (const k of entry?.hiddenContacts ?? []) out.add(k);
+    return out;
+  }
   for (const entry of Object.values(map)) {
     for (const k of entry.hiddenContacts ?? []) out.add(k);
   }
@@ -564,12 +570,18 @@ export async function hideContactFromInbox(
   await writeInboxSessionMap(map);
 }
 
-export async function unhideContactFromInbox(session: string, phone: string): Promise<void> {
+export async function unhideContactFromInbox(
+  session: string,
+  phone: string,
+  chatId?: string
+): Promise<void> {
   const norm = session.trim().toLowerCase();
   const map = await readInboxSessionMap();
   const entry = map[norm];
   if (!entry?.hiddenContacts?.length) return;
-  const remove = new Set(hiddenKeysForContact(phone));
+  // Usa o mesmo conjunto de chaves gerado ao ocultar (telefone + @lid + variantes),
+  // senão o contato continua oculto por chaves residuais após nova mensagem.
+  const remove = new Set(await collectHiddenKeysForContact(session, phone, chatId));
   const hidden = entry.hiddenContacts.filter((k) => !remove.has(k));
   map[norm] = { ...entry, hiddenContacts: hidden.length > 0 ? hidden : undefined };
   await writeInboxSessionMap(map);
@@ -994,7 +1006,7 @@ export async function saveInboxMessage(params: {
     if (!params.fromMe) {
       const unhidePhone = pickPhoneJid([chatId, ...(params.peerJids ?? []), params.chatId]);
       if (unhidePhone) {
-        await unhideContactFromInbox(session, unhidePhone).catch(() => {});
+        await unhideContactFromInbox(session, unhidePhone, chatId).catch(() => {});
       }
     }
 

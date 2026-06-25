@@ -147,8 +147,12 @@ export function isRepetitiveReply(reply: string, recentReplies: string[]): boole
     const p = normalizeReplyText(prev);
     if (p.length < 16) continue;
     if (norm === p) return true;
-    const head = p.slice(0, Math.min(48, p.length));
-    if (head.length >= 16 && norm.includes(head)) return true;
+    const prevHead = p.slice(0, Math.min(48, p.length));
+    if (prevHead.length >= 16 && norm.includes(prevHead)) return true;
+    // Também detecta quando a nova resposta é um prefixo/trecho de uma anterior
+    // (ex.: repetir a mesma abertura cortando o final).
+    const newHead = norm.slice(0, Math.min(48, norm.length));
+    if (newHead.length >= 16 && p.includes(newHead)) return true;
   }
   return false;
 }

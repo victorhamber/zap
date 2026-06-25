@@ -17,6 +17,9 @@ import {
 } from "../../queue.js";
 import { getAiSettings } from "./settings.js";
 
+/** Espera o download assíncrono da mídia antes de tentar aprender com ela. */
+const MEDIA_LEARN_DELAY_MS = 20_000;
+
 export type SavedInboxMessage = {
   id: string;
   session: string;
@@ -92,24 +95,34 @@ async function runEnqueue(msg: SavedInboxMessage): Promise<void> {
   if (!hasTags) return;
 
   const modality = detectModality(msg.type);
+  // O download/descriptografia da mídia roda de forma assíncrona após salvar a
+  // mensagem. Sem atraso, o job de aprendizado lia mediaUrl ainda nula e
+  // aprendia o placeholder. Damos tempo para o download concluir.
+  const learnDelayMs = modality === "text" ? 0 : MEDIA_LEARN_DELAY_MS;
 
   if (settings.learnEnabled && modalityAllowed(modality, settings)) {
     if (!msg.fromMe) {
-      await enqueueAiLearnJob({
-        session: msg.session,
-        chatId: msg.chatId,
-        inboxMessageId: msg.id,
-        modality,
-        kind: "question"
-      });
+      await enqueueAiLearnJob(
+        {
+          session: msg.session,
+          chatId: msg.chatId,
+          inboxMessageId: msg.id,
+          modality,
+          kind: "question"
+        },
+        learnDelayMs
+      );
     } else if (msg.source === "manual") {
-      await enqueueAiLearnJob({
-        session: msg.session,
-        chatId: msg.chatId,
-        inboxMessageId: msg.id,
-        modality,
-        kind: "answer"
-      });
+      await enqueueAiLearnJob(
+        {
+          session: msg.session,
+          chatId: msg.chatId,
+          inboxMessageId: msg.id,
+          modality,
+          kind: "answer"
+        },
+        learnDelayMs
+      );
     }
   }
 
