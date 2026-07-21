@@ -69,7 +69,12 @@ export async function parseMetaWebhookMessages(
     for (const change of changes) {
       if (!change || typeof change !== "object") continue;
       const c = change as Record<string, unknown>;
-      if (String(c.field ?? "") !== "messages") continue;
+      const field = String(c.field ?? "");
+      // "messages" = recebidas; echoes = enviadas via Cloud API (outro sistema,
+      // app WhatsApp Business etc.). Sem os echoes, tudo que é enviado pela API
+      // oficial nunca era salvo e a conversa ficava sem essas mensagens.
+      const isEcho = field === "smb_message_echoes" || field === "message_echoes";
+      if (field !== "messages" && !isEcho) continue;
       const value = c.value as Record<string, unknown> | undefined;
       if (!value) continue;
 
@@ -81,23 +86,36 @@ export async function parseMetaWebhookMessages(
       const session = await findInstanceByPhoneNumberId(phoneNumberId);
       if (!session) continue;
 
-      const messages = Array.isArray(value.messages) ? value.messages : [];
-      for (const raw of messages) {
+      const list = isEcho
+        ? Array.isArray(value.message_echoes)
+          ? value.message_echoes
+          : Array.isArray(value.messages)
+            ? value.messages
+            : []
+        : Array.isArray(value.messages)
+          ? value.messages
+          : [];
+
+      for (const raw of list) {
         if (!raw || typeof raw !== "object") continue;
         const msg = raw as Record<string, unknown>;
-        const from = String(msg.from ?? "").replace(/\D/g, "");
-        if (!from) continue;
+        // Echo: a conversa é com o destinatário (to); recebida: com o remetente (from).
+        const peer = isEcho
+          ? String(msg.to ?? msg.recipient_id ?? "").replace(/\D/g, "")
+          : String(msg.from ?? "").replace(/\D/g, "");
+        if (!peer) continue;
 
         const { type, text } = parseMessageType(msg);
+        if (!text.trim() && type === "chat") continue;
         const ts = Number(msg.timestamp ?? 0);
         const waMessageId = String(msg.id ?? "").trim();
         if (!waMessageId) continue;
 
         out.push({
           session,
-          chatId: chatIdFromPhone(from),
+          chatId: chatIdFromPhone(peer),
           text,
-          fromMe: false,
+          fromMe: isEcho,
           type,
           waMessageId,
           timestamp: new Date(ts > 1e12 ? ts : ts * 1000),

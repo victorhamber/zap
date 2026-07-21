@@ -332,27 +332,32 @@ export async function webhookRoutes(app: FastifyInstance) {
 
       const activeSession = await getActiveWppSessionName();
       const instance = String(body.instance ?? "").trim().toLowerCase();
-      if (instance && instance !== activeSession) {
-        touchWppWebhookSkipped("other_session");
-        return { ok: true, skipped: "other_session", instance, activeSession };
-      }
+      // Mensagens de QUALQUER instância são gravadas (com a sessão da própria
+      // instância) — inclusive da API oficial Meta via Evolution. Antes, tudo
+      // que não fosse da instância ativa era descartado e o histórico sumia.
+      const isActiveInstance = !instance || instance === activeSession;
 
       const connLabel = parseEvolutionConnectionEvent(body);
       if (connLabel) {
-        await prisma.appSettings.update({
-          where: { id: "default" },
-          data: { connectionStatus: connLabel }
-        });
-        return { ok: true, lifecycle: true, event };
+        // connectionStatus é global do painel: só a instância ativa atualiza.
+        if (isActiveInstance) {
+          await prisma.appSettings.update({
+            where: { id: "default" },
+            data: { connectionStatus: connLabel }
+          });
+        }
+        return { ok: true, lifecycle: true, event, instance };
       }
 
       const qr = extractEvolutionQr(body);
       if (qr) {
-        await prisma.appSettings.update({
-          where: { id: "default" },
-          data: { connectionStatus: "AWAITING_QR:QRCODE" }
-        });
-        return { ok: true, qr: true, event };
+        if (isActiveInstance) {
+          await prisma.appSettings.update({
+            where: { id: "default" },
+            data: { connectionStatus: "AWAITING_QR:QRCODE" }
+          });
+        }
+        return { ok: true, qr: true, event, instance };
       }
 
       if (!isEvolutionMessageEvent(body)) {
@@ -431,7 +436,8 @@ export async function webhookRoutes(app: FastifyInstance) {
       }
 
       let started: string[] = [];
-      if (saved && parsed && !parsed.fromMe) {
+      // Fluxos enviam pela instância ativa; só dispara para mensagens dela.
+      if (saved && parsed && !parsed.fromMe && isActiveInstance) {
         started = await triggerInboundFlows({
           chatId: from,
           text,
