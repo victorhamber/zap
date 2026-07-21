@@ -1,6 +1,17 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
+import {
+  Badge,
+  Card,
+  CardHeader,
+  EmptyState,
+  ErrorNotice,
+  Icon,
+  type IconName,
+  PageHeader,
+  Skeleton
+} from "../components/ui";
 
 type DashboardStats = {
   flows: { total: number; active: number; inactive: number };
@@ -29,6 +40,7 @@ const TRIGGER_LABELS: Record<string, string> = {
   trigger_hotmart_pending: "Hotmart (aguardando)",
   trigger_tag: "Tag",
   trigger_inbound: "Mensagem",
+  trigger_broadcast: "Broadcast",
   trigger_manual: "Manual"
 };
 
@@ -40,10 +52,10 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  completed: "bg-emerald-500",
-  failed: "bg-red-500",
-  running: "bg-sky-500",
-  waiting: "bg-amber-500"
+  completed: "#10b981",
+  failed: "#ef4444",
+  running: "#0ea5e9",
+  waiting: "#f59e0b"
 };
 
 function formatDay(iso: string): string {
@@ -54,62 +66,112 @@ function formatDay(iso: string): string {
   });
 }
 
+/* ------------------------------------------------------------------ */
+
 function StatCard({
   label,
   value,
   hint,
   to,
-  accent
+  icon,
+  tone = "neutral",
+  loading
 }: {
   label: string;
   value: string | number;
   hint?: string;
   to?: string;
-  accent?: string;
+  icon: IconName;
+  tone?: "neutral" | "brand" | "sky" | "amber";
+  loading?: boolean;
 }) {
+  const toneClass = {
+    neutral: "text-zinc-400 bg-[var(--surface-2)]",
+    brand: "text-brand-300 bg-brand-500/10",
+    sky: "text-sky-300 bg-sky-500/10",
+    amber: "text-amber-300 bg-amber-500/10"
+  }[tone];
+
   const inner = (
     <>
-      <div className="text-xs text-zinc-500">{label}</div>
-      <div className={`text-2xl font-semibold mt-1 ${accent ?? "text-white"}`}>{value}</div>
-      {hint && <div className="text-xs text-zinc-500 mt-1.5">{hint}</div>}
+      <div className="flex items-start justify-between gap-3">
+        <span className="text-xs font-medium text-zinc-500">{label}</span>
+        <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${toneClass}`}>
+          <Icon name={icon} className="h-4 w-4" />
+        </span>
+      </div>
+      {loading ? (
+        <Skeleton className="mt-3 h-7 w-20" />
+      ) : (
+        <div className="mt-2 text-[26px] font-semibold leading-none tracking-tight text-white">
+          {value}
+        </div>
+      )}
+      {hint &&
+        (loading ? (
+          <Skeleton className="mt-3 h-3 w-28" />
+        ) : (
+          <div className="mt-2.5 text-xs text-zinc-500">{hint}</div>
+        ))}
     </>
   );
+
+  const base =
+    "rounded-2xl border border-[var(--line)] bg-[var(--surface-1)] p-4 shadow-[0_10px_30px_-18px_rgba(0,0,0,0.9)]";
 
   if (to) {
     return (
       <Link
         to={to}
-        className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4 block hover:border-emerald-500/30 transition"
+        className={`${base} block transition duration-200 hover:-translate-y-0.5 hover:border-brand-500/30 hover:bg-[var(--surface-2)]`}
       >
         {inner}
       </Link>
     );
   }
-
-  return <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">{inner}</div>;
+  return <div className={base}>{inner}</div>;
 }
 
 function BarChart({
   data,
-  color = "bg-emerald-500"
+  from = "#34d399",
+  to = "#059669"
 }: {
   data: { date: string; count: number }[];
-  color?: string;
+  from?: string;
+  to?: string;
 }) {
   const max = Math.max(1, ...data.map((d) => d.count));
 
   return (
-    <div className="flex items-end gap-2 h-36 pt-2">
+    <div className="flex h-40 items-end gap-1.5">
       {data.map((d) => (
-        <div key={d.date} className="flex-1 flex flex-col items-center gap-2 min-w-0">
-          <span className="text-[10px] text-zinc-500 tabular-nums">{d.count || ""}</span>
-          <div className="w-full flex items-end justify-center h-24">
+        <div
+          key={d.date}
+          className="zap-bar-group group flex min-w-0 flex-1 flex-col items-center gap-2"
+          title={`${formatDay(d.date)} — ${d.count}`}
+        >
+          <span
+            className={`text-[11px] font-medium tabular-nums transition ${
+              d.count ? "text-zinc-400 group-hover:text-brand-300" : "text-transparent"
+            }`}
+          >
+            {d.count || "0"}
+          </span>
+          <div className="flex h-24 w-full items-end justify-center">
             <div
-              className={`w-full max-w-[36px] rounded-t-md ${color} transition-all`}
-              style={{ height: `${Math.max(4, (d.count / max) * 100)}%`, opacity: d.count ? 1 : 0.15 }}
+              className="zap-bar w-full max-w-[34px]"
+              style={
+                {
+                  height: `${Math.max(3, (d.count / max) * 100)}%`,
+                  opacity: d.count ? 1 : 0.18,
+                  "--bar-top": from,
+                  "--bar-bottom": to
+                } as React.CSSProperties
+              }
             />
           </div>
-          <span className="text-[10px] text-zinc-500 truncate w-full text-center">
+          <span className="w-full truncate text-center text-[10px] capitalize text-zinc-600">
             {formatDay(d.date)}
           </span>
         </div>
@@ -118,61 +180,91 @@ function BarChart({
   );
 }
 
-function DistributionList({
-  items,
-  labelKey,
-  labels,
-  colors
-}: {
-  items: { [key: string]: string | number }[];
-  labelKey: string;
-  labels: Record<string, string>;
-  colors?: Record<string, string>;
-}) {
-  const total = items.reduce((s, i) => s + Number(i.count), 0) || 1;
-
-  if (items.length === 0) {
-    return <p className="text-sm text-zinc-600">Sem dados ainda.</p>;
-  }
-
+function ChartSkeleton() {
   return (
-    <div className="space-y-3">
-      {items.map((item) => {
-        const key = String(item[labelKey]);
-        const count = Number(item.count);
-        const pct = Math.round((count / total) * 100);
-        return (
-          <div key={key}>
-            <div className="flex justify-between text-xs mb-1">
-              <span className="text-zinc-300">{labels[key] ?? key}</span>
-              <span className="text-zinc-500 tabular-nums">
-                {count} ({pct}%)
-              </span>
-            </div>
-            <div className="h-2 rounded-full bg-zinc-800 overflow-hidden">
-              <div
-                className={`h-full rounded-full ${colors?.[key] ?? "bg-emerald-500"}`}
-                style={{ width: `${pct}%` }}
-              />
-            </div>
+    <div className="flex h-40 items-end gap-1.5">
+      {[46, 72, 38, 90, 61, 30, 78].map((h, i) => (
+        <div key={i} className="flex flex-1 flex-col items-center gap-2">
+          <div className="flex h-24 w-full items-end justify-center">
+            <div className="zap-skeleton w-full max-w-[34px]" style={{ height: `${h}%` }} />
           </div>
-        );
-      })}
+          <Skeleton className="h-2.5 w-8" />
+        </div>
+      ))}
     </div>
   );
 }
 
+function DistributionList({
+  items,
+  labels,
+  colors
+}: {
+  items: { key: string; count: number }[];
+  labels: Record<string, string>;
+  colors?: Record<string, string>;
+}) {
+  const total = items.reduce((s, i) => s + i.count, 0) || 1;
+
+  if (items.length === 0) {
+    return <p className="py-6 text-sm text-zinc-600">Sem dados ainda.</p>;
+  }
+
+  return (
+    <div className="space-y-3.5">
+      {[...items]
+        .sort((a, b) => b.count - a.count)
+        .map((item) => {
+          const pct = Math.round((item.count / total) * 100);
+          const color = colors?.[item.key] ?? "#10b981";
+          return (
+            <div key={item.key}>
+              <div className="mb-1.5 flex items-baseline justify-between gap-3 text-xs">
+                <span className="truncate text-zinc-300">{labels[item.key] ?? item.key}</span>
+                <span className="shrink-0 tabular-nums text-zinc-500">
+                  <span className="font-medium text-zinc-300">{item.count}</span> · {pct}%
+                </span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-[var(--surface-3)]">
+                <div
+                  className="h-full rounded-full transition-[width] duration-500 ease-out"
+                  style={{ width: `${Math.max(2, pct)}%`, backgroundColor: color }}
+                />
+              </div>
+            </div>
+          );
+        })}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
 export function Dashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [wppStatus, setWppStatus] = useState<string>("…");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [wpp, setWpp] = useState<{ label: string; connected: boolean }>({
+    label: "Verificando…",
+    connected: false
+  });
 
   useEffect(() => {
     api<DashboardStats>("/api/dashboard/stats")
-      .then(setStats)
-      .catch(() => setStats(null));
+      .then((r) => {
+        setStats(r);
+        setError("");
+      })
+      .catch((e: unknown) =>
+        setError(e instanceof Error ? e.message : "Não foi possível carregar as estatísticas.")
+      )
+      .finally(() => setLoading(false));
+
     api<{ ok: boolean; error?: string }>("/api/settings/wpp/status")
-      .then((r) => setWppStatus(r.ok ? "Conectado" : r.error ?? "Desconectado"))
-      .catch(() => setWppStatus("Indisponível"));
+      .then((r) =>
+        setWpp({ label: r.ok ? "Conectado" : r.error ?? "Desconectado", connected: r.ok })
+      )
+      .catch(() => setWpp({ label: "Indisponível", connected: false }));
   }, []);
 
   const successRate =
@@ -185,159 +277,205 @@ export function Dashboard() {
       : 0;
 
   return (
-    <div className="max-w-6xl">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">Dashboard</h1>
-          <p className="text-sm text-zinc-400 mt-1">Visão geral das automações e engajamento</p>
-        </div>
-        <Link
-          to="/runs"
-          className="text-xs text-emerald-400 hover:underline"
-        >
-          Ver execuções detalhadas →
-        </Link>
-      </div>
+    <div className="space-y-8">
+      <PageHeader
+        title="Dashboard"
+        subtitle="Visão geral das automações, envios e engajamento dos últimos 7 dias."
+        actions={
+          <Link
+            to="/runs"
+            className="inline-flex items-center gap-1.5 text-sm text-brand-400 transition hover:text-brand-300"
+          >
+            Ver execuções
+            <Icon name="chevronRight" className="h-4 w-4" />
+          </Link>
+        }
+      />
 
-      <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {error && <ErrorNotice>{error}</ErrorNotice>}
+
+      {/* Métricas principais */}
+      <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
           label="Fluxos ativos"
-          value={stats?.flows.active ?? "—"}
+          value={stats?.flows.active ?? 0}
           hint={`${stats?.flows.total ?? 0} no total`}
           to="/flows"
+          icon="flow"
+          tone="brand"
+          loading={loading}
         />
         <StatCard
           label="WhatsApp"
-          value={wppStatus}
+          value={wpp.label}
           hint="Status da conexão"
           to="/whatsapp"
-          accent={wppStatus === "Conectado" ? "text-emerald-300" : "text-zinc-300"}
+          icon="chat"
+          tone={wpp.connected ? "brand" : "neutral"}
         />
         <StatCard
           label="Execuções hoje"
-          value={stats?.runs.today ?? "—"}
+          value={stats?.runs.today ?? 0}
           hint={`${stats?.runs.last7Days ?? 0} nos últimos 7 dias`}
+          icon="activity"
+          tone="sky"
+          loading={loading}
         />
         <StatCard
           label="Taxa de sucesso"
-          value={stats ? `${successRate}%` : "—"}
+          value={`${successRate}%`}
           hint={`${stats?.runs.total ?? 0} execuções no total`}
+          icon="check"
+          tone={successRate >= 80 ? "brand" : "amber"}
+          loading={loading}
         />
-      </div>
+      </section>
 
-      <div className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Contatos" value={stats?.contacts ?? "—"} hint="Base CRM" />
-        <StatCard label="Tags" value={stats?.tags ?? "—"} hint="Segmentação" />
+      <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard label="Contatos" value={stats?.contacts ?? 0} hint="Base CRM" icon="users" loading={loading} />
+        <StatCard label="Tags" value={stats?.tags ?? 0} hint="Segmentação" icon="tag" loading={loading} />
         <StatCard
-          label="Msgs enviadas hoje"
-          value={stats?.messages.sentToday ?? "—"}
+          label="Enviadas hoje"
+          value={stats?.messages.sentToday ?? 0}
           hint={`${stats?.messages.receivedToday ?? 0} recebidas hoje`}
           to="/whatsapp"
+          icon="send"
+          loading={loading}
         />
         <StatCard
           label="Agendamentos"
-          value={stats?.scheduled.pending ?? "—"}
+          value={stats?.scheduled.pending ?? 0}
           hint="Passos aguardando no fluxo"
+          icon="clock"
+          loading={loading}
         />
-      </div>
+      </section>
 
-      <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-5">
-          <h2 className="text-sm font-semibold text-zinc-200">Execuções — últimos 7 dias</h2>
-          <p className="text-xs text-zinc-500 mt-1">Fluxos disparados por dia</p>
-          <div className="mt-4">
-            {stats ? (
-              <BarChart data={stats.runs.daily} color="bg-emerald-500" />
+      {/* Gráficos */}
+      <section className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <Card>
+          <CardHeader
+            title="Execuções"
+            subtitle="Fluxos disparados por dia"
+            action={<Badge tone="success">7 dias</Badge>}
+          />
+          <div className="mt-5">
+            {loading || !stats ? <ChartSkeleton /> : <BarChart data={stats.runs.daily} />}
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader
+            title="Mensagens enviadas"
+            subtitle="Pelo inbox e pelas automações"
+            action={<Badge tone="info">7 dias</Badge>}
+          />
+          <div className="mt-5">
+            {loading || !stats ? (
+              <ChartSkeleton />
             ) : (
-              <p className="text-sm text-zinc-600 py-8">Carregando…</p>
+              <BarChart data={stats.messages.dailySent} from="#38bdf8" to="#0284c7" />
             )}
           </div>
-        </div>
+        </Card>
+      </section>
 
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-5">
-          <h2 className="text-sm font-semibold text-zinc-200">Mensagens enviadas — 7 dias</h2>
-          <p className="text-xs text-zinc-500 mt-1">Pelo inbox / automações</p>
-          <div className="mt-4">
-            {stats ? (
-              <BarChart data={stats.messages.dailySent} color="bg-sky-500" />
+      {/* Distribuições */}
+      <section className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <Card>
+          <CardHeader title="Por gatilho" subtitle="Como os fluxos foram iniciados" />
+          <div className="mt-5">
+            {loading || !stats ? (
+              <div className="space-y-4">
+                <Skeleton className="h-8" />
+                <Skeleton className="h-8" />
+                <Skeleton className="h-8" />
+              </div>
             ) : (
-              <p className="text-sm text-zinc-600 py-8">Carregando…</p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-5">
-          <h2 className="text-sm font-semibold text-zinc-200">Por gatilho</h2>
-          <p className="text-xs text-zinc-500 mt-1">Como os fluxos foram iniciados</p>
-          <div className="mt-4">
-            {stats && (
               <DistributionList
-                items={stats.runs.byTrigger.map((t) => ({
-                  trigger: t.trigger,
-                  count: t.count
-                }))}
-                labelKey="trigger"
+                items={stats.runs.byTrigger.map((t) => ({ key: t.trigger, count: t.count }))}
                 labels={TRIGGER_LABELS}
               />
             )}
           </div>
-        </div>
+        </Card>
 
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-5">
-          <h2 className="text-sm font-semibold text-zinc-200">Por status</h2>
-          <p className="text-xs text-zinc-500 mt-1">Resultado das execuções</p>
-          <div className="mt-4">
-            {stats && (
+        <Card>
+          <CardHeader title="Por status" subtitle="Resultado das execuções" />
+          <div className="mt-5">
+            {loading || !stats ? (
+              <div className="space-y-4">
+                <Skeleton className="h-8" />
+                <Skeleton className="h-8" />
+                <Skeleton className="h-8" />
+              </div>
+            ) : (
               <DistributionList
-                items={stats.runs.byStatus.map((s) => ({
-                  status: s.status,
-                  count: s.count
-                }))}
-                labelKey="status"
+                items={stats.runs.byStatus.map((s) => ({ key: s.status, count: s.count }))}
                 labels={STATUS_LABELS}
                 colors={STATUS_COLORS}
               />
             )}
           </div>
-        </div>
-      </div>
+        </Card>
+      </section>
 
-      <div className="mt-6 rounded-2xl border border-zinc-800 bg-zinc-950/60 p-5">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h2 className="text-sm font-semibold text-zinc-200">Fluxos mais executados</h2>
-            <p className="text-xs text-zinc-500 mt-1">Ranking geral</p>
-          </div>
-          <Link to="/flows" className="text-xs text-emerald-400 hover:underline shrink-0">
-            Gerenciar fluxos
-          </Link>
-        </div>
-        <div className="mt-4 space-y-2">
+      {/* Ranking */}
+      <Card>
+        <CardHeader
+          title="Fluxos mais executados"
+          subtitle="Ranking geral"
+          action={
+            <Link
+              to="/flows"
+              className="text-xs text-brand-400 transition hover:text-brand-300"
+            >
+              Gerenciar fluxos
+            </Link>
+          }
+        />
+        <div className="mt-5 space-y-2">
+          {loading && (
+            <>
+              <Skeleton className="h-16 rounded-xl" />
+              <Skeleton className="h-16 rounded-xl" />
+            </>
+          )}
           {stats?.topFlows.map((f, i) => (
             <Link
               key={f.flowId}
               to={`/flows/${f.flowId}/runs`}
-              className="flex items-center justify-between gap-4 rounded-xl border border-zinc-800/80 bg-zinc-900/30 px-4 py-3 hover:border-zinc-700 transition"
+              className="group flex items-center justify-between gap-4 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/60 px-4 py-3 transition hover:border-[var(--line-strong)] hover:bg-[var(--surface-2)]"
             >
-              <div className="flex items-center gap-3 min-w-0">
-                <span className="text-xs font-bold text-zinc-600 w-5">{i + 1}.</span>
+              <div className="flex min-w-0 items-center gap-3.5">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-3)] text-xs font-semibold tabular-nums text-zinc-400">
+                  {i + 1}
+                </span>
                 <div className="min-w-0">
-                  <div className="text-sm font-medium truncate">{f.name}</div>
-                  <div className="text-xs text-zinc-500">
-                    {f.enabled ? "Ativo" : "Inativo"} · {f.count} execuções
+                  <div className="truncate text-sm font-medium text-zinc-100">{f.name}</div>
+                  <div className="mt-0.5 flex items-center gap-2 text-xs text-zinc-500">
+                    <Badge tone={f.enabled ? "success" : "neutral"} dot>
+                      {f.enabled ? "Ativo" : "Inativo"}
+                    </Badge>
+                    <span className="tabular-nums">{f.count} execuções</span>
                   </div>
                 </div>
               </div>
-              <span className="text-xs text-zinc-500 shrink-0">Ver →</span>
+              <Icon
+                name="chevronRight"
+                className="h-4 w-4 shrink-0 text-zinc-600 transition group-hover:translate-x-0.5 group-hover:text-brand-400"
+              />
             </Link>
           ))}
-          {stats && stats.topFlows.length === 0 && (
-            <p className="text-sm text-zinc-600">Nenhuma execução registrada ainda.</p>
+          {!loading && stats && stats.topFlows.length === 0 && (
+            <EmptyState
+              icon="activity"
+              title="Nenhuma execução registrada"
+              description="Assim que um fluxo rodar, o ranking aparece aqui."
+            />
           )}
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

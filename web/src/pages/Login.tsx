@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, setToken } from "../api/client";
+import { ErrorNotice, Icon, inputClass } from "../components/ui";
 
 export function Login() {
   const nav = useNavigate();
@@ -20,11 +21,12 @@ export function Login() {
       });
       setToken(res.token);
       nav("/");
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "";
       setError(
-        err?.message?.includes("401") || err?.message?.includes("Credenciais")
+        message.includes("401") || message.includes("Credenciais")
           ? "Email ou senha incorretos. Use o ADMIN_EMAIL e ADMIN_PASSWORD do EasyPanel."
-          : err?.message ?? "Não foi possível entrar. Verifique se o app subiu com o banco."
+          : message || "Não foi possível entrar. Verifique se o app subiu com o banco."
       );
     } finally {
       setLoading(false);
@@ -32,42 +34,54 @@ export function Login() {
   }
 
   return (
-    <div className="min-h-full flex items-center justify-center p-6">
-      <div className="w-full max-w-md">
+    <div className="relative flex min-h-full items-center justify-center overflow-hidden p-6">
+      {/* halo de fundo */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute left-1/2 top-0 h-[520px] w-[720px] -translate-x-1/2 -translate-y-1/3 rounded-full bg-brand-500/10 blur-[120px]"
+      />
+
+      <div className="zap-enter relative w-full max-w-[400px]">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-2xl font-bold text-emerald-400">
+          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-400 to-brand-600 text-2xl font-bold text-zinc-950 shadow-xl shadow-emerald-500/25">
             Z
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight text-white">Zap Automação</h1>
-          <p className="mt-1 text-sm text-zinc-400">WhatsApp + fluxos visuais</p>
+          <h1 className="text-[26px] font-semibold tracking-tight text-white">Zap Automação</h1>
+          <p className="mt-1.5 text-sm text-zinc-500">WhatsApp, inbox e fluxos visuais</p>
         </div>
 
         <form
           onSubmit={submit}
-          className="rounded-2xl border border-zinc-800/80 bg-zinc-950/80 p-6 shadow-2xl shadow-black/40 backdrop-blur"
+          className="rounded-2xl border border-[var(--line)] bg-[var(--surface-1)]/90 p-6 shadow-2xl shadow-black/50 backdrop-blur-xl"
         >
           {error && (
-            <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-sm text-red-200">
-              {error}
+            <div className="mb-5">
+              <ErrorNotice>{error}</ErrorNotice>
             </div>
           )}
 
-          <label className="block text-xs font-medium text-zinc-400 mb-1.5">Email</label>
+          <label htmlFor="login-email" className="mb-1.5 block text-xs font-medium text-zinc-400">
+            Email
+          </label>
           <input
+            id="login-email"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="mb-4 w-full rounded-xl border border-zinc-700 bg-zinc-900/80 px-3 py-2.5 text-sm text-white outline-none transition focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/20"
+            className={`${inputClass} mb-4`}
             required
             autoComplete="email"
           />
 
-          <label className="block text-xs font-medium text-zinc-400 mb-1.5">Senha</label>
+          <label htmlFor="login-password" className="mb-1.5 block text-xs font-medium text-zinc-400">
+            Senha
+          </label>
           <input
+            id="login-password"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="mb-6 w-full rounded-xl border border-zinc-700 bg-zinc-900/80 px-3 py-2.5 text-sm text-white outline-none transition focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/20"
+            className={`${inputClass} mb-6`}
             required
             autoComplete="current-password"
           />
@@ -75,16 +89,23 @@ export function Login() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-xl bg-emerald-500 py-2.5 text-sm font-semibold text-zinc-950 transition hover:bg-emerald-400 disabled:opacity-50"
+            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-brand-500 text-sm font-semibold text-zinc-950 transition hover:bg-brand-400 active:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading ? "Entrando…" : "Entrar"}
+            {loading ? (
+              <>
+                <Icon name="refresh" className="h-4 w-4 animate-spin" />
+                Entrando…
+              </>
+            ) : (
+              "Entrar"
+            )}
           </button>
-
-          <p className="mt-4 text-center text-xs text-zinc-500">
-            Use as variáveis <span className="text-zinc-400">ADMIN_EMAIL</span> e{" "}
-            <span className="text-zinc-400">ADMIN_PASSWORD</span> do EasyPanel.
-          </p>
         </form>
+
+        <p className="mt-5 text-center text-xs leading-relaxed text-zinc-600">
+          Credenciais definidas em <span className="text-zinc-500">ADMIN_EMAIL</span> e{" "}
+          <span className="text-zinc-500">ADMIN_PASSWORD</span> no EasyPanel.
+        </p>
       </div>
     </div>
   );

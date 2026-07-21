@@ -1,5 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  ErrorNotice,
+  Icon,
+  PageHeader,
+  SearchInput,
+  Skeleton
+} from "../components/ui";
 
 type MediaKind = "image" | "video" | "audio" | "document" | "other";
 
@@ -199,132 +210,149 @@ export function MediaLibrary() {
   }
 
   return (
-    <div className="max-w-6xl">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-white">Mídias</h1>
-          <p className="text-sm text-zinc-400 mt-1 max-w-2xl leading-relaxed">
-            Arquivos salvos no servidor (geralmente após você abrir ou enviar mídia). Exclua o que
-            não precisar para liberar espaço ou baixe novamente quando quiser.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => void load()}
-          disabled={loading}
-          className="rounded-xl border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-900 disabled:opacity-50"
-        >
-          Atualizar
-        </button>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Mídias"
+        subtitle="Arquivos salvos no servidor (geralmente após você abrir ou enviar mídia). Exclua o que não precisar para liberar espaço ou baixe novamente quando quiser."
+        actions={
+          <Button icon="refresh" disabled={loading} onClick={() => void load()}>
+            Atualizar
+          </Button>
+        }
+      />
 
-      <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">
-          <div className="text-xs text-zinc-500">Arquivos</div>
-          <div className="text-2xl font-semibold mt-1">{totalFiles}</div>
-        </div>
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">
-          <div className="text-xs text-zinc-500">Espaço usado</div>
-          <div className="text-2xl font-semibold mt-1">{formatBytes(totalBytes)}</div>
-        </div>
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">
-          <div className="text-xs text-zinc-500">Filtro ativo</div>
-          <div className="text-lg font-medium mt-1 text-emerald-300">
-            {filter === "all" ? "Todas" : filter === "received" ? "Recebidas" : "Enviadas"}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <Card className="p-4" padded={false}>
+          <div className="text-xs font-medium text-zinc-500">Arquivos</div>
+          {loading ? (
+            <Skeleton className="mt-2.5 h-7 w-16" />
+          ) : (
+            <div className="mt-2 text-[26px] font-semibold leading-none tracking-tight text-white">
+              {totalFiles}
+            </div>
+          )}
+        </Card>
+        <Card className="p-4" padded={false}>
+          <div className="text-xs font-medium text-zinc-500">Espaço usado</div>
+          {loading ? (
+            <Skeleton className="mt-2.5 h-7 w-24" />
+          ) : (
+            <div className="mt-2 text-[26px] font-semibold leading-none tracking-tight text-white">
+              {formatBytes(totalBytes)}
+            </div>
+          )}
+        </Card>
+        <Card className="p-4" padded={false}>
+          <div className="text-xs font-medium text-zinc-500">Filtro ativo</div>
+          <div className="mt-3">
+            <Badge tone="success">
+              {filter === "all" ? "Todas" : filter === "received" ? "Recebidas" : "Enviadas"}
+            </Badge>
           </div>
-        </div>
+        </Card>
       </div>
 
-      <div className="mt-6 flex flex-wrap gap-2 items-center">
-        {(
-          [
-            { id: "all" as const, label: "Todas" },
-            { id: "received" as const, label: "Recebidas" },
-            { id: "sent" as const, label: "Enviadas" }
-          ] as const
-        ).map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setFilter(t.id)}
-            className={`rounded-lg px-4 py-2 text-sm transition ${
-              filter === t.id
-                ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/25"
-                : "text-zinc-400 hover:text-zinc-200 border border-zinc-800"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-        <input
-          type="search"
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex gap-1 rounded-xl border border-[var(--line)] bg-[var(--surface-1)] p-1">
+          {(
+            [
+              { id: "all" as const, label: "Todas" },
+              { id: "received" as const, label: "Recebidas" },
+              { id: "sent" as const, label: "Enviadas" }
+            ] as const
+          ).map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setFilter(t.id)}
+              className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${
+                filter === t.id
+                  ? "bg-brand-500/12 text-brand-300"
+                  : "text-zinc-400 hover:bg-[var(--surface-2)] hover:text-zinc-200"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <SearchInput
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={setSearch}
           placeholder="Buscar por nome ou legenda…"
-          aria-label="Buscar mídias"
-          className="ml-auto min-w-[220px] flex-1 max-w-sm rounded-xl border border-zinc-800 bg-zinc-950/80 px-4 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500/40"
+          className="ml-auto min-w-[220px] max-w-sm flex-1"
         />
       </div>
 
       {!loading && filtered.length > 0 && (
-        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
-          <label className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface-1)] px-4 py-3">
+          <label className="flex cursor-pointer items-center gap-2.5 text-sm text-zinc-300">
             <input
               type="checkbox"
               checked={allFilteredSelected}
               onChange={toggleSelectAllFiltered}
-              className="rounded border-zinc-600"
+              className="h-4 w-4 rounded border-zinc-600 accent-emerald-500"
             />
             Selecionar todas ({filtered.length})
           </label>
-          <button
-            type="button"
-            disabled={bulkDeleting || selectedCount === 0}
-            onClick={() => void handleBulkDelete("selected")}
-            className="rounded-lg border border-red-500/30 px-3 py-1.5 text-xs text-red-300 hover:bg-red-500/10 disabled:opacity-40"
-          >
-            {bulkDeleting ? "Excluindo…" : `Excluir selecionadas (${selectedCount})`}
-          </button>
-          <button
-            type="button"
-            disabled={bulkDeleting}
-            onClick={() => void handleBulkDelete("all")}
-            className="rounded-lg border border-red-500/40 px-3 py-1.5 text-xs text-red-200 hover:bg-red-500/10 disabled:opacity-40"
-          >
-            Excluir todas visíveis
-          </button>
+          <div className="ml-auto flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="danger"
+              icon="trash"
+              disabled={bulkDeleting || selectedCount === 0}
+              onClick={() => void handleBulkDelete("selected")}
+            >
+              {bulkDeleting ? "Excluindo…" : `Excluir selecionadas (${selectedCount})`}
+            </Button>
+            <Button
+              size="sm"
+              variant="danger"
+              disabled={bulkDeleting}
+              onClick={() => void handleBulkDelete("all")}
+            >
+              Excluir todas visíveis
+            </Button>
+          </div>
         </div>
       )}
 
-      {error && (
-        <p className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-          {error}
-        </p>
-      )}
+      {error && <ErrorNotice>{error}</ErrorNotice>}
 
       {loading ? (
-        <p className="mt-8 text-sm text-zinc-500 animate-pulse">Carregando mídias…</p>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {[0, 1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-72 rounded-2xl" />
+          ))}
+        </div>
       ) : filtered.length === 0 ? (
-        <p className="mt-8 text-sm text-zinc-500">
-          Nenhuma mídia encontrada{search ? " para essa busca" : ""}.
-        </p>
+        <EmptyState
+          icon="media"
+          title={search ? "Nenhuma mídia para essa busca" : "Nenhuma mídia salva"}
+          description={
+            search
+              ? "Tente outro termo ou troque o filtro acima."
+              : "Os arquivos aparecem aqui depois que você abre ou envia mídia nas conversas."
+          }
+        />
       ) : (
-        <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filtered.map((item) => (
             <article
               key={item.filename}
-              className={`rounded-2xl border bg-zinc-950/50 overflow-hidden flex flex-col ${
-                selected.has(item.filename) ? "border-emerald-500/40" : "border-zinc-800"
+              className={`flex flex-col overflow-hidden rounded-2xl border bg-[var(--surface-1)] transition ${
+                selected.has(item.filename)
+                  ? "border-brand-500/45 ring-1 ring-brand-500/20"
+                  : "border-[var(--line)] hover:border-[var(--line-strong)]"
               }`}
             >
-              <div className="aspect-video bg-zinc-900 relative flex items-center justify-center overflow-hidden">
-                <label className="absolute top-2 right-2 z-10 flex items-center justify-center w-7 h-7 rounded-full bg-black/60 cursor-pointer">
+              <div className="relative flex aspect-video items-center justify-center overflow-hidden bg-[var(--surface-2)]">
+                <label className="absolute right-2 top-2 z-10 flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-black/60 backdrop-blur">
                   <input
                     type="checkbox"
                     checked={selected.has(item.filename)}
                     onChange={() => toggleSelect(item.filename)}
                     aria-label={`Selecionar ${item.filename}`}
-                    className="rounded border-zinc-500"
+                    className="h-4 w-4 rounded border-zinc-500 accent-emerald-500"
                   />
                 </label>
                 {item.kind === "image" ? (
@@ -344,12 +372,12 @@ export function MediaLibrary() {
                 ) : (
                   <span className="text-4xl opacity-80">{KIND_ICON[item.kind]}</span>
                 )}
-                <span className="absolute top-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] text-zinc-200">
+                <span className="absolute left-2 top-2 rounded-full bg-black/60 px-2.5 py-0.5 text-[10px] font-medium text-zinc-200 backdrop-blur">
                   {KIND_LABEL[item.kind]}
                 </span>
               </div>
 
-              <div className="p-3 flex-1 flex flex-col gap-2">
+              <div className="flex flex-1 flex-col gap-2 p-3.5">
                 <p className="text-xs text-zinc-500 truncate" title={item.filename}>
                   {item.filename}
                 </p>
@@ -372,8 +400,12 @@ export function MediaLibrary() {
                   <button
                     type="button"
                     onClick={() => void handleCopyUrl(item)}
-                    className="w-full rounded-lg border border-emerald-500/30 px-3 py-2 text-xs text-emerald-300 hover:bg-emerald-500/10 transition"
+                    className="inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-brand-500/30 px-3 text-xs text-brand-300 transition hover:bg-brand-500/10"
                   >
+                    <Icon
+                      name={copiedFilename === item.filename ? "check" : "copy"}
+                      className="h-3.5 w-3.5"
+                    />
                     {copiedFilename === item.filename ? "URL copiada!" : "Copiar URL"}
                   </button>
                   <div className="flex gap-2">
@@ -382,18 +414,21 @@ export function MediaLibrary() {
                       download={item.filename}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex-1 rounded-lg border border-zinc-700 px-3 py-2 text-center text-xs text-zinc-200 hover:bg-zinc-900 transition"
+                      className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg border border-[var(--line-strong)] bg-[var(--surface-2)] px-3 text-xs text-zinc-200 transition hover:bg-[var(--surface-3)]"
                     >
+                      <Icon name="download" className="h-3.5 w-3.5" />
                       Baixar
                     </a>
-                    <button
-                      type="button"
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      icon="trash"
+                      className="flex-1"
                       disabled={deleting === item.filename}
                       onClick={() => void handleDelete(item)}
-                      className="flex-1 rounded-lg border border-red-500/30 px-3 py-2 text-xs text-red-300 hover:bg-red-500/10 disabled:opacity-50 transition"
                     >
                       {deleting === item.filename ? "…" : "Excluir"}
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </div>

@@ -3,7 +3,8 @@ import tsPlugin from "@typescript-eslint/eslint-plugin";
 
 export default [
   {
-    ignores: ["**/dist/**", "**/node_modules/**", "prisma/**", ".local/**"],
+    // typebot/ é uma cópia de terceiros (582 MB) — não é código deste projeto
+    ignores: ["**/dist/**", "**/node_modules/**", "prisma/**", ".local/**", "typebot/**"],
   },
   {
     files: ["**/*.{ts,tsx}"],

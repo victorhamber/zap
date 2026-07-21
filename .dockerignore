@@ -7,5 +7,17 @@ api/dist
 web/dist
 .vite
 *.log
+*.tsbuildinfo
 n8n-templates
 .cursor
+
+# cópia local do typebot (582 MB) — não é código deste projeto e só faz
+# o contexto do docker build engordar
+typebot
+*.zip
+
+# nada disso precisa ir para a imagem
+.claude
+deploy
+*.md
+!README.md

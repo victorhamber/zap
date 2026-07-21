@@ -59,6 +59,12 @@ const EnvSchema = z.object({
   FLOW_DISPATCH_MAX_SEC: z.coerce.number().int().positive().default(30),
 
   HOTMART_WEBHOOK_SECRET: z.string().optional(),
+  /**
+   * Segredo compartilhado dos webhooks de mensagem (WPPConnect/Evolution).
+   * Se definido, exigimos o header x-webhook-secret — sem ele, qualquer um
+   * poderia injetar mensagens no inbox e disparar fluxos.
+   */
+  WHATSAPP_WEBHOOK_SECRET: z.string().optional(),
   ADMIN_EMAIL: z.string().email().default("admin@trajettu.com"),
   ADMIN_PASSWORD: z.string().min(6).default("admin123"),
 
@@ -83,6 +89,14 @@ const EnvSchema = z.object({
   AI_MEMORY_MIN_NEW_MSGS: z.coerce.number().int().positive().default(2)
 }).superRefine((data, ctx) => {
   if (!isProd) return;
+  if (data.ADMIN_PASSWORD === "admin123") {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["ADMIN_PASSWORD"],
+      message:
+        "Defina ADMIN_PASSWORD em produção. Sem essa variável o painel sobe com a senha padrão 'admin123' e fica aberto na internet."
+    });
+  }
   if (data.WHATSAPP_PROVIDER === "wppconnect") {
     const key = data.WPP_SECRET_KEY?.trim() ?? "";
     if (key.length < 8) {

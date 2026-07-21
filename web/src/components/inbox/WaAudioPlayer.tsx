@@ -104,15 +104,33 @@ export const WaAudioPlayer = memo(function WaAudioPlayer({ src, fromMe }: Props)
     });
   };
 
-  const seek = (e: React.MouseEvent<HTMLDivElement>) => {
+  const seekToRatio = (ratio: number) => {
     const el = audioRef.current;
     if (!el || !el.duration) return;
+    const clamped = Math.min(1, Math.max(0, ratio));
+    el.currentTime = clamped * el.duration;
+    setProgress(clamped * 100);
+    setCurrent(clamped * el.duration);
+  };
+
+  const seek = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
-    el.currentTime = ratio * el.duration;
-    const p = ratio * 100;
-    setProgress(p);
-    setCurrent(ratio * el.duration);
+    seekToRatio((e.clientX - rect.left) / rect.width);
+  };
+
+  /** role="slider" só é útil se responder às setas — sem isso é armadilha de teclado. */
+  const seekByKeyboard = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const step =
+      e.key === "ArrowRight" || e.key === "ArrowUp"
+        ? 0.05
+        : e.key === "ArrowLeft" || e.key === "ArrowDown"
+          ? -0.05
+          : null;
+    if (step === null && e.key !== "Home" && e.key !== "End") return;
+    e.preventDefault();
+    if (e.key === "Home") return seekToRatio(0);
+    if (e.key === "End") return seekToRatio(1);
+    seekToRatio(progress / 100 + (step ?? 0));
   };
 
   const accent = fromMe ? "bg-[#53bdeb]" : "bg-[#00a884]";
@@ -142,10 +160,12 @@ export const WaAudioPlayer = memo(function WaAudioPlayer({ src, fromMe }: Props)
         <div
           className="flex items-end gap-[2px] h-6 cursor-pointer"
           onClick={seek}
+          onKeyDown={seekByKeyboard}
           role="slider"
-          aria-valuemin="0"
-          aria-valuemax="100"
-          aria-valuenow={String(Math.round(progress))}
+          tabIndex={0}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(progress)}
           aria-label="Posição do áudio"
         >
           {bars.map((h, i) => {

@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply } from "fastify";
 import { prisma } from "../prisma.js";
 import { env } from "../env.js";
 import {
@@ -76,6 +76,19 @@ async function triggerInboundFlows(params: {
   }
 
   return started;
+}
+
+/**
+ * Webhooks de mensagem são públicos por natureza (o WPPConnect/Evolution chama
+ * de fora). Se WHATSAPP_WEBHOOK_SECRET estiver definido, exigimos o header —
+ * sem ele, qualquer um consegue injetar mensagens no inbox e disparar fluxos.
+ * Configure o mesmo valor no header do webhook lá no provedor.
+ */
+function whatsappWebhookAuthorized(req: { headers: Record<string, unknown> }): boolean {
+  const expected = env.WHATSAPP_WEBHOOK_SECRET?.trim();
+  if (!expected) return true;
+  const got = req.headers["x-webhook-secret"];
+  return typeof got === "string" && got === expected;
 }
 
 export async function webhookRoutes(app: FastifyInstance) {
@@ -162,8 +175,11 @@ export async function webhookRoutes(app: FastifyInstance) {
     };
   });
 
-  app.post("/api/webhooks/wppconnect", async (req) => {
+  app.post("/api/webhooks/wppconnect", async (req, reply) => {
     if (!prisma) return { ok: false };
+    if (!whatsappWebhookAuthorized(req)) {
+      return reply.status(401).send({ error: "Webhook não autorizado" });
+    }
 
     const raw = (req.body ?? {}) as Record<string, unknown>;
     const body = normalizeWppWebhookBody(raw);
@@ -295,6 +311,9 @@ export async function webhookRoutes(app: FastifyInstance) {
 
   app.post("/api/webhooks/evolution", async (req, reply) => {
     if (!prisma) return { ok: false };
+    if (!whatsappWebhookAuthorized(req)) {
+      return reply.status(401).send({ error: "Webhook não autorizado" });
+    }
 
     const body = (req.body ?? {}) as Record<string, unknown>;
     const event = String(body.event ?? "").toLowerCase();
@@ -448,6 +467,9 @@ export async function webhookRoutes(app: FastifyInstance) {
 
   app.post("/api/webhooks/meta", async (req, reply) => {
     if (!prisma) return { ok: false };
+    if (!whatsappWebhookAuthorized(req)) {
+      return reply.status(401).send({ error: "Webhook não autorizado" });
+    }
 
     const body = (req.body ?? {}) as Record<string, unknown>;
     const { parseMetaWebhookMessages } = await import("../services/whatsapp/metaWebhook.js");

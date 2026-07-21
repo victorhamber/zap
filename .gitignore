@@ -7,6 +7,10 @@ api/dist
 web/dist
 .vite
 *.log
+*.tsbuildinfo
+
+# cópia local do typebot para consulta (582 MB) — não versionar
+typebot/
 
 prisma/dev.db
 api/uploads/*

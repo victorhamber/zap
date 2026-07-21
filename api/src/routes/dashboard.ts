@@ -14,12 +14,23 @@ function daysAgo(n: number): Date {
   return d;
 }
 
+/**
+ * Chave YYYY-MM-DD no fuso do servidor. Usar toISOString() aqui jogaria os
+ * eventos da noite (UTC-3) para o dia seguinte, fora do intervalo consultado.
+ */
+function localDayKey(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 function last7DayKeys(): string[] {
   const keys: string[] = [];
   for (let i = 6; i >= 0; i--) {
-    const d = new Date();
+    const d = startOfToday();
     d.setDate(d.getDate() - i);
-    keys.push(d.toISOString().slice(0, 10));
+    keys.push(localDayKey(d));
   }
   return keys;
 }
@@ -28,7 +39,7 @@ function bucketByDay(items: { at: Date }[]): { date: string; count: number }[] {
   const keys = last7DayKeys();
   const map = Object.fromEntries(keys.map((k) => [k, 0]));
   for (const item of items) {
-    const key = item.at.toISOString().slice(0, 10);
+    const key = localDayKey(item.at);
     if (key in map) map[key]++;
   }
   return keys.map((date) => ({ date, count: map[date] ?? 0 }));
@@ -96,9 +107,11 @@ export async function dashboardRoutes(app: FastifyInstance) {
         where: { createdAt: { gte: weekStart } },
         select: { createdAt: true }
       }),
+      // só as enviadas: é o único recorte usado no gráfico e evita puxar
+      // todo o inbox recebido da semana para a memória do processo
       prisma.inboxMessage.findMany({
-        where: { timestamp: { gte: weekStart } },
-        select: { timestamp: true, fromMe: true }
+        where: { fromMe: true, timestamp: { gte: weekStart } },
+        select: { timestamp: true }
       }),
       prisma.inboxMessage.count({ where: { fromMe: true, timestamp: { gte: today } } }),
       prisma.inboxMessage.count({ where: { fromMe: false, timestamp: { gte: today } } }),
@@ -139,10 +152,8 @@ export async function dashboardRoutes(app: FastifyInstance) {
       messages: {
         sentToday: messagesSentToday,
         receivedToday: messagesReceivedToday,
-        sentLast7Days: weekMessages.filter((m) => m.fromMe).length,
-        dailySent: bucketByDay(
-          weekMessages.filter((m) => m.fromMe).map((m) => ({ at: m.timestamp }))
-        )
+        sentLast7Days: weekMessages.length,
+        dailySent: bucketByDay(weekMessages.map((m) => ({ at: m.timestamp })))
       },
       scheduled: { pending: scheduledPending },
       topFlows: topFlowGroups.map((g) => {

@@ -1,6 +1,17 @@
-import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  ErrorNotice,
+  Icon,
+  LinkButton,
+  PageHeader,
+  Skeleton
+} from "../components/ui";
 
 type Flow = {
   id: string;
@@ -9,106 +20,192 @@ type Flow = {
   updatedAt: string;
 };
 
+function formatUpdatedAt(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
 export function FlowsList() {
   const nav = useNavigate();
   const [flows, setFlows] = useState<Flow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  async function refresh() {
-    setFlows(await api<Flow[]>("/api/flows"));
-  }
-
-  useEffect(() => {
-    refresh();
+  const refresh = useCallback(async () => {
+    setError("");
+    try {
+      setFlows(await api<Flow[]>("/api/flows"));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Não foi possível carregar os fluxos.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
   async function createFlow() {
-    const f = await api<Flow>("/api/flows", {
-      method: "POST",
-      body: JSON.stringify({ name: "Novo fluxo" })
-    });
-    nav(`/flows/${f.id}/edit`);
+    try {
+      const f = await api<Flow>("/api/flows", {
+        method: "POST",
+        body: JSON.stringify({ name: "Novo fluxo" })
+      });
+      nav(`/flows/${f.id}/edit`);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Não foi possível criar o fluxo.");
+    }
   }
 
-  async function toggle(id: string, enabled: boolean) {
-    await api(`/api/flows/${id}`, {
-      method: "PUT",
-      body: JSON.stringify({ enabled: !enabled })
-    });
-    refresh();
+  async function toggle(flow: Flow) {
+    setBusyId(flow.id);
+    try {
+      await api(`/api/flows/${flow.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ enabled: !flow.enabled })
+      });
+      await refresh();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Não foi possível alterar o fluxo.");
+    } finally {
+      setBusyId(null);
+    }
   }
 
-  async function removeFlow(id: string, flowName: string) {
-    if (!confirm(`Excluir o fluxo "${flowName}"? Esta ação não pode ser desfeita.`)) return;
-    await api(`/api/flows/${id}`, { method: "DELETE" });
-    refresh();
+  async function removeFlow(flow: Flow) {
+    if (!window.confirm(`Excluir o fluxo "${flow.name}"? Esta ação não pode ser desfeita.`)) return;
+    setBusyId(flow.id);
+    try {
+      await api(`/api/flows/${flow.id}`, { method: "DELETE" });
+      await refresh();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Não foi possível excluir o fluxo.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function copyWebhook(flow: Flow) {
+    const url = `${window.location.origin}/api/webhooks/hotmart/${flow.id}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedId(flow.id);
+      window.setTimeout(
+        () => setCopiedId((c) => (c === flow.id ? null : c)),
+        2000
+      );
+    } catch {
+      window.prompt("Copie a URL do webhook:", url);
+    }
   }
 
   return (
-    <div>
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Fluxos</h1>
-          <p className="text-sm text-zinc-400 mt-1">Automações visuais</p>
-        </div>
-        <button
-          onClick={createFlow}
-          className="rounded-xl bg-emerald-400 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-300"
-        >
-          + Novo fluxo
-        </button>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Fluxos"
+        subtitle="Automações visuais disparadas por compra, tag, mensagem recebida ou broadcast."
+        actions={
+          <Button variant="primary" icon="plus" onClick={() => void createFlow()}>
+            Novo fluxo
+          </Button>
+        }
+      />
 
-      <div className="mt-6 space-y-2">
-        {flows.map((f) => (
-          <div
-            key={f.id}
-            className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4 flex items-center justify-between gap-4"
-          >
-            <div>
-              <div className="font-medium">{f.name}</div>
-              <div className="text-xs text-zinc-500 font-mono mt-0.5">ID: {f.id}</div>
-              <div className="text-xs text-zinc-500 mt-1">
-                Webhook Hotmart:{" "}
-                <span className="text-zinc-300">
-                  /api/webhooks/hotmart/{f.id}
-                </span>
+      {error && <ErrorNotice>{error}</ErrorNotice>}
+
+      {loading ? (
+        <div className="space-y-3">
+          <Skeleton className="h-[104px] rounded-2xl" />
+          <Skeleton className="h-[104px] rounded-2xl" />
+          <Skeleton className="h-[104px] rounded-2xl" />
+        </div>
+      ) : flows.length === 0 ? (
+        <EmptyState
+          icon="flow"
+          title="Nenhum fluxo criado ainda"
+          description="Um fluxo é a sequência de mensagens, esperas e condições que roda sozinha quando o gatilho acontece."
+          action={
+            <Button variant="primary" icon="plus" onClick={() => void createFlow()}>
+              Criar primeiro fluxo
+            </Button>
+          }
+        />
+      ) : (
+        <div className="space-y-3">
+          {flows.map((f) => (
+            <Card key={f.id} padded={false} interactive className="p-4">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <h2 className="truncate text-[15px] font-medium text-zinc-100">{f.name}</h2>
+                    <Badge tone={f.enabled ? "success" : "neutral"} dot>
+                      {f.enabled ? "Ativo" : "Pausado"}
+                    </Badge>
+                  </div>
+
+                  <p className="mt-1.5 text-xs text-zinc-500">
+                    Atualizado em {formatUpdatedAt(f.updatedAt)}
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={() => void copyWebhook(f)}
+                    title="Copiar URL do webhook Hotmart"
+                    className="group mt-3 inline-flex max-w-full items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-2.5 py-1.5 text-left transition hover:border-brand-500/30"
+                  >
+                    <Icon
+                      name={copiedId === f.id ? "check" : "copy"}
+                      className={`h-3.5 w-3.5 shrink-0 ${
+                        copiedId === f.id ? "text-brand-400" : "text-zinc-500"
+                      }`}
+                    />
+                    <code className="truncate font-mono text-[11px] text-zinc-400">
+                      {copiedId === f.id
+                        ? "URL do webhook copiada!"
+                        : `/api/webhooks/hotmart/${f.id}`}
+                    </code>
+                  </button>
+                </div>
+
+                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    icon="power"
+                    disabled={busyId === f.id}
+                    onClick={() => void toggle(f)}
+                    title={f.enabled ? "Pausar fluxo" : "Ativar fluxo"}
+                  >
+                    {f.enabled ? "Pausar" : "Ativar"}
+                  </Button>
+                  <LinkButton size="sm" icon="pencil" to={`/flows/${f.id}/edit`}>
+                    Editar
+                  </LinkButton>
+                  <LinkButton size="sm" icon="list" to={`/flows/${f.id}/runs`}>
+                    Logs
+                  </LinkButton>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    icon="trash"
+                    disabled={busyId === f.id}
+                    onClick={() => void removeFlow(f)}
+                    aria-label={`Excluir ${f.name}`}
+                  />
+                </div>
               </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => toggle(f.id, f.enabled)}
-                className={`text-xs rounded-full px-3 py-1 ${
-                  f.enabled ? "bg-emerald-500/20 text-emerald-300" : "bg-zinc-800 text-zinc-400"
-                }`}
-              >
-                {f.enabled ? "Ativo" : "Pausado"}
-              </button>
-              <Link
-                to={`/flows/${f.id}/edit`}
-                className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-900"
-              >
-                Editar
-              </Link>
-              <Link
-                to={`/flows/${f.id}/runs`}
-                className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-900"
-              >
-                Logs
-              </Link>
-              <button
-                type="button"
-                onClick={() => removeFlow(f.id, f.name)}
-                className="rounded-lg border border-red-900/50 px-3 py-1.5 text-sm text-red-300 hover:bg-red-950/40"
-              >
-                Excluir
-              </button>
-            </div>
-          </div>
-        ))}
-        {flows.length === 0 && (
-          <p className="text-zinc-500 text-sm">Crie seu primeiro fluxo.</p>
-        )}
-      </div>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -82,10 +82,7 @@ async function sendWithRetries<T>(send: () => Promise<T>): Promise<T> {
   throw last;
 }
 
-async function sendMediaWithRetries(
-  label: string,
-  send: () => Promise<unknown>
-): Promise<void> {
+async function sendMediaWithRetries(send: () => Promise<unknown>): Promise<void> {
   await sendWithRetries(send);
 }
 
@@ -253,12 +250,27 @@ async function logStep(
   });
 }
 
+/**
+ * Máximo de blocos executados numa mesma "rodada" (sem delay/agendamento no meio).
+ * Protege contra fluxos com ciclo desenhados no editor: sem isso a recursão
+ * abaixo dispararia envios em loop até estourar a pilha.
+ */
+const MAX_NODES_PER_RUN_SEGMENT = 200;
+
 async function executeNode(
   graph: FlowGraph,
   flowRunId: string,
   nodeId: string,
-  vars: Record<string, unknown>
+  vars: Record<string, unknown>,
+  visitedCount = 0
 ): Promise<void> {
+  if (visitedCount >= MAX_NODES_PER_RUN_SEGMENT) {
+    const message = `Fluxo excedeu ${MAX_NODES_PER_RUN_SEGMENT} blocos seguidos — provável ciclo no desenho. Execução interrompida.`;
+    await logStep(flowRunId, nodeId, "error", "failed", message);
+    throw new Error(message);
+  }
+  const depth = visitedCount + 1;
+
   const node = getNode(graph, nodeId);
   if (!node) throw new Error(`Nó não encontrado: ${nodeId}`);
 
@@ -310,7 +322,7 @@ async function executeNode(
       });
     }
 
-    await executeNode(graph, flowRunId, nextId, vars);
+    await executeNode(graph, flowRunId, nextId, vars, depth);
     return;
   }
 
@@ -356,7 +368,7 @@ async function executeNode(
       });
     }
 
-    await executeNode(graph, flowRunId, nextId, vars);
+    await executeNode(graph, flowRunId, nextId, vars, depth);
     return;
   }
 
@@ -401,7 +413,7 @@ async function executeNode(
       });
     }
 
-    await executeNode(graph, flowRunId, nextId, vars);
+    await executeNode(graph, flowRunId, nextId, vars, depth);
     return;
   }
 
@@ -451,7 +463,7 @@ async function executeNode(
       });
     }
 
-    await executeNode(graph, flowRunId, nextId, vars);
+    await executeNode(graph, flowRunId, nextId, vars, depth);
     return;
   }
 
@@ -627,7 +639,7 @@ async function executeNode(
     const caption = data.caption ? render(data.caption, vars) : undefined;
     try {
       let waMessageId: string | null = null;
-      await sendMediaWithRetries("send_image", async () => {
+      await sendMediaWithRetries(async () => {
         waMessageId = await wpp.sendImage(phone, data.url, caption);
       });
       try {
@@ -650,7 +662,7 @@ async function executeNode(
     const caption = data.caption ? render(data.caption, vars) : undefined;
     try {
       let waMessageId: string | null = null;
-      await sendMediaWithRetries("send_video", async () => {
+      await sendMediaWithRetries(async () => {
         waMessageId = await wpp.sendVideo(phone, data.url, caption);
       });
       try {
@@ -706,7 +718,7 @@ async function executeNode(
     });
   }
 
-  await executeNode(graph, flowRunId, nextId, vars);
+  await executeNode(graph, flowRunId, nextId, vars, depth);
 }
 
 async function finishRun(flowRunId: string, status: string) {
@@ -791,17 +803,32 @@ export async function startFlowRun(params: {
     }
   }
 
-  const run = await prisma.flowRun.create({
-    data: {
-      flowId: params.flowId,
-      triggerType: recordedTriggerType,
-      contactPhone: params.contactPhone,
-      variables: params.variables as object,
-      externalId: params.externalId,
-      status: "running",
-      currentNodeId: startNodeId
+  let run;
+  try {
+    run = await prisma.flowRun.create({
+      data: {
+        flowId: params.flowId,
+        triggerType: recordedTriggerType,
+        contactPhone: params.contactPhone,
+        variables: params.variables as object,
+        externalId: params.externalId,
+        status: "running",
+        currentNodeId: startNodeId
+      }
+    });
+  } catch (err: unknown) {
+    // webhook reentregue em paralelo: o findUnique acima passou nas duas chamadas
+    // e a unique flowId_externalId barra a segunda. Não é falha, é duplicata.
+    if ((err as { code?: string })?.code === "P2002" && params.externalId) {
+      const existing = await prisma.flowRun.findUnique({
+        where: {
+          flowId_externalId: { flowId: params.flowId, externalId: params.externalId }
+        }
+      });
+      return { skipped: true, reason: "duplicate", runId: existing?.id };
     }
-  });
+    throw err;
+  }
 
   const firstActionId = getNextNodeId(graph, startNodeId);
   if (!firstActionId) {

@@ -18,18 +18,18 @@ model User {
 }
 
 model AppSettings {
-  id              String   @id @default("default")
-  wppBaseUrl      String   @default("https://wpp.trajettu.com")
-  wppSession      String   @default("autofintech")
-  wppToken        String?
-  wppTokenFull    String?
-  connectionStatus String?
-  dismissedWppSessions Json @default("[]")
-  quickReplies       Json      @default("[]")
-  inboxCaptureSince  DateTime?
-  inboxOwnerPhone    String?
-  inboxSessionState  Json      @default("{}")
-  updatedAt          DateTime  @updatedAt
+  id                   String    @id @default("default")
+  wppBaseUrl           String    @default("https://wpp.trajettu.com")
+  wppSession           String    @default("autofintech")
+  wppToken             String?
+  wppTokenFull         String?
+  connectionStatus     String?
+  dismissedWppSessions Json      @default("[]")
+  quickReplies         Json      @default("[]")
+  inboxCaptureSince    DateTime?
+  inboxOwnerPhone      String?
+  inboxSessionState    Json      @default("{}")
+  updatedAt            DateTime  @updatedAt
 }
 
 model InboxMessage {
@@ -49,6 +49,8 @@ model InboxMessage {
   @@unique([session, waMessageId])
   @@index([session, chatId, timestamp])
   @@index([session, ownerPhone, chatId, timestamp])
+  // dashboard: contagens por período (últimos 7 dias, hoje)
+  @@index([timestamp])
 }
 
 model InstanceAiSettings {
@@ -67,7 +69,9 @@ model InstanceAiSettings {
   replyAudio       Boolean  @default(false)
   replyVideo       Boolean  @default(false)
   productContext   String   @default("")
-  /** Fatos oficiais fixos — prioridade sobre aprendizado histórico (ex.: capital mínimo por tipo de conta). */
+  /**
+   * Fatos oficiais fixos — prioridade sobre aprendizado histórico (ex.: capital mínimo por tipo de conta).
+   */
   officialFacts    String   @default("")
   rulesAllowed     String   @default("")
   rulesForbidden   String   @default("")
@@ -99,17 +103,19 @@ model InstanceAiKnowledge {
 }
 
 model InstanceAiChatState {
-  session              String
-  chatId               String
-  mode                 String    @default("auto")
-  lastHumanAt          DateTime?
-  pendingReplyJobId    String?
-  pendingInboundId     String?
-  conversationSummary  String    @default("")
-  summaryMessageCount  Int       @default(0)
-  summaryUpdatedAt     DateTime?
-  /** Última mensagem do inbox já incorporada à memória persistente. */
-  memoryLastMessageId  String?
+  session             String
+  chatId              String
+  mode                String    @default("auto")
+  lastHumanAt         DateTime?
+  pendingReplyJobId   String?
+  pendingInboundId    String?
+  conversationSummary String    @default("")
+  summaryMessageCount Int       @default(0)
+  summaryUpdatedAt    DateTime?
+  /**
+   * Última mensagem do inbox já incorporada à memória persistente.
+   */
+  memoryLastMessageId String?
 
   @@unique([session, chatId])
 }
@@ -129,7 +135,9 @@ model WppInstance {
   id                        String   @id @default(cuid())
   name                      String   @unique
   label                     String?
-  /** baileys = QR Evolution | business = API oficial Meta via Evolution */
+  /**
+   * baileys = QR Evolution | business = API oficial Meta via Evolution
+   */
   integration               String   @default("baileys")
   metaPhoneNumberId         String?
   metaBusinessId            String?
@@ -139,35 +147,37 @@ model WppInstance {
 }
 
 model Flow {
-  id          String   @id @default(cuid())
-  name        String
-  enabled     Boolean  @default(false)
-  graphJson   Json
-  schemaVersion Int    @default(1)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  runs        FlowRun[]
+  id            String    @id @default(cuid())
+  name          String
+  enabled       Boolean   @default(false)
+  graphJson     Json
+  schemaVersion Int       @default(1)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  runs          FlowRun[]
 }
 
 model FlowRun {
-  id            String   @id @default(cuid())
+  id            String         @id @default(cuid())
   flowId        String
-  flow          Flow     @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  flow          Flow           @relation(fields: [flowId], references: [id], onDelete: Cascade)
   triggerType   String
   contactPhone  String
-  variables     Json     @default("{}")
-  status        String   @default("running")
+  variables     Json           @default("{}")
+  status        String         @default("running")
   currentNodeId String?
   externalId    String?
   errorMessage  String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
   steps         FlowRunStep[]
   scheduledJobs ScheduledJob[]
 
   @@unique([flowId, externalId])
   @@index([flowId])
   @@index([status])
+  // dashboard: execuções de hoje / últimos 7 dias
+  @@index([createdAt])
 }
 
 model FlowRunStep {
@@ -185,26 +195,26 @@ model FlowRunStep {
 }
 
 model ScheduledJob {
-  id         String   @id @default(cuid())
-  flowRunId  String
-  flowRun    FlowRun  @relation(fields: [flowRunId], references: [id], onDelete: Cascade)
-  nodeId     String
-  bullJobId  String?
-  runAt      DateTime
-  status     String   @default("pending")
-  createdAt  DateTime @default(now())
+  id        String   @id @default(cuid())
+  flowRunId String
+  flowRun   FlowRun  @relation(fields: [flowRunId], references: [id], onDelete: Cascade)
+  nodeId    String
+  bullJobId String?
+  runAt     DateTime
+  status    String   @default("pending")
+  createdAt DateTime @default(now())
 
   @@index([flowRunId])
   @@index([runAt, status])
 }
 
 model Contact {
-  id        String        @id @default(cuid())
-  phone     String        @unique
+  id        String       @id @default(cuid())
+  phone     String       @unique
   name      String?
   notes     String?
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
   tags      ContactTag[]
 }
 
