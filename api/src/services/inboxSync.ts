@@ -1,7 +1,12 @@
 import { env } from "../env.js";
 import * as wpp from "./whatsapp/index.js";
 import { extractWaId } from "./inbox.js";
-import { parseWppWebhookMessage, saveInboxMessage } from "./inboxStore.js";
+import {
+  getInboxSessionName,
+  messageSyncJidCandidates,
+  parseWppWebhookMessage,
+  saveInboxMessage
+} from "./inboxStore.js";
 import { buildWppSendTarget } from "./wppSend.js";
 import { parseEvolutionMessagePayload } from "./whatsapp/evolutionWebhook.js";
 
@@ -52,25 +57,16 @@ function extractEvolutionMessageRecords(data: unknown): Record<string, unknown>[
   return [];
 }
 
-async function syncRecentMessagesFromEvolution(
-  chatId: string,
-  isGroup?: boolean,
-  count = 40
+async function syncEvolutionMessagesForJid(
+  jid: string,
+  isGroup: boolean | undefined,
+  count: number,
+  session: string
 ): Promise<number> {
-  const target = buildWppSendTarget(chatId, isGroup);
-  const key = target.jid;
-  const now = Date.now();
-  const last = lastSyncByChat.get(key) ?? 0;
-  if (now - last < SYNC_COOLDOWN_OPEN_MS) return 0;
-  lastSyncByChat.set(key, now);
-
-  const { defaultWhatsAppSession } = await import("../env.js");
-  const session = defaultWhatsAppSession();
-
   let raw: unknown;
   try {
     raw = await wpp.callSessionApi(
-      `/get-messages/${encodeURIComponent(target.jid)}?count=${Math.min(count, 50)}`,
+      `/get-messages/${encodeURIComponent(jid)}?count=${Math.min(count, 50)}`,
       "GET"
     );
   } catch {
@@ -101,7 +97,8 @@ async function syncRecentMessagesFromEvolution(
         String(msgKey.remoteJid ?? ""),
         String(msgKey.remoteJidAlt ?? ""),
         String(msgKey.participant ?? ""),
-        String(msgKey.participantAlt ?? "")
+        String(msgKey.participantAlt ?? ""),
+        jid
       ].filter(Boolean)
     });
     saved++;
@@ -110,16 +107,40 @@ async function syncRecentMessagesFromEvolution(
   return saved;
 }
 
+async function syncRecentMessagesFromEvolution(
+  chatId: string,
+  isGroup?: boolean,
+  count = 40,
+  sessionName?: string
+): Promise<number> {
+  const session = (sessionName ?? (await getInboxSessionName())).trim().toLowerCase();
+  const target = buildWppSendTarget(chatId, isGroup);
+  const key = target.jid;
+  const now = Date.now();
+  const last = lastSyncByChat.get(key) ?? 0;
+  if (now - last < SYNC_COOLDOWN_OPEN_MS) return 0;
+  lastSyncByChat.set(key, now);
+
+  const jids = [...new Set(messageSyncJidCandidates(chatId, isGroup))];
+  let saved = 0;
+  for (const jid of jids) {
+    saved += await syncEvolutionMessagesForJid(jid, isGroup, count, session);
+  }
+  return saved;
+}
+
 /** Fallback quando o webhook não grava: puxa mensagens recentes do WPP para o Postgres. */
 export async function syncRecentMessagesFromWpp(
   chatId: string,
   isGroup?: boolean,
-  count = 35
+  count = 35,
+  sessionName?: string
 ): Promise<number> {
   if (env.WHATSAPP_PROVIDER === "evolution") {
-    return syncRecentMessagesFromEvolution(chatId, isGroup, count);
+    return syncRecentMessagesFromEvolution(chatId, isGroup, count, sessionName);
   }
 
+  const session = (sessionName ?? (await getInboxSessionName())).trim().toLowerCase();
   const target = buildWppSendTarget(chatId, isGroup);
   const key = target.jid;
   const now = Date.now();
@@ -168,7 +189,8 @@ export async function syncRecentMessagesFromWpp(
       type: parsed.type === "ptt" ? "audio" : parsed.type,
       mediaUrl: parsed.mediaUrl,
       waMessageId: parsed.waMessageId,
-      timestamp: parsed.timestamp
+      timestamp: parsed.timestamp,
+      sessionName: session
     });
     saved++;
   }

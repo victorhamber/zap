@@ -835,9 +835,9 @@ export async function fetchMessages(
   _phone: string,
   options: FetchMessagesOptions
 ): Promise<{ messages: NormalizedMessage[]; hint?: string; captureSince?: string | null }> {
-  const { defaultWhatsAppSession } = await import("../env.js");
-  const session = defaultWhatsAppSession();
-  const { ensureInboxOwnerPhone } = await import("./inboxStore.js");
+  const { getInboxSessionName, resolveAllChatIdsForContact, ensureInboxOwnerPhone } =
+    await import("./inboxStore.js");
+  const session = await getInboxSessionName();
   await ensureInboxOwnerPhone();
   await loadWaLidMap(session);
 
@@ -850,22 +850,44 @@ export async function fetchMessages(
 
   try {
     const { syncRecentMessagesFromWpp } = await import("./inboxSync.js");
-    const { resolveAllChatIdsForContact } = await import("./inboxStore.js");
     const syncTargets = await resolveAllChatIdsForContact(session, chatId);
-    for (const target of [...new Set([...syncTargets, options.chatId])]) {
-      await syncRecentMessagesFromWpp(target, options.isGroup, 50);
+    const toSync = [...new Set([...syncTargets, options.chatId, chatId])];
+    for (const target of toSync) {
+      await syncRecentMessagesFromWpp(target, options.isGroup, 50, session);
     }
   } catch {
     /* webhook é o caminho principal; sync é fallback */
   }
-  let { messages, captureSince } = await listStoredMessages(chatId, options.count ?? 200);
+  let { messages, captureSince } = await listStoredMessages(
+    chatId,
+    options.count ?? 200,
+    session
+  );
 
   void markInboxChatAsRead(chatId, options.isGroup).catch(() => {});
 
   if (messages.length === 0 && options.chatId !== chatId) {
-    const fallback = await listStoredMessages(options.chatId, options.count ?? 200);
+    const fallback = await listStoredMessages(options.chatId, options.count ?? 200, session);
     messages = fallback.messages;
     captureSince = fallback.captureSince;
+  }
+
+  if (messages.length === 0 && !options.isGroup) {
+    try {
+      const { resolveEvolutionPeerJid } = await import("./whatsapp/evolution.js");
+      const peer = await resolveEvolutionPeerJid(options.chatId, options.isGroup);
+      if (peer && peer !== options.chatId) {
+        await recordWaJidMapping(session, options.chatId, peer);
+        const { syncRecentMessagesFromWpp } = await import("./inboxSync.js");
+        await syncRecentMessagesFromWpp(peer, false, 50, session);
+        await syncRecentMessagesFromWpp(options.chatId, false, 50, session);
+        const retry = await listStoredMessages(peer, options.count ?? 200, session);
+        messages = retry.messages;
+        captureSince = retry.captureSince;
+      }
+    } catch {
+      /* Evolution indisponível para resolver peer */
+    }
   }
 
   if (messages.length === 0 && isLikelyInternalLidJid(options.chatId)) {
@@ -874,7 +896,7 @@ export async function fetchMessages(
       const peer = await resolveEvolutionPeerJid(options.chatId, options.isGroup);
       if (peer) {
         await recordWaJidMapping(session, options.chatId, peer);
-        const retry = await listStoredMessages(peer, options.count ?? 200);
+        const retry = await listStoredMessages(peer, options.count ?? 200, session);
         messages = retry.messages;
         captureSince = retry.captureSince;
       }

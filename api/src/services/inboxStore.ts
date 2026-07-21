@@ -58,6 +58,12 @@ function chatIdVariants(chatId: string): string[] {
   return out;
 }
 
+/** JIDs alternativos para sync na Evolution (@lid vs @s.whatsapp.net). */
+export function messageSyncJidCandidates(chatId: string, isGroup?: boolean): string[] {
+  const variants = isGroup || chatId.includes("@g.us") ? chatIdVariants(chatId) : chatIdVariants(chatId);
+  return [...new Set(variants.map((id) => normalizeDirectJid(id)).filter(Boolean))];
+}
+
 async function chatIdVariantsResolved(session: string, chatId: string): Promise<string[]> {
   await loadWaLidMap(session);
   return expandChatIdVariants(session, chatId);

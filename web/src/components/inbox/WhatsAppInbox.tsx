@@ -631,9 +631,7 @@ export function WhatsAppInbox() {
       setMessages([]);
       setMsgHint(e?.message ?? "Erro ao carregar mensagens");
     } finally {
-      if (!silent && activeChatIdRef.current === requestChatId) {
-        setLoadingMsgs(false);
-      }
+      if (!silent) setLoadingMsgs(false);
     }
   }, []);
 
