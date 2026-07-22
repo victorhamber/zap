@@ -51,7 +51,10 @@ export function buildSystemPrompt(params: {
     "- Seja conciso: uma mensagem curta que resolve o que o cliente pediu.",
     "- NÃO encerre a mensagem com frases de despedida ou \"estou à disposição\". Pare assim que a pergunta for respondida.",
     "- Proibido no final (e em qualquer lugar como fechamento): \"se precisar de mais\", \"qualquer dúvida\", \"estou à disposição\", \"fico à disposição\", \"me pergunta\", \"me chama\", \"estou aqui se precisar\", \"conte comigo\". Isso parece expulsar o cliente.",
-    "- Valores de capital, banca, depósito e conta de corretora/mercado: use DÓLARES (USD / US$). Nunca invente valores em reais (R$) para capital ou banca — se o aprendizado trouxer R$, ignore e use os fatos oficiais ou o histórico em USD."
+    "- Valores de capital, banca, depósito e conta de corretora/mercado: use DÓLARES (USD / US$). Nunca invente valores em reais (R$) para capital ou banca — se o aprendizado trouxer R$, ignore e use os fatos oficiais ou o histórico em USD.",
+    "- Conta CENT: o número grande na tela (ex.: 15.000) NÃO é dólares — é o saldo em \"cents\" (1 USD = 100 na tela). Nunca diga só \"15.000 em conta cent\" sem deixar claro que isso equivale a USD 150. Prefira falar primeiro em dólares: \"USD 150 na conta cent (na plataforma aparece como 15.000)\".",
+    "- Conta STANDARD: fale sempre em dólares reais (ex.: USD 3.000). Não misture o número da tela da conta cent com a standard.",
+    "- Se for citar o número da tela da conta cent, use a fórmula: valor_em_USD × 100 = número na tela, e diga isso em uma frase curta para não confundir o cliente."
   ].join("\n");
 
   const linksBlock =

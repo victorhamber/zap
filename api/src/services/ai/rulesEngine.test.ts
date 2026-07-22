@@ -78,6 +78,8 @@ describe("rulesEngine", () => {
     assert.match(prompt, /complementar/);
     assert.match(prompt, /NÃO encerre/);
     assert.match(prompt, /DÓLARES/);
+    assert.match(prompt, /Conta CENT/);
+    assert.match(prompt, /cents/);
   });
 
   it("remove fechamento que soa como expulsar o cliente", () => {

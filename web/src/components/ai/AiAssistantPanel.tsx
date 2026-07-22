@@ -658,7 +658,7 @@ export function AiAssistantPanel() {
           <textarea
             className="mt-1 w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-zinc-100 text-xs min-h-24 font-mono"
             placeholder={
-              "Conta cent: capital mínimo USD 50.\nConta standard: capital mínimo USD 3.000 ou acima.\nNunca mencionar R$ 1.000 como capital mínimo."
+              "Capital/banca sempre em dólares (USD).\nConta cent: mínimo USD 50 (na tela aparece como 5.000 — 1 USD = 100).\nConta standard: mínimo USD 3.000 ou acima.\nNunca falar capital em reais (R$).\nNunca dizer só \"15.000 em conta cent\" sem explicar que equivale a USD 150."
             }
             value={settings.officialFacts}
             onChange={(e) => setSettings({ ...settings, officialFacts: e.target.value })}
