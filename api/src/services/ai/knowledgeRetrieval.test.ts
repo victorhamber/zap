@@ -30,6 +30,12 @@ describe("knowledgeRetrieval", () => {
       true
     );
     assert.equal(
+      isKnownWrongCapitalMinimum(
+        "Você pode iniciar com qualquer valor, mas é recomendado começar com pelo menos R$100,00"
+      ),
+      true
+    );
+    assert.equal(
       isKnownWrongCapitalMinimum("Conta cent: capital mínimo USD 50"),
       false
     );

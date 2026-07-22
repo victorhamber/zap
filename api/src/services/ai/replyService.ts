@@ -7,7 +7,8 @@ import {
   buildSystemPrompt,
   validateReplyAgainstRules,
   injectOfficialLinksHint,
-  isRepetitiveReply
+  isRepetitiveReply,
+  stripDismissiveClosing
 } from "./rulesEngine.js";
 import { buildOfficialFactsBlock } from "./knowledgeRetrieval.js";
 import { generateReply } from "./openaiClient.js";
@@ -231,6 +232,7 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
         retryAvoidRepeat: true
       });
     }
+    reply = stripDismissiveClosing(reply);
   } catch (err) {
     await logAiEvent({
       session: payload.session,
@@ -318,15 +320,17 @@ export async function simulateReply(params: {
   });
   const officialFacts = buildOfficialFactsBlock(settings.officialFacts);
 
-  const reply = await generateReply({
-    apiKey,
-    model: settings.modelChat,
-    systemPrompt,
-    chatHistory,
-    officialFacts,
-    knowledgeSnippets: snippets,
-    inboundText: params.inboundText
-  });
+  const reply = stripDismissiveClosing(
+    await generateReply({
+      apiKey,
+      model: settings.modelChat,
+      systemPrompt,
+      chatHistory,
+      officialFacts,
+      knowledgeSnippets: snippets,
+      inboundText: params.inboundText
+    })
+  );
 
   const validation = validateReplyAgainstRules(reply, settings.rulesForbidden);
   if (!validation.ok) {

@@ -81,16 +81,24 @@ export function extractKnowledgeSearchText(row: KnowledgeRow): string {
   return `${row.content} ${row.topic ?? ""}`;
 }
 
-/** Remove aprendizado obsoleto (ex.: capital mínimo de R$ 1.000). */
+/**
+ * Remove aprendizado obsoleto que fala de capital/banca em reais.
+ * Conta de corretora/mercado é em USD (ex.: cent USD 50, standard USD 3.000).
+ */
 export function isKnownWrongCapitalMinimum(text: string): boolean {
   const n = normalizeText(text);
   const hasCapitalContext =
-    /capital|deposito|minimo|minima|conta|investir|comecar|cent|standard|usd|dolar|reais/.test(n);
-  const wrongReais =
-    /r\$\s*1[\s.,]*0{3}|1[\s.,]*0{3}\s*reais|mil\s*reais|pelo\s*menos\s*r\$/.test(n);
+    /capital|banca|deposito|minimo|minima|investir|comecar|cent|standard|corretora|broker|operar|experiencia/.test(
+      n
+    );
+  const hasReaisAmount =
+    /r\$\s*\d|reais|\d[\s.,]*\d*\s*reais|pelo\s*menos\s*r\$|comecar\s+com\s+pelo\s*menos\s*r\$/.test(
+      n
+    );
 
-  if (/capital\s+minim/.test(n) && /1[\s.,]*0{3}|mil\s*reais|r\$/.test(n)) return true;
-  if (wrongReais && hasCapitalContext) return true;
+  if (!hasCapitalContext) return false;
+  if (hasReaisAmount) return true;
+  if (/capital\s+minim/.test(n) && /r\$|reais/.test(n)) return true;
   return false;
 }
 

@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import {
   buildSystemPrompt,
   validateReplyAgainstRules,
-  isRepetitiveReply
+  isRepetitiveReply,
+  stripDismissiveClosing
 } from "./rulesEngine.js";
 import { phoneFromChatId, isGroupChatId } from "./tagGate.js";
 
@@ -75,6 +76,17 @@ describe("rulesEngine", () => {
     assert.match(prompt, /USD 50/);
     assert.match(prompt, /siga SEMPRE os fatos oficiais/);
     assert.match(prompt, /complementar/);
+    assert.match(prompt, /NÃO encerre/);
+    assert.match(prompt, /DÓLARES/);
+  });
+
+  it("remove fechamento que soa como expulsar o cliente", () => {
+    const cleaned = stripDismissiveClosing(
+      "O capital mínimo na conta cent é USD 50. Se precisar de mais informações sobre como operar, estou à disposição!"
+    );
+    assert.match(cleaned, /USD 50/);
+    assert.equal(/à disposição/i.test(cleaned), false);
+    assert.equal(/se precisar de mais/i.test(cleaned), false);
   });
 
   it("bloqueia resposta que viola forbidden", () => {

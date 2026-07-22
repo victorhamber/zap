@@ -48,7 +48,10 @@ export function buildSystemPrompt(params: {
     "- Não ignore perguntas objetivas para fazer perguntas genéricas de follow-up.",
     "- Não repita frases que você já enviou nesta conversa (ex.: não pergunte de novo se o teste está ok se já perguntou).",
     "- Se o cliente já disse que comprou o teste ou tem tag de teste pago/comprador, não ofereça teste nem pergunte se quer comprar teste.",
-    "- Seja conciso: uma mensagem curta que resolve o que o cliente pediu."
+    "- Seja conciso: uma mensagem curta que resolve o que o cliente pediu.",
+    "- NÃO encerre a mensagem com frases de despedida ou \"estou à disposição\". Pare assim que a pergunta for respondida.",
+    "- Proibido no final (e em qualquer lugar como fechamento): \"se precisar de mais\", \"qualquer dúvida\", \"estou à disposição\", \"fico à disposição\", \"me pergunta\", \"me chama\", \"estou aqui se precisar\", \"conte comigo\". Isso parece expulsar o cliente.",
+    "- Valores de capital, banca, depósito e conta de corretora/mercado: use DÓLARES (USD / US$). Nunca invente valores em reais (R$) para capital ou banca — se o aprendizado trouxer R$, ignore e use os fatos oficiais ou o histórico em USD."
   ].join("\n");
 
   const linksBlock =
@@ -136,6 +139,33 @@ export function injectOfficialLinksHint(officialLinks: OfficialLink[]): string {
 
 function normalizeReplyText(text: string): string {
   return text.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Remove fechamentos que soam como "pode ir embora" — o modelo cola isso
+ * por hábito de atendimento genérico / aprendizado antigo.
+ */
+export function stripDismissiveClosing(reply: string): string {
+  let text = reply.trim();
+  if (!text) return text;
+
+  const patterns = [
+    /\s*(?:se\s+)?(?:precisar|precisarem)\s+de\s+mais[^.!?]*[.!?…]?\s*$/i,
+    /\s*(?:qualquer|caso\s+tenha)\s+d[uú]vida[^.!?]*[.!?…]?\s*$/i,
+    /\s*(?:fico|estou|estamos)\s+[àa]\s+disposi[cç][aã]o[^.!?]*[.!?…]?\s*$/i,
+    /\s*(?:conte\s+comigo|me\s+(?:chama|pergunta|avise)|estou\s+aqui\s+se\s+precisar)[^.!?]*[.!?…]?\s*$/i,
+    /\s*(?:se\s+tiver\s+(?:d[uú]vida|alguma\s+d[uú]vida)|pode\s+me\s+chamar)[^.!?]*[.!?…]?\s*$/i
+  ];
+
+  for (let i = 0; i < 3; i++) {
+    const before = text;
+    for (const re of patterns) {
+      text = text.replace(re, "").trim();
+    }
+    if (text === before) break;
+  }
+
+  return text || reply.trim();
 }
 
 /** Detecta se a resposta repete quase igual uma mensagem recente da IA. */

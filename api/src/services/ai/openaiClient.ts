@@ -230,7 +230,8 @@ export async function generateReply(params: {
       ? [
           "## APRENDIZADO DE CONVERSAS ANTERIORES",
           "Use como modelo de tom e procedimentos, exceto quando conflitar com os fatos oficiais acima.",
-          "Se houver qa_pair relevante, baseie sua resposta nele.",
+          "Se houver qa_pair relevante, baseie sua resposta nele — mas NÃO copie fechamentos tipo \"estou à disposição\".",
+          "Capital/banca/depósito de corretora: se o aprendizado citar reais (R$), ignore e use USD dos fatos oficiais.",
           "",
           params.knowledgeSnippets.join("\n---\n")
         ].join("\n")
@@ -270,7 +271,9 @@ export async function generateReply(params: {
           params.inboundText.slice(0, 4000),
           repeatHint,
           "",
-          "Responda em uma única mensagem concisa, priorizando o aprendizado histórico acima:"
+          "Responda em uma única mensagem concisa.",
+          "Não termine com despedida nem \"estou à disposição\" / \"se precisar de mais\".",
+          "Capital e banca de mercado: dólares (USD), nunca invente R$."
         ].join("\n")
       }
     ],
