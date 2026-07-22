@@ -289,16 +289,19 @@ export async function inboxRoutes(app: FastifyInstance) {
   });
 
   app.get("/api/inbox/messages", async (req) => {
-    const q = req.query as { chatId?: string; isGroup?: string };
+    const q = req.query as { chatId?: string; isGroup?: string; sync?: string };
     const chatId = (q.chatId ?? "").trim();
     if (!chatId) {
       return { ok: false, message: "chatId obrigatório", messages: [] };
     }
     const isGroup = q.isGroup === "1" || q.isGroup === "true" || chatId.includes("@g.us");
+    // sync=0 → só banco (poll rápido). Padrão sincroniza com a Evolution.
+    const skipSync = q.sync === "0";
     try {
       const { messages, hint, captureSince } = await inbox.fetchMessages(chatId, {
         chatId,
-        isGroup
+        isGroup,
+        skipSync
       });
       return { ok: true, messages, hint, captureSince, localOnly: true };
     } catch (e: any) {

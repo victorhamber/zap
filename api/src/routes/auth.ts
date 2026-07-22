@@ -41,7 +41,10 @@ export async function authRoutes(app: FastifyInstance) {
   app.post("/api/auth/login", async (req, reply) => {
     if (!prisma) return reply.status(503).send({ error: "Banco indisponível" });
 
-    const ip = req.ip;
+    const bodyPeek = req.body as { email?: string } | undefined;
+    // Chave por IP+email: mesmo que o proxy colapse todos num IP só, errar a
+    // senha de uma conta não pode trancar o login das outras.
+    const ip = `${req.ip}|${(bodyPeek?.email ?? env.ADMIN_EMAIL).trim().toLowerCase()}`;
     const throttle = loginThrottle(ip);
     if (throttle.blocked) {
       return reply

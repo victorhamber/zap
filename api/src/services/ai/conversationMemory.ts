@@ -4,6 +4,7 @@ import { resolveAllChatIdsForContact } from "../inboxStore.js";
 import { env } from "../../env.js";
 import { openaiChat } from "./openaiClient.js";
 import { findChatState, saveConversationMemory } from "./chatState.js";
+import { isHumanAnswerSource } from "./learnGate.js";
 
 const MAX_MEMORY_CHARS = 2800;
 
@@ -21,7 +22,9 @@ function speakerLabel(fromMe: boolean, source: string): string {
   if (!fromMe) return "Cliente";
   if (source === "ai") return "Atendente (IA)";
   if (source === "flow") return "Automação";
-  if (source === "manual") return "Atendente (humano)";
+  // "manual" (painel) e "webhook" (celular) são o atendente humano — rotular
+  // ambos deixa claro para a IA onde um humano assumiu a conversa.
+  if (isHumanAnswerSource(source)) return "Atendente (humano)";
   return "Atendente";
 }
 

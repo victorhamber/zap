@@ -23,9 +23,16 @@ export function modalityAllowedForLearn(
   return flags.learnText;
 }
 
-/** Respostas humanas no histórico (inclui webhook = operador pelo celular). */
+/**
+ * Fontes de mensagem que representam um ATENDENTE humano respondendo:
+ * "manual" = pelo painel; "webhook" = pelo próprio WhatsApp (celular).
+ * A resposta da IA usa "ai" e mensagens de fluxo usam "flow" — nenhuma entra aqui.
+ * Exportado como const para reuso em filtros Prisma (`source: { in: HUMAN_ANSWER_SOURCES }`).
+ */
+export const HUMAN_ANSWER_SOURCES = ["manual", "webhook"] as const;
+
 export function isHumanAnswerSource(source: string): boolean {
-  return source === "manual" || source === "webhook";
+  return (HUMAN_ANSWER_SOURCES as readonly string[]).includes(source);
 }
 
 export function learnKindForHistoryMessage(msg: {

@@ -114,6 +114,12 @@ export type FetchMessagesOptions = {
   chatId: string;
   isGroup?: boolean;
   count?: number;
+  /**
+   * true = lê só do banco, sem chamar a Evolution. O webhook mantém o banco
+   * atualizado em tempo real, então o poll rápido do painel usa isto para não
+   * disparar sync externo a cada 2,5s (era a causa da lentidão).
+   */
+  skipSync?: boolean;
 };
 
 /** Extrai ID serializado do WhatsApp (ex.: 120363…@g.us) quando o WPP devolve objeto Wid. */
@@ -848,15 +854,17 @@ export async function fetchMessages(
     if (mapped) chatId = mapped;
   }
 
-  try {
-    const { syncRecentMessagesFromWpp } = await import("./inboxSync.js");
-    const syncTargets = await resolveAllChatIdsForContact(session, chatId);
-    const toSync = [...new Set([...syncTargets, options.chatId, chatId])];
-    for (const target of toSync) {
-      await syncRecentMessagesFromWpp(target, options.isGroup, 50, session);
+  if (!options.skipSync) {
+    try {
+      const { syncRecentMessagesFromWpp } = await import("./inboxSync.js");
+      const syncTargets = await resolveAllChatIdsForContact(session, chatId);
+      const toSync = [...new Set([...syncTargets, options.chatId, chatId])];
+      for (const target of toSync) {
+        await syncRecentMessagesFromWpp(target, options.isGroup, 50, session);
+      }
+    } catch {
+      /* webhook é o caminho principal; sync é fallback */
     }
-  } catch {
-    /* webhook é o caminho principal; sync é fallback */
   }
   let { messages, captureSince } = await listStoredMessages(
     chatId,
@@ -864,7 +872,11 @@ export async function fetchMessages(
     session
   );
 
-  void markInboxChatAsRead(chatId, options.isGroup).catch(() => {});
+  // Marcar como lido chama a Evolution. No poll rápido (skipSync) isso repetiria
+  // a mesma chamada a cada 3s — já foi marcado na abertura e no sync completo.
+  if (!options.skipSync) {
+    void markInboxChatAsRead(chatId, options.isGroup).catch(() => {});
+  }
 
   if (messages.length === 0 && options.chatId !== chatId) {
     const fallback = await listStoredMessages(options.chatId, options.count ?? 200, session);
@@ -872,7 +884,10 @@ export async function fetchMessages(
     captureSince = fallback.captureSince;
   }
 
-  if (messages.length === 0 && !options.isGroup) {
+  // As tentativas abaixo chamam a Evolution para resolver variantes de chatId
+  // (@lid ↔ telefone). Só valem no carregamento completo; no poll rápido
+  // (skipSync) ficam de fora para não pesar.
+  if (messages.length === 0 && !options.skipSync && !options.isGroup) {
     try {
       const { resolveEvolutionPeerJid } = await import("./whatsapp/evolution.js");
       const peer = await resolveEvolutionPeerJid(options.chatId, options.isGroup);
@@ -890,7 +905,7 @@ export async function fetchMessages(
     }
   }
 
-  if (messages.length === 0 && isLikelyInternalLidJid(options.chatId)) {
+  if (messages.length === 0 && !options.skipSync && isLikelyInternalLidJid(options.chatId)) {
     try {
       const { resolveEvolutionPeerJid } = await import("./whatsapp/evolution.js");
       const peer = await resolveEvolutionPeerJid(options.chatId, options.isGroup);

@@ -368,12 +368,12 @@ const ChatListRow = memo(function ChatListRow({
 }: {
   chat: Chat;
   active: boolean;
-  onSelect: () => void;
+  onSelect: (chat: Chat) => void;
 }) {
   return (
     <button
       type="button"
-      onClick={onSelect}
+      onClick={() => onSelect(chat)}
       className={`wa-chat-row w-full flex gap-3 px-3 py-2.5 text-left hover:bg-[#202c33] border-b border-[#2a3942]/40 ${
         active ? "bg-[#2a3942]" : ""
       }`}
@@ -598,7 +598,7 @@ export function WhatsAppInbox() {
     }
   }, [sessionProfile?.connected]);
 
-  const loadMessages = useCallback(async (chat: Chat, silent = false) => {
+  const loadMessages = useCallback(async (chat: Chat, silent = false, sync = true) => {
     const requestChatId = chat.id;
     if (activeChatIdRef.current !== requestChatId) return;
 
@@ -611,7 +611,11 @@ export function WhatsAppInbox() {
         hint?: string;
         message?: string;
       }>(
-        `/api/inbox/messages?chatId=${encodeURIComponent(chat.id)}&isGroup=${chat.isGroup ? "1" : "0"}`
+        // sync=0 no poll rápido: lê só do banco (o webhook mantém em tempo real)
+        // e não dispara sync com a Evolution a cada 2,5s.
+        `/api/inbox/messages?chatId=${encodeURIComponent(chat.id)}&isGroup=${
+          chat.isGroup ? "1" : "0"
+        }&sync=${sync ? "1" : "0"}`
       );
       if (activeChatIdRef.current !== requestChatId) return;
 
@@ -633,6 +637,18 @@ export function WhatsAppInbox() {
     } finally {
       if (!silent) setLoadingMsgs(false);
     }
+  }, []);
+
+  // Estável: sem isto, uma arrow nova por render em cada uma das ~270 linhas
+  // derrubava o memo do ChatListRow — a lista inteira re-renderizava a cada poll.
+  const handleSelectChat = useCallback((chat: Chat) => {
+    activeChatIdRef.current = chat.id;
+    setMessages([]);
+    setMsgHint("");
+    setLoadingMsgs(true);
+    setSelected({ ...chat, unreadCount: 0 });
+    setChats((prev) => prev.map((c) => (c.id === chat.id ? { ...c, unreadCount: 0 } : c)));
+    setSendError("");
   }, []);
 
   useEffect(() => {
@@ -667,9 +683,15 @@ export function WhatsAppInbox() {
     }
     activeChatIdRef.current = selected.id;
     setMessages([]);
-    loadMessages(selected);
-    const t = setInterval(() => loadMessages(selected, true), 2500);
-    return () => clearInterval(t);
+    loadMessages(selected); // abertura: sync completo (resolve variantes de chatId)
+    // Poll rápido só-banco (leve) + sync completo esporádico como rede de segurança
+    // caso o webhook perca alguma mensagem.
+    const fast = setInterval(() => loadMessages(selected, true, false), 3000);
+    const full = setInterval(() => loadMessages(selected, true, true), 20000);
+    return () => {
+      clearInterval(fast);
+      clearInterval(full);
+    };
   }, [selected?.id, pageVisible, loadMessages]);
 
   useEffect(() => {
@@ -1263,17 +1285,7 @@ export function WhatsAppInbox() {
               key={chat.id}
               chat={chat}
               active={selected?.id === chat.id}
-              onSelect={() => {
-                activeChatIdRef.current = chat.id;
-                setMessages([]);
-                setMsgHint("");
-                setLoadingMsgs(true);
-                setSelected({ ...chat, unreadCount: 0 });
-                setChats((prev) =>
-                  prev.map((c) => (c.id === chat.id ? { ...c, unreadCount: 0 } : c))
-                );
-                setSendError("");
-              }}
+              onSelect={handleSelectChat}
             />
           ))}
         </div>

@@ -25,6 +25,10 @@ const __dirname = path.dirname(__filename);
 
 const app = Fastify({
   logger: true,
+  // Atrás do Traefik do EasyPanel. Sem isto req.ip é o IP do proxy, igual para
+  // todo mundo — e o rate limit de login viraria um bloqueio global.
+  // `1` = confia só no primeiro hop; `true` deixaria forjar x-forwarded-for.
+  trustProxy: 1,
   bodyLimit: 128 * 1024 * 1024 // uploads de vídeo em base64 (~64 MB + overhead JSON)
 });
 
@@ -99,4 +103,33 @@ console.log("[zap] API web iniciada (index.js) — NÃO processa fila zap-ai-job
 app.listen({ port, host: "0.0.0.0" }).catch((err) => {
   app.log.error(err);
   process.exit(1);
+});
+
+// O EasyPanel manda SIGTERM no redeploy. Sem isto, requisições em voo (e o
+// webhook que estava gravando uma mensagem) morrem no meio.
+let shuttingDown = false;
+for (const sinal of ["SIGTERM", "SIGINT"] as const) {
+  process.on(sinal, () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    app.log.info(`[zap] ${sinal} recebido — encerrando com calma`);
+    const prazo = setTimeout(() => {
+      app.log.warn("[zap] encerramento forçado após 10s");
+      process.exit(1);
+    }, 10_000);
+    prazo.unref();
+    app
+      .close()
+      .then(() => prisma?.$disconnect())
+      .catch((err) => app.log.error(err))
+      .finally(() => process.exit(0));
+  });
+}
+
+// Um erro assíncrono solto derruba o processo sem deixar rastro no log.
+process.on("unhandledRejection", (reason) => {
+  app.log.error({ reason }, "[zap] promise rejeitada sem tratamento");
+});
+process.on("uncaughtException", (err) => {
+  app.log.error({ err }, "[zap] exceção não capturada");
 });

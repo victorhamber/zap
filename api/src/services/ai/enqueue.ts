@@ -7,8 +7,13 @@ import {
   phoneFromChatId
 } from "./tagGate.js";
 import { detectModality } from "./mediaExtract.js";
-import { modalityAllowedForLearn } from "./learnGate.js";
-import { setChatModeHuman, resolveChatModeForInbound, setPendingReply } from "./chatState.js";
+import { modalityAllowedForLearn, isHumanAnswerSource } from "./learnGate.js";
+import {
+  setChatModeHuman,
+  resolveChatModeForInbound,
+  setPendingReply,
+  clearPendingReply
+} from "./chatState.js";
 import {
   enqueueAiLearnJob,
   enqueueAiReplyJob,
@@ -112,7 +117,12 @@ async function runEnqueue(msg: SavedInboxMessage): Promise<void> {
         },
         learnDelayMs
       );
-    } else if (msg.source === "manual") {
+    } else if (isHumanAnswerSource(msg.source)) {
+      // "manual" (painel) OU "webhook" (atendente respondeu pelo celular).
+      // Sem o "webhook", quem atende pelo aparelho não ensinava o bot ao vivo —
+      // só entravam perguntas de cliente. Respostas da IA têm source "ai" e o
+      // eco da própria resposta é deduplicado antes de chegar aqui, então não há
+      // risco de o bot aprender com ele mesmo.
       await enqueueAiLearnJob(
         {
           session: msg.session,
@@ -126,8 +136,15 @@ async function runEnqueue(msg: SavedInboxMessage): Promise<void> {
     }
   }
 
-  if (msg.fromMe && msg.source === "manual") {
+  if (msg.fromMe && isHumanAnswerSource(msg.source)) {
+    // Atendente respondeu — pelo painel ("manual") ou pelo celular ("webhook").
+    // Entra em modo humano E cancela a resposta automática que estava na fila,
+    // para o bot não falar por cima nem gastar chamada à OpenAI. Respostas da IA
+    // têm source "ai" e não caem aqui; o eco da própria resposta é deduplicado
+    // antes de chegar neste ponto.
     await setChatModeHuman(msg.session, msg.chatId);
+    await cancelAiReplyJob(msg.session, msg.chatId);
+    await clearPendingReply(msg.session, msg.chatId);
     return;
   }
 

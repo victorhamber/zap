@@ -42,6 +42,37 @@ Se o serviço `zap-worker` mostrar `Server listening at http://0.0.0.0:3000`, el
 
 Guia completo Evolution: [`deploy/easypanel-evolution.md`](deploy/easypanel-evolution.md)
 
+> ### ⚠️ Leia antes do deploy
+>
+> **`ADMIN_PASSWORD` é obrigatória em produção.** Se estiver faltando (ou for
+> `admin123`), a API **se recusa a subir** e entra em crash-loop, com a
+> mensagem explicando. É de propósito: sem ela o painel subia com senha padrão,
+> aberto na internet.
+>
+> **`WHATSAPP_WEBHOOK_SECRET` é opcional — deixe vazia se estiver na dúvida.**
+> Preenchida, os endpoints `/api/webhooks/{wppconnect,evolution,meta}` passam a
+> exigir o segredo, e **quem não mandar o segredo tem a mensagem descartada**.
+> Para ativar com segurança:
+> 1. defina a variável e faça o redeploy;
+> 2. no painel, **Configurações → Conexão** clique em registrar o webhook — o
+>    Zap reconfigura a Evolution já com o header `x-webhook-secret`;
+> 3. confira em `GET /api/webhooks/evolution` que `lastWebhookSavedAt` está
+>    avançando. Se aparecer `lastWebhookSkipReason: "bad_secret"`, o provedor
+>    está chamando sem o segredo — o inbox está parado.
+>
+> Provedor que não deixa configurar header (WPPConnect) aceita a alternativa por
+> URL: `https://.../api/webhooks/wppconnect?secret=SEU_SEGREDO`.
+
+### Volume de uploads (importante)
+
+O serviço `zap` grava as mídias em `/app/api/uploads` **dentro do container**.
+Sem volume persistente, **toda mídia some a cada redeploy** (as mensagens
+continuam no banco, mas sem o arquivo). Monte um volume no serviço `zap`:
+
+| Tipo | Caminho no container |
+|------|----------------------|
+| Volume | `/app/api/uploads` |
+
 ```env
 APP_PUBLIC_URL=https://zap.trajettu.com
 ZAP_INTERNAL_URL=http://zap_zap:3000
@@ -63,6 +94,7 @@ EVOLUTION_INTERNAL_URL=http://zap_evolution-api:8080
 EVOLUTION_API_KEY=mesma-chave-AUTHENTICATION_API_KEY-da-evolution
 
 HOTMART_WEBHOOK_SECRET=
+WHATSAPP_WEBHOOK_SECRET=
 CORS_ORIGIN=https://zap.trajettu.com
 
 # Anti-spam: intervalo entre inícios de fluxo (Hotmart + broadcast)

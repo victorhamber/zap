@@ -1,5 +1,5 @@
 import { prisma } from "../../prisma.js";
-import { findPrimaryChatIdForContact, resolveAllChatIdsForContact, canonicalizeChatId } from "../inboxStore.js";
+import { resolveAllChatIdsForContact, canonicalizeChatId } from "../inboxStore.js";
 import { cancelAiReplyJob, aiReplyJobId } from "../../queue.js";
 
 export type ChatMode = "auto" | "human";
@@ -49,16 +49,16 @@ export async function resolveChatModeForInbound(
   const state = await findChatState(session, chatId);
   if (!state || state.mode !== "human") return "auto";
 
-  const lastHuman = state.lastHumanAt;
-  if (inboundTimestamp && lastHuman && inboundTimestamp > lastHuman) {
-    await prisma.instanceAiChatState.update({
-      where: { session_chatId: { session: state.session, chatId: state.chatId } },
-      data: { mode: "auto" }
-    });
-    return "auto";
-  }
+  // O modo humano dura até passar `humanIdleSec` desde a ÚLTIMA ação do
+  // atendente. Antes havia uma reversão extra: qualquer mensagem do cliente mais
+  // nova que a última ação humana voltava o chat para "auto" na hora — o que
+  // tornava humanIdleSec inútil, porque a resposta é sempre disparada por uma
+  // mensagem nova do cliente. Agora só o tempo de inatividade decide. O reset
+  // acontece naturalmente: quando o cliente escreve depois da janela, esta mesma
+  // função devolve "auto". `inboundTimestamp` fica para diagnóstico futuro.
+  void inboundTimestamp;
 
-  const last = lastHuman?.getTime() ?? 0;
+  const last = state.lastHumanAt?.getTime() ?? 0;
   const idleMs = humanIdleSec * 1000;
   if (Date.now() - last >= idleMs) {
     await prisma.instanceAiChatState.update({

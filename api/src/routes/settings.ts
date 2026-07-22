@@ -72,9 +72,13 @@ export async function settingsRoutes(app: FastifyInstance) {
           data: { connectionStatus: JSON.stringify(status) }
         });
       }
-      return { ok: true, status };
+      // `ok` diz só que a checagem rodou. Quem responde "o WhatsApp está
+      // conectado?" é `connected` — sem isso o painel mostrava "Conectado"
+      // com o aparelho desligado.
+      return { ok: true, connected: wpp.parseConnectionCheck(status), status };
     } catch (e: any) {
-      return { ok: false, message: e?.message ?? String(e) };
+      const message = e?.message ?? String(e);
+      return { ok: false, connected: false, message, error: message };
     }
   });
 

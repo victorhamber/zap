@@ -84,11 +84,31 @@ async function triggerInboundFlows(params: {
  * sem ele, qualquer um consegue injetar mensagens no inbox e disparar fluxos.
  * Configure o mesmo valor no header do webhook lá no provedor.
  */
-function whatsappWebhookAuthorized(req: { headers: Record<string, unknown> }): boolean {
+function whatsappWebhookAuthorized(req: {
+  headers: Record<string, unknown>;
+  query?: unknown;
+}): boolean {
   const expected = env.WHATSAPP_WEBHOOK_SECRET?.trim();
   if (!expected) return true;
-  const got = req.headers["x-webhook-secret"];
-  return typeof got === "string" && got === expected;
+
+  const header = req.headers["x-webhook-secret"];
+  if (typeof header === "string" && header === expected) return true;
+
+  // Alternativa por query string: nem todo provedor (WPPConnect, por exemplo)
+  // deixa configurar header no webhook, mas todos deixam editar a URL.
+  const query = (req.query ?? {}) as Record<string, unknown>;
+  const qs = query.secret;
+  return typeof qs === "string" && qs === expected;
+}
+
+/** Rejeição registrada na telemetria — senão o inbox para e não há como diagnosticar. */
+function rejectWebhook(reply: FastifyReply, event: string) {
+  touchWppWebhookReceived(event);
+  touchWppWebhookSkipped("bad_secret");
+  return reply.status(401).send({
+    error: "Webhook não autorizado",
+    hint: "WHATSAPP_WEBHOOK_SECRET está definido — o provedor precisa enviar o header x-webhook-secret ou ?secret= na URL."
+  });
 }
 
 export async function webhookRoutes(app: FastifyInstance) {
@@ -178,7 +198,7 @@ export async function webhookRoutes(app: FastifyInstance) {
   app.post("/api/webhooks/wppconnect", async (req, reply) => {
     if (!prisma) return { ok: false };
     if (!whatsappWebhookAuthorized(req)) {
-      return reply.status(401).send({ error: "Webhook não autorizado" });
+      return rejectWebhook(reply, String((req.body as Record<string, unknown>)?.event ?? "desconhecido"));
     }
 
     const raw = (req.body ?? {}) as Record<string, unknown>;
@@ -312,7 +332,7 @@ export async function webhookRoutes(app: FastifyInstance) {
   app.post("/api/webhooks/evolution", async (req, reply) => {
     if (!prisma) return { ok: false };
     if (!whatsappWebhookAuthorized(req)) {
-      return reply.status(401).send({ error: "Webhook não autorizado" });
+      return rejectWebhook(reply, String((req.body as Record<string, unknown>)?.event ?? "desconhecido"));
     }
 
     const body = (req.body ?? {}) as Record<string, unknown>;
@@ -474,7 +494,7 @@ export async function webhookRoutes(app: FastifyInstance) {
   app.post("/api/webhooks/meta", async (req, reply) => {
     if (!prisma) return { ok: false };
     if (!whatsappWebhookAuthorized(req)) {
-      return reply.status(401).send({ error: "Webhook não autorizado" });
+      return rejectWebhook(reply, String((req.body as Record<string, unknown>)?.event ?? "desconhecido"));
     }
 
     const body = (req.body ?? {}) as Record<string, unknown>;

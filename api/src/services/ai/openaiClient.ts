@@ -168,8 +168,10 @@ export async function extractKnowledge(params: {
     "NÃO copie tom pessoal nem frases literais longas.",
     "Retorne JSON: { topic, summary, qaPair?: { question, answerBase } }",
     "summary = base factual curta para futuras respostas.",
-    params.kind === "answer" && params.priorQuestion
-      ? `A mensagem é uma resposta manual à pergunta: "${params.priorQuestion.slice(0, 500)}"`
+    params.kind === "answer"
+      ? params.priorQuestion
+        ? `A mensagem é uma resposta do atendente à(s) pergunta(s) do cliente: "${params.priorQuestion.slice(0, 500)}"`
+        : "A mensagem é uma resposta/informação do atendente (a pergunta original não foi localizada). NÃO a trate como dúvida do cliente."
       : "A mensagem é uma pergunta ou dúvida do cliente."
   ].join("\n");
 

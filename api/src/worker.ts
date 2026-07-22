@@ -96,7 +96,34 @@ async function main() {
     `[worker] IA: concurrency=${env.AI_WORKER_CONCURRENCY}, max ${env.AI_OPENAI_RPM_LIMIT} req/min, stagger backfill=${env.AI_LEARN_STAGGER_MS}ms`
   );
   console.log("[worker] Zap worker ativo: zap-flow-jobs + zap-flow-starts + zap-ai-jobs");
+
+  // Redeploy manda SIGTERM. Sem fechar os workers, um job de fluxo morre no
+  // meio do envio e a execução fica travada em "running" para sempre.
+  let encerrando = false;
+  for (const sinal of ["SIGTERM", "SIGINT"] as const) {
+    process.on(sinal, () => {
+      if (encerrando) return;
+      encerrando = true;
+      console.log(`[worker] ${sinal} recebido — terminando jobs em andamento`);
+      const prazo = setTimeout(() => {
+        console.warn("[worker] encerramento forçado após 25s");
+        process.exit(1);
+      }, 25_000);
+      prazo.unref();
+      Promise.all([flowWorker.close(), aiWorker.close()])
+        .then(() => prisma?.$disconnect())
+        .catch((err) => console.error("[worker] erro ao encerrar:", err))
+        .finally(() => process.exit(0));
+    });
+  }
 }
+
+process.on("unhandledRejection", (reason) => {
+  console.error("[worker] promise rejeitada sem tratamento:", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[worker] exceção não capturada:", err);
+});
 
 main().catch((err) => {
   console.error("[worker] Falha fatal na inicialização:", err);

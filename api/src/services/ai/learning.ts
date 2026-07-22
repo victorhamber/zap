@@ -6,7 +6,9 @@ import { extractTextFromMessage } from "./mediaExtract.js";
 import { logAiEvent } from "./chatState.js";
 import { knowledgeSourceMsgId } from "./learnGate.js";
 
-const QA_WINDOW_MS = 30 * 60 * 1000;
+// Antes eram 30 min: atendimento humano raramente responde tão rápido, então a
+// maioria das respostas ficava sem a pergunta e nenhum qa_pair nascia.
+const QA_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export async function processLearnJob(payload: AiLearnJobPayload): Promise<void> {
   if (!prisma) return;
@@ -68,19 +70,42 @@ export async function processLearnJob(payload: AiLearnJobPayload): Promise<void>
 
   let priorQuestion: string | undefined;
   if (payload.kind === "answer") {
-    const lastInbound = await prisma.inboxMessage.findFirst({
+    const windowStart = new Date(msg.timestamp.getTime() - QA_WINDOW_MS);
+
+    // A resposta do atendente costuma cobrir VÁRIAS perguntas de uma vez
+    // ("qual valor? tem garantia? aceita pix?"). Coletamos todas as perguntas
+    // do cliente desde a resposta anterior do atendente — não só a última —
+    // senão o par fica pergunta-estreita colada a resposta-ampla.
+    const prevOutbound = await prisma.inboxMessage.findFirst({
+      where: {
+        session: payload.session,
+        chatId: msg.chatId,
+        fromMe: true,
+        id: { not: msg.id },
+        timestamp: { gte: windowStart, lt: msg.timestamp }
+      },
+      orderBy: { timestamp: "desc" },
+      select: { timestamp: true }
+    });
+
+    const since = prevOutbound?.timestamp ?? windowStart;
+    const inbound = await prisma.inboxMessage.findMany({
       where: {
         session: payload.session,
         chatId: msg.chatId,
         fromMe: false,
-        timestamp: {
-          gte: new Date(msg.timestamp.getTime() - QA_WINDOW_MS),
-          lte: msg.timestamp
-        }
+        timestamp: { gt: since, lte: msg.timestamp }
       },
-      orderBy: { timestamp: "desc" }
+      orderBy: { timestamp: "asc" },
+      take: 8,
+      select: { body: true }
     });
-    priorQuestion = lastInbound?.body;
+
+    const joined = inbound
+      .map((m) => m.body.trim())
+      .filter(Boolean)
+      .join("\n");
+    priorQuestion = joined || undefined;
   }
 
   const extraction = await extractKnowledge({

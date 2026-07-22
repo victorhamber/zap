@@ -260,10 +260,15 @@ export function Dashboard() {
       )
       .finally(() => setLoading(false));
 
-    api<{ ok: boolean; error?: string }>("/api/settings/wpp/status")
-      .then((r) =>
-        setWpp({ label: r.ok ? "Conectado" : r.error ?? "Desconectado", connected: r.ok })
-      )
+    // `ok` só diz que a checagem respondeu; quem sabe do aparelho é `connected`
+    api<{ ok: boolean; connected?: boolean; message?: string }>("/api/settings/wpp/status")
+      .then((r) => {
+        if (r.connected) return setWpp({ label: "Conectado", connected: true });
+        setWpp({
+          label: r.ok ? "Desconectado" : r.message ?? "Desconectado",
+          connected: false
+        });
+      })
       .catch(() => setWpp({ label: "Indisponível", connected: false }));
   }, []);
 

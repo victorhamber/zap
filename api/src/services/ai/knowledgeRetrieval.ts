@@ -13,10 +13,14 @@ export type KnowledgeRow = {
 const SESSION_KNOWLEDGE_POOL = 2500;
 export const DEFAULT_KNOWLEDGE_REPLY_LIMIT = 20;
 
+// Peso do TIPO é só um desempate entre linhas que já casaram a pergunta —
+// não o termo dominante. Antes valia 120 (qa_pair), 8x mais que o melhor
+// sinal de relevância (+14 por palavra), então um qa_pair sem NENHUMA palavra
+// em comum vencia uma resposta perfeitamente relevante.
 const KIND_WEIGHT: Record<string, number> = {
-  qa_pair: 120,
-  answer: 70,
-  question: 25
+  qa_pair: 30,
+  answer: 15,
+  question: 6
 };
 
 function normalizeText(s: string): string {
@@ -99,16 +103,23 @@ export function buildOfficialFactsBlock(officialFacts: string): string {
   return lines.join("\n");
 }
 
+/** Retorna o score e QUANTAS palavras da pergunta a linha casou (para o piso). */
 function scoreKnowledgeRow(
   row: KnowledgeRow,
   tokens: string[],
   sameChat: boolean
-): number {
+): { score: number; matched: number } {
   let score = KIND_WEIGHT[row.kind] ?? 15;
   if (sameChat) score += 35;
 
+  // Recência aplicada uniformemente. Antes ficava DEPOIS do return do qa_pair,
+  // ou seja, era código morto justamente para o tipo que domina o ranking.
+  const ageDays = (Date.now() - row.createdAt.getTime()) / 86_400_000;
+  score += Math.max(0, 8 - ageDays * 0.05);
+
   const topic = normalizeText(row.topic ?? "");
   const content = normalizeText(row.content);
+  let matched = 0;
 
   if (row.kind === "qa_pair") {
     const qa = parseQaPair(row.content);
@@ -116,24 +127,24 @@ function scoreKnowledgeRow(
       const q = normalizeText(qa.question);
       const a = normalizeText(qa.answerBase);
       for (const t of tokens) {
-        if (q.includes(t)) score += 14;
-        if (a.includes(t)) score += 5;
-        if (topic.includes(t)) score += 8;
+        let hit = false;
+        if (q.includes(t)) { score += 14; hit = true; }
+        if (a.includes(t)) { score += 5; hit = true; }
+        if (topic.includes(t)) { score += 8; hit = true; }
+        if (hit) matched++;
       }
-      if (tokens.length === 0) score += 5;
-      return score;
+      return { score, matched };
     }
   }
 
   for (const t of tokens) {
-    if (content.includes(t)) score += 6;
-    if (topic.includes(t)) score += 10;
+    let hit = false;
+    if (content.includes(t)) { score += 6; hit = true; }
+    if (topic.includes(t)) { score += 10; hit = true; }
+    if (hit) matched++;
   }
 
-  const ageDays = (Date.now() - row.createdAt.getTime()) / 86_400_000;
-  score += Math.max(0, 8 - ageDays * 0.05);
-
-  return score;
+  return { score, matched };
 }
 
 export function formatKnowledgeSnippet(row: KnowledgeRow): string {
@@ -200,12 +211,25 @@ export async function fetchSessionKnowledgeForReply(params: {
 
   if (rows.length === 0) return [];
 
+  const hasTokens = tokens.length > 0;
+
   const ranked = rows
-    .map((row) => ({
-      row,
-      score: scoreKnowledgeRow(row, tokens, sameChatIds.has(row.chatId))
-    }))
+    .map((row) => {
+      const sameChat = sameChatIds.has(row.chatId);
+      const { score, matched } = scoreKnowledgeRow(row, tokens, sameChat);
+      return { row, score, matched, sameChat };
+    })
     .filter(({ row }) => !isKnownWrongCapitalMinimum(extractKnowledgeSearchText(row)))
+    .filter(({ matched, sameChat }) => {
+      // Piso de relevância: quando a pergunta tem palavras úteis, só entra o que
+      // casou alguma OU é da conversa deste mesmo contato. Sem isso, quando nada
+      // casava o sistema despejava os 20 qa_pairs mais recentes da instância
+      // inteira — conhecimento de outros clientes sobre outros assuntos — e ainda
+      // instruía o modelo a se basear neles. Sem tokens úteis (ex.: "bom dia"),
+      // cai na recência como antes.
+      if (!hasTokens) return true;
+      return matched > 0 || sameChat;
+    })
     .sort((a, b) => b.score - a.score || b.row.createdAt.getTime() - a.row.createdAt.getTime());
 
   const picked = dedupeSnippets(ranked.map((r) => r.row)).slice(0, limit);

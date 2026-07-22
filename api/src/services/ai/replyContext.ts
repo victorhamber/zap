@@ -3,6 +3,7 @@ import { listStoredMessages, resolveAllChatIdsForContact } from "../inboxStore.j
 import { labelForMediaType } from "../mediaText.js";
 import { getContactTagNames } from "../contacts.js";
 import { phoneFromChatId } from "./tagGate.js";
+import { HUMAN_ANSWER_SOURCES } from "./learnGate.js";
 import { buildChatContextForReply, refreshConversationMemory } from "./conversationMemory.js";
 
 export async function resolveChatIdVariants(session: string, chatId: string): Promise<string[]> {
@@ -77,7 +78,9 @@ export async function hasManualReplyAfterInbound(params: {
       session: params.session,
       chatId: { in: variants },
       fromMe: true,
-      source: "manual",
+      // "manual" (painel) OU "webhook" (celular). Antes só "manual", então o
+      // atendente que respondia pelo aparelho não cancelava a resposta da IA.
+      source: { in: [...HUMAN_ANSWER_SOURCES] },
       timestamp: { gt: params.inboundTimestamp }
     },
     select: { id: true }

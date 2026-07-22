@@ -878,6 +878,10 @@ export async function registerInboundWebhook(): Promise<{
   const instance = await getInstanceName();
   await ensureInstanceExists(instance);
 
+  // Se exigimos segredo no webhook, a Evolution precisa mandá-lo de volta —
+  // senão o painel se auto-bloquearia e o inbox pararia sem aviso.
+  const webhookSecret = env.WHATSAPP_WEBHOOK_SECRET?.trim();
+
   const res = await evoFetch(`/webhook/set/${encodeURIComponent(instance)}`, {
     method: "POST",
     body: JSON.stringify({
@@ -886,6 +890,7 @@ export async function registerInboundWebhook(): Promise<{
         url,
         webhookByEvents: false,
         webhookBase64: true,
+        ...(webhookSecret ? { headers: { "x-webhook-secret": webhookSecret } } : {}),
         events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED", "SEND_MESSAGE"]
       }
     })
