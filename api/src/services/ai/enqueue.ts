@@ -12,7 +12,8 @@ import {
   setChatModeHuman,
   resolveChatModeForInbound,
   setPendingReply,
-  clearPendingReply
+  clearPendingReply,
+  logAiEvent
 } from "./chatState.js";
 import {
   enqueueAiLearnJob,
@@ -157,6 +158,21 @@ async function runEnqueue(msg: SavedInboxMessage): Promise<void> {
     new Date()
   );
   if (mode === "human") return;
+
+  // REGRA: vídeo do cliente → o bot NÃO responde; deixa para um humano ver e
+  // responder. A mensagem fica sem resposta e sem ser marcada como lida, então
+  // aparece como não lida no WhatsApp para o atendente notar. Ligar
+  // "Vídeo (resposta)" no painel faz o bot transcrever o áudio do vídeo e
+  // responder normalmente.
+  if (modality === "video" && !settings.replyVideo) {
+    await logAiEvent({
+      session: msg.session,
+      chatId: msg.chatId,
+      event: "skipped_video",
+      detail: "Vídeo recebido — aguardando atendimento humano"
+    });
+    return;
+  }
 
   await cancelAiReplyJob(msg.session, msg.chatId);
 

@@ -79,6 +79,20 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
   });
   if (!inbound || inbound.fromMe) return;
 
+  // REGRA: mensagem âncora em vídeo (com "Vídeo (resposta)" desligado) → o bot
+  // não responde, deixa para um humano. Rede de segurança além do gate no
+  // enqueue, para o caso de um job já agendado cuja âncora seja um vídeo.
+  if (detectModality(inbound.type) === "video" && !settingsRow.replyVideo) {
+    await logAiEvent({
+      session: payload.session,
+      chatId: payload.chatId,
+      event: "skipped_video",
+      detail: "Vídeo recebido — aguardando atendimento humano"
+    });
+    await clearPendingReply(payload.session, payload.chatId);
+    return;
+  }
+
   const mode = await resolveChatModeForInbound(
     payload.session,
     payload.chatId,
