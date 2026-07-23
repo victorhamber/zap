@@ -6,6 +6,24 @@ export type OfficialLink = {
   label: string;
 };
 
+/** Resposta pronta (texto + mídia opcional) que a IA dispara ao reconhecer a pergunta. */
+export type AiMediaResponseKind = "text" | "image" | "video" | "audio" | "document";
+
+export type AiMediaResponse = {
+  id: string;
+  /** Nome interno para o painel (ex.: "Tutorial de instalação"). */
+  label: string;
+  /** Perguntas-gatilho e variações. A IA casa por intenção, não por texto exato. */
+  triggers: string[];
+  /** Texto enviado (opcional). Vira legenda quando há mídia. */
+  text: string;
+  kind: AiMediaResponseKind;
+  /** Vazio para kind "text". */
+  mediaUrl: string;
+  filename: string;
+  enabled: boolean;
+};
+
 export type AiLearnJobPayload = {
   session: string;
   chatId: string;

@@ -76,6 +76,11 @@ model InstanceAiSettings {
   rulesAllowed     String   @default("")
   rulesForbidden   String   @default("")
   officialLinks    Json     @default("[]")
+  /**
+   * Respostas com mídia disparadas por pergunta-gatilho. A IA envia texto+mídia
+   * prontos quando o cliente pergunta algo equivalente. Ver AiMediaResponse.
+   */
+  mediaResponses   Json     @default("[]")
   openaiApiKeyEnc  String?
   modelChat        String   @default("gpt-4o-mini")
   modelVision      String   @default("gpt-4o-mini")

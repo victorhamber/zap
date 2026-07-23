@@ -20,6 +20,14 @@ import {
   resolveChatModeForInbound
 } from "./chatState.js";
 import { detectModality, extractInboundTextForReply } from "./mediaExtract.js";
+import {
+  buildMediaResponsesBlock,
+  extractMediaResponseMarker,
+  findMediaResponse,
+  parseMediaResponses,
+  stripMediaResponseMarker
+} from "./mediaResponses.js";
+import type { AiMediaResponse } from "../../types/ai.js";
 import { phoneFromChatId } from "./tagGate.js";
 import { findContactByPhoneLoose } from "../contacts.js";
 import {
@@ -33,6 +41,45 @@ import {
   resolveLeadTagsForAi
 } from "./replyContext.js";
 import type { OfficialLink } from "../../types/ai.js";
+
+/**
+ * Envia uma resposta pronta (texto e/ou mídia) cadastrada pelo dono, marcando
+ * source "ai" para não virar aprendizado nem ativar o modo humano.
+ * - imagem/vídeo/documento: texto vira legenda (uma mensagem).
+ * - áudio (nota de voz não tem legenda): manda o texto antes, depois o áudio.
+ */
+async function dispatchMediaResponse(
+  session: string,
+  chatId: string,
+  resp: AiMediaResponse
+): Promise<void> {
+  const text = resp.text.trim();
+  const isGroup = chatId.includes("@g.us");
+  const { sendChatMedia, sendChatMessage } = await import("../inbox.js");
+
+  const hasMedia = resp.kind !== "text" && resp.mediaUrl.trim().length > 0;
+
+  if (!hasMedia) {
+    if (text) await sendChatMessage(chatId, text, isGroup, "ai");
+    return;
+  }
+
+  if (resp.kind === "audio") {
+    if (text) await sendChatMessage(chatId, text, isGroup, "ai");
+    await sendChatMedia(chatId, "audio", resp.mediaUrl, { isGroup, source: "ai" });
+    return;
+  }
+
+  if (resp.kind === "image" || resp.kind === "video" || resp.kind === "document") {
+    // texto como legenda
+    await sendChatMedia(chatId, resp.kind, resp.mediaUrl, {
+      caption: text || undefined,
+      filename: resp.filename || undefined,
+      isGroup,
+      source: "ai"
+    });
+  }
+}
 
 async function resolveClientNameForAi(chatId: string): Promise<string | null> {
   try {
@@ -168,6 +215,8 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
   }
 
   const officialLinks = parseOfficialLinks(settingsRow.officialLinks);
+  const mediaResponses = parseMediaResponses(settingsRow.mediaResponses);
+  const mediaBlock = buildMediaResponsesBlock(mediaResponses);
   const clientName = await resolveClientNameForAi(payload.chatId);
   const leadTags = await resolveLeadTagsForAi(payload.chatId);
   const systemPrompt =
@@ -179,7 +228,9 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
       officialLinks,
       clientName,
       leadTags
-    }) + `\n\nLinks disponíveis: ${injectOfficialLinksHint(officialLinks)}`;
+    }) +
+    `\n\nLinks disponíveis: ${injectOfficialLinksHint(officialLinks)}` +
+    (mediaBlock ? `\n\n${mediaBlock}` : "");
 
   const chatHistory = await buildChatHistoryForAi(payload.session, payload.chatId, {
     apiKey,
@@ -259,14 +310,37 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
 
   const validation = validateReplyAgainstRules(reply, settingsRow.rulesForbidden);
   if (!validation.ok) {
-    await logAiEvent({
-      session: payload.session,
-      chatId: payload.chatId,
-      event: "blocked_rule",
-      detail: validation.reason
-    });
-    await clearPendingReply(payload.session, payload.chatId);
-    return;
+    // Descartar aqui deixaria o cliente sem resposta nenhuma — pior que a frase
+    // proibida. Regenera uma vez; se ainda vier a expressão, envia mesmo assim
+    // (o prompt já orienta a evitá-la) e apenas registra.
+    try {
+      const retry = stripDismissiveClosing(
+        await generateReply({
+          apiKey,
+          model: settingsRow.modelChat,
+          systemPrompt,
+          chatHistory,
+          officialFacts,
+          knowledgeSnippets: snippets,
+          inboundText,
+          recentAiReplies,
+          retryAvoidRepeat: true
+        })
+      );
+      if (validateReplyAgainstRules(retry, settingsRow.rulesForbidden).ok) {
+        reply = retry;
+      } else {
+        reply = retry;
+        await logAiEvent({
+          session: payload.session,
+          chatId: payload.chatId,
+          event: "rule_softened",
+          detail: validation.reason
+        });
+      }
+    } catch {
+      // regeneração falhou — envia a original; nunca ghostar o cliente
+    }
   }
 
   if (await hasAiReplyAfterInbound({
@@ -276,6 +350,38 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
   })) {
     await clearPendingReply(payload.session, payload.chatId);
     return;
+  }
+
+  // A IA reconheceu uma pergunta com resposta pronta cadastrada: dispara a
+  // resposta cadastrada (texto + mídia) exatamente como o dono definiu, em vez
+  // do texto gerado. Se o marcador vier com id inexistente, remove e segue no
+  // texto normal.
+  const markerId = extractMediaResponseMarker(reply);
+  if (markerId) {
+    const matched = findMediaResponse(mediaResponses, markerId);
+    if (matched) {
+      await dispatchMediaResponse(payload.session, payload.chatId, matched);
+      await logAiEvent({
+        session: payload.session,
+        chatId: payload.chatId,
+        event: "replied_media",
+        detail: matched.label || matched.id
+      });
+      await clearPendingReply(payload.session, payload.chatId);
+      void refreshConversationMemory({
+        session: payload.session,
+        chatId: payload.chatId,
+        apiKey,
+        model: settingsRow.modelChat
+      }).catch((err) => console.warn("[ai] post-reply memory refresh failed", err));
+      return;
+    }
+    reply = stripMediaResponseMarker(reply);
+    if (!reply) {
+      // só tinha o marcador e ele era inválido — não manda mensagem vazia
+      await clearPendingReply(payload.session, payload.chatId);
+      return;
+    }
   }
 
   const waMessageId = await sendText(phoneFromChatId(payload.chatId), reply);
@@ -310,20 +416,29 @@ export async function simulateReply(params: {
   session: string;
   chatId: string;
   inboundText: string;
-}): Promise<{ reply: string; blocked?: string; knowledgeUsed?: number }> {
+}): Promise<{
+  reply: string;
+  blocked?: string;
+  knowledgeUsed?: number;
+  mediaMatched?: { id: string; label: string; kind: string };
+}> {
   const settings = await getAiSettings(params.session);
   const apiKey = await resolveOpenAiApiKey(params.session);
   if (!apiKey) throw new Error("Configure a chave OpenAI desta instância no painel");
 
-  const systemPrompt = buildSystemPrompt({
-    productContext: settings.productContext,
-    officialFacts: settings.officialFacts,
-    rulesAllowed: settings.rulesAllowed,
-    rulesForbidden: settings.rulesForbidden,
-    officialLinks: settings.officialLinks,
-    clientName: await resolveClientNameForAi(params.chatId),
-    leadTags: await resolveLeadTagsForAi(params.chatId)
-  });
+  const mediaResponses = parseMediaResponses(settings.mediaResponses);
+  const mediaBlock = buildMediaResponsesBlock(mediaResponses);
+
+  const systemPrompt =
+    buildSystemPrompt({
+      productContext: settings.productContext,
+      officialFacts: settings.officialFacts,
+      rulesAllowed: settings.rulesAllowed,
+      rulesForbidden: settings.rulesForbidden,
+      officialLinks: settings.officialLinks,
+      clientName: await resolveClientNameForAi(params.chatId),
+      leadTags: await resolveLeadTagsForAi(params.chatId)
+    }) + (mediaBlock ? `\n\n${mediaBlock}` : "");
 
   const chatHistory = await buildChatHistoryForAi(params.session, params.chatId, {
     apiKey,
@@ -345,6 +460,25 @@ export async function simulateReply(params: {
       inboundText: params.inboundText
     })
   );
+
+  const markerId = extractMediaResponseMarker(reply);
+  if (markerId) {
+    const matched = findMediaResponse(mediaResponses, markerId);
+    if (matched) {
+      const preview =
+        matched.text.trim() ||
+        `[${matched.kind}${matched.filename ? `: ${matched.filename}` : ""}]`;
+      return {
+        reply: preview,
+        knowledgeUsed: snippets.length,
+        mediaMatched: {
+          id: matched.id,
+          label: matched.label || matched.id,
+          kind: matched.kind
+        }
+      };
+    }
+  }
 
   const validation = validateReplyAgainstRules(reply, settings.rulesForbidden);
   if (!validation.ok) {

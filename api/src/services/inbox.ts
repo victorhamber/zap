@@ -930,7 +930,9 @@ export async function fetchMessages(
 export async function sendChatMessage(
   chatId: string,
   message: string,
-  isGroup = false
+  isGroup = false,
+  /** "manual" (atendente) por padrão; "ai" quando a própria IA envia. */
+  source: "manual" | "ai" | "flow" = "manual"
 ): Promise<void> {
   const { defaultWhatsAppSession } = await import("../env.js");
   const { canonicalizeChatId } = await import("./inboxStore.js");
@@ -942,7 +944,7 @@ export async function sendChatMessage(
     chatId: canonical,
     body: message,
     fromMe: true,
-    source: "manual",
+    source,
     type: "chat",
     waMessageId,
     peerJids: [target.jid, chatId, canonical]
@@ -1042,7 +1044,13 @@ export async function sendChatMedia(
   chatId: string,
   type: "image" | "video" | "audio" | "document",
   url: string,
-  options?: { caption?: string; isGroup?: boolean; filename?: string }
+  options?: {
+    caption?: string;
+    isGroup?: boolean;
+    filename?: string;
+    /** "manual" (atendente) por padrão; "ai" quando a própria IA dispara a mídia. */
+    source?: "manual" | "ai" | "flow";
+  }
 ): Promise<void> {
   const target = buildWppSendTarget(chatId, options?.isGroup);
   const base = {
@@ -1151,7 +1159,7 @@ export async function sendChatMedia(
     chatId: canonical,
     body: labels[type],
     fromMe: true,
-    source: "manual",
+    source: options?.source ?? "manual",
     type,
     mediaUrl: toPublicMediaUrl(storedMediaUrl) ?? storedMediaUrl,
     waMessageId,

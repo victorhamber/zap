@@ -5,6 +5,19 @@ type Tag = { id: string; name: string; color: string };
 
 type OfficialLink = { trigger: string; url: string; label: string };
 
+type MediaResponseKind = "text" | "image" | "video" | "audio" | "document";
+
+type AiMediaResponse = {
+  id: string;
+  label: string;
+  triggers: string[];
+  text: string;
+  kind: MediaResponseKind;
+  mediaUrl: string;
+  filename: string;
+  enabled: boolean;
+};
+
 type AiSettings = {
   enabled: boolean;
   learnEnabled: boolean;
@@ -23,6 +36,7 @@ type AiSettings = {
   rulesAllowed: string;
   rulesForbidden: string;
   officialLinks: OfficialLink[];
+  mediaResponses: AiMediaResponse[];
   openaiApiKeyMasked: string | null;
   hasOpenaiApiKey: boolean;
   encryptionReady?: boolean;
@@ -86,6 +100,7 @@ export function AiAssistantPanel() {
     | "rulesAllowed"
     | "rulesForbidden"
     | "officialLinks"
+    | "mediaResponses"
     | "replyDelaySec"
     | "humanIdleSec"
   > | null>(null);
@@ -97,6 +112,7 @@ export function AiAssistantPanel() {
       rulesAllowed: s.rulesAllowed,
       rulesForbidden: s.rulesForbidden,
       officialLinks: s.officialLinks,
+      mediaResponses: s.mediaResponses,
       replyDelaySec: s.replyDelaySec,
       humanIdleSec: s.humanIdleSec
     };
@@ -112,7 +128,8 @@ export function AiAssistantPanel() {
       settings.rulesForbidden !== b.rulesForbidden ||
       settings.replyDelaySec !== b.replyDelaySec ||
       settings.humanIdleSec !== b.humanIdleSec ||
-      JSON.stringify(settings.officialLinks) !== JSON.stringify(b.officialLinks)
+      JSON.stringify(settings.officialLinks) !== JSON.stringify(b.officialLinks) ||
+      JSON.stringify(settings.mediaResponses) !== JSON.stringify(b.mediaResponses)
     );
   }
 
@@ -126,6 +143,7 @@ export function AiAssistantPanel() {
       rulesAllowed: b.rulesAllowed,
       rulesForbidden: b.rulesForbidden,
       officialLinks: b.officialLinks,
+      mediaResponses: b.mediaResponses,
       replyDelaySec: b.replyDelaySec,
       humanIdleSec: b.humanIdleSec
     });
@@ -140,9 +158,69 @@ export function AiAssistantPanel() {
       rulesAllowed: settings.rulesAllowed,
       rulesForbidden: settings.rulesForbidden,
       officialLinks: settings.officialLinks,
+      mediaResponses: settings.mediaResponses,
       replyDelaySec: settings.replyDelaySec,
       humanIdleSec: settings.humanIdleSec
     });
+  }
+
+  /* ---- Respostas com mídia ---- */
+
+  function patchMediaResponses(list: AiMediaResponse[]) {
+    setSettings((s) => (s ? { ...s, mediaResponses: list } : s));
+  }
+
+  function updateMediaResponse(index: number, patch: Partial<AiMediaResponse>) {
+    if (!settings) return;
+    const next = settings.mediaResponses.map((r, i) => (i === index ? { ...r, ...patch } : r));
+    patchMediaResponses(next);
+  }
+
+  function addMediaResponse() {
+    if (!settings) return;
+    const id =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `mr_${Date.now()}`;
+    patchMediaResponses([
+      ...settings.mediaResponses,
+      { id, label: "", triggers: [], text: "", kind: "text", mediaUrl: "", filename: "", enabled: true }
+    ]);
+  }
+
+  function removeMediaResponse(index: number) {
+    if (!settings) return;
+    patchMediaResponses(settings.mediaResponses.filter((_, i) => i !== index));
+  }
+
+  function kindFromMime(mime: string): MediaResponseKind {
+    if (mime.startsWith("image/")) return "image";
+    if (mime.startsWith("video/")) return "video";
+    if (mime.startsWith("audio/")) return "audio";
+    return "document";
+  }
+
+  async function uploadMediaFor(index: number, file: File) {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+    try {
+      const r = await api<{ ok: boolean; url?: string; message?: string }>(
+        "/api/inbox/upload",
+        { method: "POST", body: JSON.stringify({ data: dataUrl, mime: file.type }) }
+      );
+      if (!r.url) throw new Error(r.message ?? "Falha no upload");
+      updateMediaResponse(index, {
+        kind: kindFromMime(file.type),
+        mediaUrl: r.url,
+        filename: file.name
+      });
+    } catch (e) {
+      showMessage(e instanceof Error ? e.message : "Falha ao enviar arquivo", true);
+    }
   }
 
   const refreshProgress = useCallback(async () => {
@@ -166,8 +244,18 @@ export function AiAssistantPanel() {
       api<AiSettings>("/api/ai/settings"),
       api<{ tags: Tag[] }>("/api/tags")
     ]);
-    setSettings(s);
-    syncSavedFormRef(s);
+    setSettings({
+      ...s,
+      mediaResponses: Array.isArray(s.mediaResponses) ? s.mediaResponses : [],
+      officialFacts: s.officialFacts ?? "",
+      rulesAllowed: s.rulesAllowed ?? ""
+    });
+    syncSavedFormRef({
+      ...s,
+      mediaResponses: Array.isArray(s.mediaResponses) ? s.mediaResponses : [],
+      officialFacts: s.officialFacts ?? "",
+      rulesAllowed: s.rulesAllowed ?? ""
+    });
     setTags(t.tags);
     await refreshProgress();
   }, [refreshProgress]);
@@ -333,17 +421,25 @@ export function AiAssistantPanel() {
 
   async function runTestReply() {
     setTestReply(null);
-    const r = await api<{ reply: string; blocked?: string; knowledgeUsed?: number }>(
-      "/api/ai/test-reply",
-      {
-        method: "POST",
-        body: JSON.stringify({ inboundText: testInput })
-      }
-    );
-    const prefix =
-      typeof r.knowledgeUsed === "number"
-        ? `[${r.knowledgeUsed} item(ns) do aprendizado histórico]\n\n`
-        : "";
+    const r = await api<{
+      reply: string;
+      blocked?: string;
+      knowledgeUsed?: number;
+      mediaMatched?: { id: string; label: string; kind: string };
+    }>("/api/ai/test-reply", {
+      method: "POST",
+      body: JSON.stringify({ inboundText: testInput })
+    });
+    const parts: string[] = [];
+    if (typeof r.knowledgeUsed === "number") {
+      parts.push(`[${r.knowledgeUsed} item(ns) do aprendizado histórico]`);
+    }
+    if (r.mediaMatched) {
+      parts.push(
+        `[Resposta com mídia: ${r.mediaMatched.label} · ${r.mediaMatched.kind}]`
+      );
+    }
+    const prefix = parts.length > 0 ? `${parts.join("\n")}\n\n` : "";
     if (r.blocked) {
       setTestReply(`${prefix}Bloqueado: ${r.blocked}\n\n${r.reply}`);
     } else {
@@ -665,14 +761,6 @@ export function AiAssistantPanel() {
           />
         </label>
         <label className="block text-sm text-zinc-400">
-          Pode fazer
-          <textarea
-            className="mt-1 w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-zinc-100 text-sm min-h-20"
-            value={settings.rulesAllowed}
-            onChange={(e) => setSettings({ ...settings, rulesAllowed: e.target.value })}
-          />
-        </label>
-        <label className="block text-sm text-zinc-400">
           Não pode fazer
           <textarea
             className="mt-1 w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-zinc-100 text-sm min-h-20"
@@ -729,6 +817,116 @@ export function AiAssistantPanel() {
           }
         >
           + Adicionar link
+        </button>
+      </section>
+
+      <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-5 space-y-3">
+        <div>
+          <h3 className="font-medium text-white">Respostas com mídia</h3>
+          <p className="mt-1 text-xs text-zinc-500 leading-relaxed">
+            Respostas prontas (texto e/ou imagem, vídeo, áudio) que a IA envia
+            sozinha quando o cliente pergunta algo equivalente a um dos gatilhos.
+            A IA entende variações de escrita e áudio — não precisa ser a frase exata.
+          </p>
+        </div>
+
+        {settings.mediaResponses.map((mr, i) => (
+          <div
+            key={mr.id}
+            className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3 space-y-2"
+          >
+            <div className="flex items-center gap-2">
+              <input
+                className="flex-1 rounded bg-zinc-900 border border-zinc-700 px-2 py-1 text-sm text-zinc-100"
+                placeholder="Nome interno (ex.: Tutorial de instalação)"
+                value={mr.label}
+                onChange={(e) => updateMediaResponse(i, { label: e.target.value })}
+              />
+              <label className="flex items-center gap-1.5 text-xs text-zinc-400 shrink-0">
+                <input
+                  type="checkbox"
+                  checked={mr.enabled}
+                  onChange={(e) => updateMediaResponse(i, { enabled: e.target.checked })}
+                />
+                Ativa
+              </label>
+              <button
+                type="button"
+                className="text-xs text-red-400 hover:underline shrink-0"
+                onClick={() => removeMediaResponse(i)}
+              >
+                Remover
+              </button>
+            </div>
+
+            <label className="block text-xs text-zinc-400">
+              Perguntas-gatilho (uma por linha, com variações)
+              <textarea
+                className="mt-1 w-full rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 min-h-16"
+                placeholder={"como instala?\ncomo faço a instalação\nnão sei instalar"}
+                value={mr.triggers.join("\n")}
+                onChange={(e) =>
+                  updateMediaResponse(i, {
+                    triggers: e.target.value.split("\n").map((t) => t.trim()).filter(Boolean)
+                  })
+                }
+              />
+            </label>
+
+            <label className="block text-xs text-zinc-400">
+              Texto da resposta (opcional — vira legenda da mídia)
+              <textarea
+                className="mt-1 w-full rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 min-h-12"
+                value={mr.text}
+                onChange={(e) => updateMediaResponse(i, { text: e.target.value })}
+              />
+            </label>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {mr.mediaUrl ? (
+                <>
+                  <span className="text-xs text-emerald-300">
+                    {mr.kind} anexado{mr.filename ? `: ${mr.filename}` : ""}
+                  </span>
+                  <a
+                    href={mr.mediaUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-zinc-400 hover:underline"
+                  >
+                    ver
+                  </a>
+                  <button
+                    type="button"
+                    className="text-xs text-red-400 hover:underline"
+                    onClick={() =>
+                      updateMediaResponse(i, { kind: "text", mediaUrl: "", filename: "" })
+                    }
+                  >
+                    remover mídia
+                  </button>
+                </>
+              ) : (
+                <label className="text-xs text-emerald-400 cursor-pointer hover:underline">
+                  + Anexar imagem, vídeo ou áudio
+                  <input
+                    type="file"
+                    accept="image/*,video/*,audio/*,application/pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) void uploadMediaFor(i, f);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+              )}
+            </div>
+          </div>
+        ))}
+
+        <button type="button" className="text-sm text-emerald-400" onClick={addMediaResponse}>
+          + Adicionar resposta
         </button>
       </section>
 

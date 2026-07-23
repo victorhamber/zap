@@ -109,27 +109,44 @@ export function buildSystemPrompt(params: {
   ].join("\n");
 }
 
+/** Começo de uma REGRA (o modelo obedece via prompt) — não é frase banida literal. */
+const RULE_PREFIX = /^(nunca|n[aã]o|sempre|evite|proibido|jamais|prefira|use\b)/;
+
+/**
+ * Verificação pós-resposta. Bloquear aqui DESCARTA a resposta e o cliente fica
+ * sem nada — então só travamos em FRASES BANIDAS literais (ex.: "Claro!",
+ * "Ótima pergunta!"), nunca em regras longas nem em linhas com número.
+ *
+ * Antes, cada linha do campo "Não pode fazer" virava um substring proibido. Isso
+ * era uma armadilha: uma regra que citasse um preço ("Desafio: R$27,90") ou a
+ * palavra "link" fazia respostas legítimas (com preço ou com URL de pagamento)
+ * serem apagadas em silêncio. Agora essas linhas são ignoradas pela checagem —
+ * o modelo continua as seguindo porque elas estão no prompt.
+ */
 export function validateReplyAgainstRules(
   reply: string,
   rulesForbidden: string
 ): { ok: true } | { ok: false; reason: string } {
-  const forbidden = rulesForbidden
-    .split(/\n/)
-    .map((l) => l.trim())
-    .filter(Boolean);
-
   const lower = reply.toLowerCase();
-  for (const rule of forbidden) {
-    const needle = rule.toLowerCase();
-    if (needle.length >= 4 && lower.includes(needle)) {
-      return { ok: false, reason: `Resposta viola regra: ${rule}` };
-    }
-  }
 
-  const urlPattern = /https?:\/\/[^\s]+/gi;
-  const urls = reply.match(urlPattern) ?? [];
-  if (urls.length > 0 && forbidden.some((r) => r.toLowerCase().includes("link"))) {
-    return { ok: false, reason: "Resposta contém link não autorizado" };
+  for (const raw of rulesForbidden.split(/\n/)) {
+    const cleaned = raw
+      .trim()
+      .replace(/^[-*•]\s*/, "") // marcador de lista
+      .replace(/^["'“”]+|["'“”]+$/g, "") // aspas ao redor
+      .trim();
+    if (!cleaned) continue;
+
+    const needle = cleaned.toLowerCase();
+
+    // Só frase curta, sem dígitos e que não seja uma regra ("Nunca…", "Não…").
+    if (RULE_PREFIX.test(needle)) continue;
+    if (/\d/.test(needle)) continue;
+    if (needle.length < 4 || needle.length > 45) continue;
+
+    if (lower.includes(needle)) {
+      return { ok: false, reason: `Resposta usou expressão proibida: ${cleaned}` };
+    }
   }
 
   return { ok: true };

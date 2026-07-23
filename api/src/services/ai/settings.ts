@@ -1,8 +1,9 @@
 import { prisma } from "../../prisma.js";
 import { env } from "../../env.js";
-import type { OfficialLink } from "../../types/ai.js";
+import type { AiMediaResponse, OfficialLink } from "../../types/ai.js";
 import { isEncryptionConfigured } from "../secretCrypto.js";
 import { decryptApiKey, encryptApiKey, maskApiKey } from "./crypto.js";
+import { normalizeMediaResponsesForSave, parseMediaResponses } from "./mediaResponses.js";
 
 export async function getActiveSessionName(): Promise<string> {
   if (!prisma) return "default";
@@ -44,6 +45,7 @@ export type AiSettingsDto = {
   rulesAllowed: string;
   rulesForbidden: string;
   officialLinks: OfficialLink[];
+  mediaResponses: AiMediaResponse[];
   openaiApiKeyMasked: string | null;
   hasOpenaiApiKey: boolean;
   encryptionReady: boolean;
@@ -84,6 +86,7 @@ function toDto(row: NonNullable<Awaited<ReturnType<typeof loadSettingsRow>>>, se
     rulesAllowed: row.rulesAllowed,
     rulesForbidden: row.rulesForbidden,
     officialLinks: parseOfficialLinks(row.officialLinks),
+    mediaResponses: parseMediaResponses(row.mediaResponses),
     openaiApiKeyMasked: masked,
     hasOpenaiApiKey: Boolean(row.openaiApiKeyEnc),
     encryptionReady: isEncryptionConfigured(),
@@ -126,6 +129,7 @@ export async function getAiSettings(session?: string): Promise<AiSettingsDto> {
         rulesAllowed: "",
         rulesForbidden: "",
         officialLinks: [],
+        mediaResponses: [],
         openaiApiKeyEnc: null,
         modelChat: "gpt-4o-mini",
         modelVision: "gpt-4o-mini",
@@ -206,6 +210,9 @@ export async function saveAiSettings(
     rulesAllowed: body.rulesAllowed ?? existing?.rulesAllowed ?? "",
     rulesForbidden: body.rulesForbidden ?? existing?.rulesForbidden ?? "",
     officialLinks: body.officialLinks ?? parseOfficialLinks(existing?.officialLinks) ?? [],
+    mediaResponses: body.mediaResponses
+      ? normalizeMediaResponsesForSave(body.mediaResponses)
+      : parseMediaResponses(existing?.mediaResponses),
     openaiApiKeyEnc,
     modelChat: body.modelChat ?? existing?.modelChat ?? "gpt-4o-mini",
     modelVision: body.modelVision ?? existing?.modelVision ?? "gpt-4o-mini",

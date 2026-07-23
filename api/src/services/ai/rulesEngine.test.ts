@@ -103,6 +103,38 @@ describe("rulesEngine", () => {
     const r = validateReplyAgainstRules("O valor é consultado no site oficial.", "");
     assert.equal(r.ok, true);
   });
+
+  it("captura frase de chatbot banida (com marcador e aspas)", () => {
+    const r = validateReplyAgainstRules(
+      "Claro! Vou te ajudar com isso.",
+      '- "Claro!"\n- "Certamente!"'
+    );
+    assert.equal(r.ok, false);
+  });
+
+  it("NÃO bloqueia resposta com preço, mesmo se a regra citar preço", () => {
+    const r = validateReplyAgainstRules(
+      "O Desafio é R$27,90 e o Anual R$747.",
+      "Nunca ofereça desconto\nDesafio: R$27,90\nAnual: R$747,00"
+    );
+    assert.equal(r.ok, true);
+  });
+
+  it("NÃO bloqueia resposta com link, mesmo se a regra mencionar link", () => {
+    const r = validateReplyAgainstRules(
+      "Aqui está: 👉 https://go.trajettu.com/desafiopg",
+      "Nunca use emojis além do 👉 para links"
+    );
+    assert.equal(r.ok, true);
+  });
+
+  it("NÃO bloqueia em regra longa que por acaso aparece na resposta", () => {
+    const r = validateReplyAgainstRules(
+      "Entendo, todo investimento tem risco mesmo.",
+      "Nunca diga que o produto não tem risco"
+    );
+    assert.equal(r.ok, true);
+  });
 });
 
 describe("tagGate helpers", () => {
