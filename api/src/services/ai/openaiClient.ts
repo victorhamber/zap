@@ -205,6 +205,11 @@ export async function extractKnowledge(params: {
   }
 }
 
+// gpt-4o-mini tem 128k de contexto. 8000 chars (~2k tokens) cortava metade de
+// prompts de venda elaborados justamente na parte final (FAQ, fechamento). Um
+// teto maior custa centavos e deixa o prompt inteiro chegar ao modelo.
+const MAX_SYSTEM_PROMPT_CHARS = 24000;
+
 export async function generateReply(params: {
   apiKey: string;
   model: string;
@@ -258,7 +263,7 @@ export async function generateReply(params: {
     apiKey: params.apiKey,
     model: params.model,
     messages: [
-      { role: "system", content: params.systemPrompt.slice(0, 8000) },
+      { role: "system", content: params.systemPrompt.slice(0, MAX_SYSTEM_PROMPT_CHARS) },
       {
         role: "user",
         content: [
