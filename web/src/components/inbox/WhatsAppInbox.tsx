@@ -490,6 +490,9 @@ export function WhatsAppInbox() {
   // Hidrata do cache: a lista aparece na hora, e o fetch real atualiza em seguida.
   const [chats, setChats] = useState<Chat[]>(loadCachedChats);
   const lastUpdateRef = useRef(0);
+  // Mensagens já carregadas por conversa (em memória, nesta sessão): ao reabrir
+  // uma conversa, mostra na hora e sincroniza em segundo plano — como o WhatsApp Web.
+  const messagesCacheRef = useRef<Map<string, Message[]>>(new Map());
   const [selected, setSelected] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
@@ -652,6 +655,14 @@ export function WhatsAppInbox() {
         if (activeChatIdRef.current !== requestChatId) return prev;
         const pending = prev.filter((m) => isOptimisticMessageId(m.id));
         const merged = mergePendingMessages(next, pending);
+        // guarda no cache — mas não sobrescreve um cache cheio com resultado vazio
+        // (sync=0 pode vir vazio por variante de chatId; o sync completo corrige)
+        const cache = messagesCacheRef.current;
+        const prevCached = cache.get(requestChatId);
+        if (merged.length > 0 || !prevCached || prevCached.length === 0) {
+          cache.set(requestChatId, merged);
+          if (cache.size > 40) cache.delete(cache.keys().next().value as string);
+        }
         if (messagesSignature(prev) === messagesSignature(merged)) {
           return prev;
         }
@@ -671,9 +682,11 @@ export function WhatsAppInbox() {
   // derrubava o memo do ChatListRow — a lista inteira re-renderizava a cada poll.
   const handleSelectChat = useCallback((chat: Chat) => {
     activeChatIdRef.current = chat.id;
-    setMessages([]);
+    const cached = messagesCacheRef.current.get(chat.id);
+    // se já abriu essa conversa antes, mostra as mensagens na hora (sem "Carregando")
+    setMessages(cached ?? []);
     setMsgHint("");
-    setLoadingMsgs(true);
+    setLoadingMsgs(!cached);
     setSelected({ ...chat, unreadCount: 0 });
     setChats((prev) => prev.map((c) => (c.id === chat.id ? { ...c, unreadCount: 0 } : c)));
     setSendError("");
@@ -735,8 +748,14 @@ export function WhatsAppInbox() {
       return;
     }
     activeChatIdRef.current = selected.id;
-    setMessages([]);
-    loadMessages(selected); // abertura: sync completo (resolve variantes de chatId)
+    const cached = messagesCacheRef.current.get(selected.id);
+    setMessages(cached ?? []);
+    // 1) Banco primeiro (rápido) → mensagens aparecem na hora. Silencioso se já
+    //    havia cache, para não piscar "Carregando".
+    void loadMessages(selected, Boolean(cached), false);
+    // 2) Sync completo com a Evolution em SEGUNDO PLANO (silencioso) — pega o que
+    //    o webhook perdeu e resolve variantes de chatId, sem travar a abertura.
+    void loadMessages(selected, true, true);
     // Poll rápido só-banco (leve) + sync completo esporádico como rede de segurança
     // caso o webhook perca alguma mensagem.
     const fast = setInterval(() => loadMessages(selected, true, false), 3000);

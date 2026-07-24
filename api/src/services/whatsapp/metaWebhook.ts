@@ -16,7 +16,15 @@ function chatIdFromPhone(phone: string): string {
   return `${digits}@s.whatsapp.net`;
 }
 
-function parseMessageType(msg: Record<string, unknown>): { type: string; text: string } {
+function joinParts(parts: unknown[]): string {
+  return parts
+    .map((p) => String(p ?? "").trim())
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+}
+
+export function parseMetaMessageType(msg: Record<string, unknown>): { type: string; text: string } {
   const t = String(msg.type ?? "text").toLowerCase();
   if (t === "text") {
     const body = (msg.text as Record<string, unknown> | undefined)?.body;
@@ -38,6 +46,79 @@ function parseMessageType(msg: Record<string, unknown>): { type: string; text: s
   }
   if (t === "sticker") return { type: "sticker", text: "Sticker" };
   if (t === "location") return { type: "location", text: "📍 Localização" };
+
+  // Templates / botões / listas (API Cloud) — sem isto o texto vinha vazio e a msg sumia.
+  if (t === "button") {
+    const btn = (msg.button as Record<string, unknown> | undefined) ?? {};
+    const text = String(btn.text ?? btn.payload ?? "").trim();
+    return { type: "chat", text: text || "Resposta de botão" };
+  }
+  if (t === "interactive") {
+    const inter = (msg.interactive as Record<string, unknown> | undefined) ?? {};
+    const kind = String(inter.type ?? "").toLowerCase();
+    if (kind === "button_reply") {
+      const br = (inter.button_reply as Record<string, unknown> | undefined) ?? {};
+      return { type: "chat", text: String(br.title ?? br.id ?? "").trim() || "Resposta de botão" };
+    }
+    if (kind === "list_reply") {
+      const lr = (inter.list_reply as Record<string, unknown> | undefined) ?? {};
+      return {
+        type: "chat",
+        text: joinParts([lr.title, lr.description]) || "Resposta de lista"
+      };
+    }
+    if (kind === "nfm_reply") {
+      const nfm = (inter.nfm_reply as Record<string, unknown> | undefined) ?? {};
+      return {
+        type: "chat",
+        text: String(nfm.body ?? nfm.name ?? "").trim() || "Resposta de fluxo"
+      };
+    }
+    const body = (inter.body as Record<string, unknown> | undefined)?.text;
+    const header = (inter.header as Record<string, unknown> | undefined)?.text;
+    const footer = (inter.footer as Record<string, unknown> | undefined)?.text;
+    const action = (inter.action as Record<string, unknown> | undefined) ?? {};
+    const labels: string[] = [];
+    if (Array.isArray(action.buttons)) {
+      for (const b of action.buttons) {
+        if (!b || typeof b !== "object") continue;
+        const title = String(
+          ((b as Record<string, unknown>).reply as Record<string, unknown> | undefined)?.title ?? ""
+        ).trim();
+        if (title) labels.push(`▸ ${title}`);
+      }
+    }
+    if (typeof action.button === "string" && action.button.trim()) {
+      labels.push(`▸ ${action.button.trim()}`);
+    }
+    const text = joinParts([header, body, footer, ...labels]);
+    return { type: "chat", text: text || "📄 Mensagem interativa" };
+  }
+  if (t === "template") {
+    const tpl = (msg.template as Record<string, unknown> | undefined) ?? {};
+    const name = String(tpl.name ?? "").trim();
+    const components = Array.isArray(tpl.components) ? tpl.components : [];
+    const parts: string[] = [];
+    for (const c of components) {
+      if (!c || typeof c !== "object") continue;
+      const comp = c as Record<string, unknown>;
+      const ctype = String(comp.type ?? "").toLowerCase();
+      if (ctype === "header" || ctype === "body" || ctype === "footer") {
+        const text = String(comp.text ?? "").trim();
+        if (text) parts.push(text);
+      }
+      if (ctype === "button") {
+        const text = String(comp.text ?? "").trim();
+        if (text) parts.push(`▸ ${text}`);
+      }
+    }
+    const text = joinParts(parts);
+    return {
+      type: "chat",
+      text: text || (name ? `📄 Template: ${name}` : "📄 Mensagem com botões")
+    };
+  }
+
   return { type: t, text: "" };
 }
 
@@ -105,8 +186,9 @@ export async function parseMetaWebhookMessages(
           : String(msg.from ?? "").replace(/\D/g, "");
         if (!peer) continue;
 
-        const { type, text } = parseMessageType(msg);
-        if (!text.trim() && type === "chat") continue;
+        const { type, text } = parseMetaMessageType(msg);
+        // Sem texto útil (ex.: tipos desconhecidos) — não grava bolha vazia.
+        if (!text.trim()) continue;
         const ts = Number(msg.timestamp ?? 0);
         const waMessageId = String(msg.id ?? "").trim();
         if (!waMessageId) continue;
