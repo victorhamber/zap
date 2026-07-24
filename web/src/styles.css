@@ -71,11 +71,17 @@ body {
   background: rgba(16, 185, 129, 0.28);
 }
 
-/* Foco visível consistente — teclado enxerga, mouse não polui */
-:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+/* Foco visível consistente — teclado enxerga, mouse não polui.
+   Campos de texto ficam de fora: clicar para digitar conta como :focus-visible
+   e o anel verde poluía a caixa de mensagem; eles têm estilo próprio de foco. */
+:where(a, button, select, [tabindex]):focus-visible {
   outline: none;
   box-shadow: var(--ring);
   border-radius: 0.5rem;
+}
+
+:where(input, textarea):focus-visible {
+  outline: none;
 }
 
 /* Scrollbar do painel (o inbox tem a sua, mais abaixo) */

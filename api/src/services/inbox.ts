@@ -258,10 +258,22 @@ function evolutionLastPreview(lastMsg: Record<string, unknown>): string {
 }
 
 function parseTimestamp(v: unknown): number {
-  if (typeof v === "number") return v > 1e12 ? v : v * 1000;
+  if (typeof v === "number" && Number.isFinite(v)) return v > 1e12 ? v : v * 1000;
   if (typeof v === "string") {
-    const n = Date.parse(v);
-    if (!Number.isNaN(n)) return n;
+    const t = v.trim();
+    if (/^\d+(\.\d+)?$/.test(t)) {
+      const n = Number(t);
+      if (Number.isFinite(n)) return n > 1e12 ? n : n * 1000;
+    }
+    const parsed = Date.parse(t);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  if (v && typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    if (typeof o.low === "number") {
+      const seconds = (typeof o.high === "number" ? o.high : 0) * 2 ** 32 + (o.low >>> 0);
+      if (seconds > 0) return seconds > 1e12 ? seconds : seconds * 1000;
+    }
   }
   return 0;
 }

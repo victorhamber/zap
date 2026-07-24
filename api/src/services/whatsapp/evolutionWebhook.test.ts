@@ -191,3 +191,21 @@ describe("parseEvolutionMessagePayload — mensagens com botão", () => {
     assert.equal(p!.text, "oi tudo bem");
   });
 });
+
+describe("parseWhatsAppTimestamp", () => {
+  it("aceita number em segundos e ms", async () => {
+    const { parseWhatsAppTimestamp } = await import("./evolutionWebhook.js");
+    assert.equal(parseWhatsAppTimestamp(1_700_000_000), 1_700_000_000_000);
+    assert.equal(parseWhatsAppTimestamp(1_700_000_000_000), 1_700_000_000_000);
+  });
+
+  it("aceita string numérica (sync Evolution)", async () => {
+    const { parseWhatsAppTimestamp } = await import("./evolutionWebhook.js");
+    assert.equal(parseWhatsAppTimestamp("1700000000"), 1_700_000_000_000);
+  });
+
+  it("aceita Long protobuf { low, high }", async () => {
+    const { parseWhatsAppTimestamp } = await import("./evolutionWebhook.js");
+    assert.equal(parseWhatsAppTimestamp({ low: 1_700_000_000, high: 0 }), 1_700_000_000_000);
+  });
+});

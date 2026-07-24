@@ -877,13 +877,27 @@ async function findDuplicateInboxMessage(params: {
   type: string;
   waMessageId: string | null;
   timestamp: Date;
-}): Promise<{ id: string; waMessageId: string | null; body: string } | null> {
+}): Promise<{
+  id: string;
+  waMessageId: string | null;
+  body: string;
+  mediaUrl: string | null;
+  timestamp: Date;
+  createdAt: Date;
+} | null> {
   if (!prisma) return null;
 
   if (params.waMessageId) {
     const byWaId = await prisma.inboxMessage.findFirst({
       where: { session: params.session, waMessageId: params.waMessageId },
-      select: { id: true, waMessageId: true, body: true }
+      select: {
+        id: true,
+        waMessageId: true,
+        body: true,
+        mediaUrl: true,
+        timestamp: true,
+        createdAt: true
+      }
     });
     if (byWaId) return byWaId;
   }
@@ -900,9 +914,18 @@ async function findDuplicateInboxMessage(params: {
         }
       : { chatId: { in: variants } };
 
+  const selectDup = {
+    id: true,
+    waMessageId: true,
+    body: true,
+    mediaUrl: true,
+    timestamp: true,
+    createdAt: true
+  } as const;
+
   // Mídia (áudio, imagem…) costuma repetir no webhook — deduplica por tipo + janela de tempo.
   if (isMediaMessageType(params.type)) {
-    return prisma.inboxMessage.findFirst({
+    const byWindow = await prisma.inboxMessage.findFirst({
       where: {
         session: params.session,
         ...chatIdFilter,
@@ -911,8 +934,30 @@ async function findDuplicateInboxMessage(params: {
         timestamp: { gte: windowStart, lte: windowEnd }
       },
       orderBy: { timestamp: "desc" },
-      select: { id: true, waMessageId: true, body: true }
+      select: selectDup
     });
+    if (byWindow) return byWindow;
+
+    // Mesma legenda/caption com IDs WA diferentes (sync com Date.now vs webhook real).
+    // Janela ampla: cobre o caso 12:14 vs 12:33 do mesmo vídeo.
+    const caption = params.body.trim();
+    if (caption.length >= 8 && !caption.startsWith("data:")) {
+      const captionStart = new Date(params.timestamp.getTime() - 2 * 60 * 60_000);
+      const captionEnd = new Date(params.timestamp.getTime() + 2 * 60 * 60_000);
+      return prisma.inboxMessage.findFirst({
+        where: {
+          session: params.session,
+          ...chatIdFilter,
+          fromMe: params.fromMe,
+          type: params.type,
+          body: caption,
+          timestamp: { gte: captionStart, lte: captionEnd }
+        },
+        orderBy: { timestamp: "desc" },
+        select: selectDup
+      });
+    }
+    return null;
   }
 
   return prisma.inboxMessage.findFirst({
@@ -925,7 +970,7 @@ async function findDuplicateInboxMessage(params: {
       timestamp: { gte: windowStart, lte: windowEnd }
     },
     orderBy: { timestamp: "desc" },
-    select: { id: true, waMessageId: true, body: true }
+    select: selectDup
   });
 }
 
@@ -978,7 +1023,13 @@ export async function saveInboxMessage(params: {
     timestamp
   });
   if (duplicate) {
-    const patch: { waMessageId?: string; body?: string; type?: string } = {};
+    const patch: {
+      waMessageId?: string;
+      body?: string;
+      type?: string;
+      mediaUrl?: string | null;
+      timestamp?: Date;
+    } = {};
     if (waMessageId && !duplicate.waMessageId) {
       patch.waMessageId = waMessageId;
     }
@@ -990,6 +1041,19 @@ export async function saveInboxMessage(params: {
     ) {
       patch.body = body;
       patch.type = type;
+    }
+    if (mediaUrl && !duplicate.mediaUrl) {
+      patch.mediaUrl = mediaUrl;
+    }
+    // Corrige horário inventado (Date.now no sync) quando chega o timestamp real do WA.
+    const newTs = timestamp.getTime();
+    const storedTs = duplicate.timestamp.getTime();
+    const newLooksReal = Math.abs(newTs - Date.now()) > 90_000;
+    const storedLooksFake =
+      Math.abs(storedTs - duplicate.createdAt.getTime()) < 120_000 ||
+      Math.abs(storedTs - Date.now()) < 120_000;
+    if (newLooksReal && storedLooksFake && Math.abs(newTs - storedTs) > 60_000) {
+      patch.timestamp = timestamp;
     }
     if (Object.keys(patch).length > 0) {
       await prisma.inboxMessage.update({
@@ -1197,23 +1261,45 @@ export async function listStoredMessages(
   rows.reverse();
 
   const seen = new Set<string>();
-  const seenContent = new Set<string>();
-  const dedupedRows = rows.filter((r) => {
+  const kept: typeof rows = [];
+  for (const r of rows) {
     const key = inboxMessageDedupeKey(r);
-    if (seen.has(key)) return false;
+    if (seen.has(key)) continue;
     seen.add(key);
 
-    if (!r.waMessageId) {
+    // Colapsa o mesmo vídeo/imagem com legenda idêntica gravado 2x (IDs WA diferentes).
+    if (isMediaMessageType(r.type) && r.body.trim().length >= 8 && !r.body.startsWith("data:")) {
+      const twin = kept.find(
+        (k) =>
+          k.fromMe === r.fromMe &&
+          k.type === r.type &&
+          k.body.trim() === r.body.trim() &&
+          Math.abs(k.timestamp.getTime() - r.timestamp.getTime()) <= 2 * 60 * 60_000
+      );
+      if (twin) {
+        // Prefere a cópia com mídia baixada / waMessageId / horário mais antigo.
+        const twinScore = (twin.mediaUrl ? 2 : 0) + (twin.waMessageId ? 1 : 0);
+        const rowScore = (r.mediaUrl ? 2 : 0) + (r.waMessageId ? 1 : 0);
+        if (rowScore > twinScore || (rowScore === twinScore && r.timestamp < twin.timestamp)) {
+          const idx = kept.indexOf(twin);
+          kept[idx] = r;
+        }
+        continue;
+      }
+    } else if (!r.waMessageId) {
       const sec = Math.floor(r.timestamp.getTime() / 1000);
       const contentKey =
         r.fromMe && r.type === "chat"
           ? `${r.fromMe ? 1 : 0}|${r.type}|${r.body}|${sec}`
           : `${r.fromMe ? 1 : 0}|${r.type}|${r.body}|${sec}|${r.chatId}|${r.id}`;
-      if (seenContent.has(contentKey)) return false;
-      seenContent.add(contentKey);
+      if (seen.has(`content:${contentKey}`)) continue;
+      seen.add(`content:${contentKey}`);
     }
-    return true;
-  });
+
+    kept.push(r);
+  }
+
+  const dedupedRows = kept;
 
   dedupedRows.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
 

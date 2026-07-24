@@ -158,6 +158,54 @@ function coerceMessageObject(raw: unknown): Record<string, unknown> {
   return {};
 }
 
+/**
+ * Evolution/Baileys mandam timestamp como number, string numérica ou Long `{ low, high }`.
+ * Se cair em Date.now(), o sync grava um horário "agora" e o webhook outro — mídia duplica.
+ */
+export function parseWhatsAppTimestamp(raw: unknown): number {
+  const now = Date.now();
+  if (raw == null || raw === "") return now;
+
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    return raw > 1e12 ? raw : raw * 1000;
+  }
+
+  if (typeof raw === "string") {
+    const t = raw.trim();
+    if (!t) return now;
+    if (/^\d+(\.\d+)?$/.test(t)) {
+      const n = Number(t);
+      if (Number.isFinite(n)) return n > 1e12 ? n : n * 1000;
+    }
+    const parsed = Date.parse(t);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+
+  if (typeof raw === "object") {
+    const o = raw as Record<string, unknown>;
+    // protobuf Long / BSON-ish
+    if (typeof o.low === "number") {
+      const low = o.low >>> 0;
+      const high = typeof o.high === "number" ? o.high : 0;
+      const seconds = high * 2 ** 32 + low;
+      if (seconds > 0) return seconds > 1e12 ? seconds : seconds * 1000;
+    }
+    if (typeof o.seconds === "number") {
+      return o.seconds > 1e12 ? o.seconds : o.seconds * 1000;
+    }
+    if (typeof o.toNumber === "function") {
+      try {
+        const n = (o as { toNumber: () => number }).toNumber();
+        if (Number.isFinite(n)) return n > 1e12 ? n : n * 1000;
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  return now;
+}
+
 function extractTemplateLikeText(
   container: Record<string, any>,
   buttonsSource: unknown,
@@ -447,11 +495,9 @@ export function parseEvolutionMessagePayload(
 
   const waMessageId = String(key.id ?? payload.id ?? "").trim() || null;
 
-  let ts = Date.now();
-  const rawTs = payload.messageTimestamp ?? payload.timestamp ?? key.timestamp;
-  if (typeof rawTs === "number") {
-    ts = rawTs > 1e12 ? rawTs : rawTs * 1000;
-  }
+  const ts = parseWhatsAppTimestamp(
+    payload.messageTimestamp ?? payload.timestamp ?? key.timestamp ?? (payload.message as Record<string, unknown> | undefined)?.messageTimestamp
+  );
 
   const mediaUrl = inlineMediaFromPayload(payload, msg, type);
 
