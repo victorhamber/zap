@@ -21,6 +21,15 @@ import {
 
 export type InboxMessageSource = "webhook" | "manual" | "flow" | "ai";
 
+/** Corpo genérico gravado quando o parser não conseguiu hidratar template/botão. */
+function isButtonPlaceholderBody(body: string): boolean {
+  const t = body.replace(/^\uFEFF/, "").trim();
+  return (
+    /^(📄\s*)?(Mensagem com botões|Mensagem interativa|Lista)$/i.test(t) ||
+    /^📄\s*Template:/i.test(t)
+  );
+}
+
 function isPrismaUniqueConflict(err: unknown): boolean {
   return (
     typeof err === "object" &&
@@ -868,13 +877,13 @@ async function findDuplicateInboxMessage(params: {
   type: string;
   waMessageId: string | null;
   timestamp: Date;
-}): Promise<{ id: string; waMessageId: string | null } | null> {
+}): Promise<{ id: string; waMessageId: string | null; body: string } | null> {
   if (!prisma) return null;
 
   if (params.waMessageId) {
     const byWaId = await prisma.inboxMessage.findFirst({
       where: { session: params.session, waMessageId: params.waMessageId },
-      select: { id: true, waMessageId: true }
+      select: { id: true, waMessageId: true, body: true }
     });
     if (byWaId) return byWaId;
   }
@@ -902,7 +911,7 @@ async function findDuplicateInboxMessage(params: {
         timestamp: { gte: windowStart, lte: windowEnd }
       },
       orderBy: { timestamp: "desc" },
-      select: { id: true, waMessageId: true }
+      select: { id: true, waMessageId: true, body: true }
     });
   }
 
@@ -916,7 +925,7 @@ async function findDuplicateInboxMessage(params: {
       timestamp: { gte: windowStart, lte: windowEnd }
     },
     orderBy: { timestamp: "desc" },
-    select: { id: true, waMessageId: true }
+    select: { id: true, waMessageId: true, body: true }
   });
 }
 
@@ -969,10 +978,23 @@ export async function saveInboxMessage(params: {
     timestamp
   });
   if (duplicate) {
+    const patch: { waMessageId?: string; body?: string; type?: string } = {};
     if (waMessageId && !duplicate.waMessageId) {
+      patch.waMessageId = waMessageId;
+    }
+    // Placeholder de template/botão → sobrescreve quando o sync finalmente traz o texto real.
+    if (
+      body.trim() &&
+      !isButtonPlaceholderBody(body) &&
+      isButtonPlaceholderBody(String(duplicate.body ?? ""))
+    ) {
+      patch.body = body;
+      patch.type = type;
+    }
+    if (Object.keys(patch).length > 0) {
       await prisma.inboxMessage.update({
         where: { id: duplicate.id },
-        data: { waMessageId }
+        data: patch
       });
     }
     return null;

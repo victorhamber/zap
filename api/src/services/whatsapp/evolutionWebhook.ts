@@ -17,13 +17,35 @@ export function isEvolutionMessageEvent(body: Record<string, unknown>): boolean 
   );
 }
 
+/** Placeholder que gravamos quando o provedor não manda o texto hidratado. */
+export function isButtonPlaceholderBody(body: string): boolean {
+  const t = body.replace(/^\uFEFF/, "").trim();
+  return (
+    /^(📄\s*)?(Mensagem com botões|Mensagem interativa|Lista)$/i.test(t) ||
+    /^📄\s*Template:/i.test(t)
+  );
+}
+
+/** Array ou mapa numérico (protobuf JSON às vezes serializa assim). */
+function asObjectList(value: unknown): Record<string, any>[] {
+  if (Array.isArray(value)) {
+    return value.filter((x): x is Record<string, any> => Boolean(x) && typeof x === "object");
+  }
+  if (value && typeof value === "object") {
+    return Object.values(value as Record<string, unknown>).filter(
+      (x): x is Record<string, any> => Boolean(x) && typeof x === "object"
+    );
+  }
+  return [];
+}
+
 /** Lê display_text/url de buttonParamsJSON (nativeFlow / CTA da API oficial). */
 function labelsFromParamsJson(raw: unknown): { label: string; url?: string } | null {
   if (typeof raw !== "string" || !raw.trim()) return null;
   try {
     const p = JSON.parse(raw) as Record<string, unknown>;
-    const label = String(p.display_text ?? p.displayText ?? "").trim();
-    const url = String(p.url ?? "").trim() || undefined;
+    const label = String(p.display_text ?? p.displayText ?? p.title ?? "").trim();
+    const url = String(p.url ?? p.cta_url ?? "").trim() || undefined;
     if (!label && !url) return null;
     return { label: label || "Botão", url };
   } catch {
@@ -33,30 +55,83 @@ function labelsFromParamsJson(raw: unknown): { label: string; url?: string } | n
 
 /** Rótulos legíveis dos botões (URL, resposta rápida, ligar, fluxo nativo). */
 function buttonLabels(buttons: unknown): string[] {
-  if (!Array.isArray(buttons)) return [];
   const out: string[] = [];
-  for (const b of buttons) {
-    if (!b || typeof b !== "object") continue;
+  for (const b of asObjectList(buttons)) {
     const o = b as Record<string, any>;
-    const fromJson = labelsFromParamsJson(o.buttonParamsJSON);
+    const fromJson = labelsFromParamsJson(o.buttonParamsJSON ?? o.buttonParamsJson);
     const label =
       o.buttonText?.displayText ??
       o.quickReplyButton?.displayText ??
       o.urlButton?.displayText ??
       o.callButton?.displayText ??
       o.displayText ??
+      o.display_text ??
       fromJson?.label ??
       "";
-    const url = o.urlButton?.url ?? o.url ?? fromJson?.url;
+    const url =
+      o.urlButton?.url ?? o.url ?? o.ctaUrl ?? o.cta_url ?? fromJson?.url;
     const clean = String(label).trim();
     // Evita gravar só o nome interno do fluxo (cta_url, quick_reply…).
     if (clean && !/^(cta_|quick_reply|call_|copy_code)/i.test(clean)) {
       out.push(url ? `${clean} → ${url}` : clean);
     } else if (url) {
-      out.push(url);
+      out.push(String(url));
     }
   }
   return out;
+}
+
+/** Texto/caption embutido em cabeçalho de mídia do template. */
+function mediaCaptionFrom(obj: Record<string, any> | null | undefined): string {
+  if (!obj || typeof obj !== "object") return "";
+  for (const key of ["imageMessage", "videoMessage", "documentMessage", "locationMessage"]) {
+    const m = obj[key];
+    if (!m || typeof m !== "object") continue;
+    const cap = String(m.caption ?? m.fileName ?? m.name ?? "").trim();
+    if (cap) return cap;
+  }
+  return "";
+}
+
+/** Campos de texto comuns em hydratedTemplate / buttonsMessage / JSON de fluxo. */
+function textFieldsFrom(obj: Record<string, any> | null | undefined): string[] {
+  if (!obj || typeof obj !== "object") return [];
+  const keys = [
+    "hydratedTitleText",
+    "hydratedContentText",
+    "hydratedFooterText",
+    "contentText",
+    "footerText",
+    "text",
+    "title",
+    "body",
+    "description",
+    "caption",
+    "name"
+  ];
+  const out: string[] = [];
+  for (const k of keys) {
+    const v = obj[k];
+    if (typeof v === "string" && v.trim()) out.push(v.trim());
+    else if (v && typeof v === "object" && typeof (v as { text?: unknown }).text === "string") {
+      const t = String((v as { text: string }).text).trim();
+      if (t) out.push(t);
+    }
+  }
+  const mediaCap = mediaCaptionFrom(obj);
+  if (mediaCap) out.push(mediaCap);
+  return out;
+}
+
+/** messageParamsJson do nativeFlow às vezes carrega título/corpo inteiros. */
+function textsFromParamsJson(raw: unknown): string[] {
+  if (typeof raw !== "string" || !raw.trim()) return [];
+  try {
+    const p = JSON.parse(raw) as Record<string, any>;
+    return textFieldsFrom(p);
+  } catch {
+    return [];
+  }
 }
 
 /** Junta título/corpo/rodapé + botões numa string legível para o inbox. */
@@ -69,22 +144,54 @@ function composeButtonText(parts: unknown[], buttons: string[], fallback: string
   return [body, btns].filter(Boolean).join("\n").trim() || fallback;
 }
 
+function coerceMessageObject(raw: unknown): Record<string, unknown> {
+  if (!raw) return {};
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") return parsed as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+  if (typeof raw === "object") return raw as Record<string, unknown>;
+  return {};
+}
+
+function extractTemplateLikeText(
+  container: Record<string, any>,
+  buttonsSource: unknown,
+  fallback: string
+): string {
+  const parts = [
+    ...textFieldsFrom(container),
+    ...textsFromParamsJson(container.messageParamsJson ?? container.messageParamsJSON)
+  ];
+  return composeButtonText(parts, buttonLabels(buttonsSource ?? container.hydratedButtons ?? container.buttons), fallback);
+}
+
 function parseMessageContent(
   msg: Record<string, unknown>,
   payload?: Record<string, unknown>,
   depth = 0
 ): { text: string; type: string } {
   // Wrappers que aninham a mensagem real — desembrulha antes de tudo.
-  if (depth < 4) {
+  if (depth < 5) {
     const wrapped =
       (msg.ephemeralMessage as Record<string, unknown> | undefined)?.message ??
       (msg.viewOnceMessage as Record<string, unknown> | undefined)?.message ??
       (msg.viewOnceMessageV2 as Record<string, unknown> | undefined)?.message ??
       (msg.viewOnceMessageV2Extension as Record<string, unknown> | undefined)?.message ??
       (msg.documentWithCaptionMessage as Record<string, unknown> | undefined)?.message ??
-      (msg.editedMessage as Record<string, unknown> | undefined)?.message;
-    if (wrapped && typeof wrapped === "object") {
-      return parseMessageContent(wrapped as Record<string, unknown>, payload, depth + 1);
+      (msg.editedMessage as Record<string, unknown> | undefined)?.message ??
+      (msg.deviceSentMessage as Record<string, unknown> | undefined)?.message ??
+      (msg.futureProofMessage as Record<string, unknown> | undefined)?.message ??
+      (msg.botInvokeMessage as Record<string, unknown> | undefined)?.message;
+    if (wrapped) {
+      const inner = coerceMessageObject(wrapped);
+      if (Object.keys(inner).length > 0) {
+        return parseMessageContent(inner, payload, depth + 1);
+      }
     }
   }
 
@@ -100,37 +207,52 @@ function parseMessageContent(
   // Sem isto, caíam no fallback vazio e eram DESCARTADAS (nunca gravadas).
   if (msg.templateMessage && typeof msg.templateMessage === "object") {
     const tm = msg.templateMessage as Record<string, any>;
-    const h = tm.hydratedTemplate ?? tm.hydratedFourRowTemplate ?? tm.fourRowTemplate ?? {};
+    const h =
+      tm.hydratedTemplate ??
+      tm.hydratedFourRowTemplate ??
+      tm.fourRowTemplate ??
+      tm.hydratedHsm ??
+      tm;
     return {
-      text: composeButtonText(
-        [h.hydratedTitleText, h.hydratedContentText, h.hydratedFooterText],
-        buttonLabels(h.hydratedButtons),
-        "📄 Mensagem com botões"
-      ),
+      text: extractTemplateLikeText(h, h.hydratedButtons ?? tm.hydratedButtons, "📄 Mensagem com botões"),
       type: "chat"
     };
   }
   if (msg.buttonsMessage && typeof msg.buttonsMessage === "object") {
     const bm = msg.buttonsMessage as Record<string, any>;
     return {
-      text: composeButtonText(
-        [bm.contentText ?? bm.text, bm.footerText],
-        buttonLabels(bm.buttons),
-        "📄 Mensagem com botões"
-      ),
+      text: extractTemplateLikeText(bm, bm.buttons, "📄 Mensagem com botões"),
       type: "chat"
     };
   }
   if (msg.interactiveMessage && typeof msg.interactiveMessage === "object") {
     const im = msg.interactiveMessage as Record<string, any>;
+    const cards = asObjectList(im.carouselMessage?.cards);
+    const cardTexts = cards.flatMap((c) => [
+      ...textFieldsFrom(c),
+      ...textFieldsFrom(c.body),
+      ...textFieldsFrom(c.header),
+      ...textsFromParamsJson(c.nativeFlowMessage?.messageParamsJson)
+    ]);
+    const cardButtons = cards.flatMap((c) =>
+      buttonLabels(c.nativeFlowMessage?.buttons ?? c.buttons)
+    );
     const buttons = [
       ...buttonLabels(im.nativeFlowMessage?.buttons),
       ...buttonLabels(im.buttonMessage?.buttons),
-      ...buttonLabels(im.buttons)
+      ...buttonLabels(im.buttons),
+      ...cardButtons
     ];
     return {
       text: composeButtonText(
-        [im.header?.title, im.body?.text, im.footer?.text],
+        [
+          im.header?.title,
+          im.body?.text,
+          im.footer?.text,
+          ...textFieldsFrom(im),
+          ...textsFromParamsJson(im.nativeFlowMessage?.messageParamsJson),
+          ...cardTexts
+        ],
         buttons,
         "📄 Mensagem interativa"
       ),
@@ -140,13 +262,10 @@ function parseMessageContent(
   if (msg.listMessage && typeof msg.listMessage === "object") {
     const lm = msg.listMessage as Record<string, any>;
     const rows: string[] = [];
-    if (Array.isArray(lm.sections)) {
-      for (const sec of lm.sections) {
-        if (!sec || typeof sec !== "object") continue;
-        for (const row of (sec as Record<string, any>).rows ?? []) {
-          const title = String(row?.title ?? "").trim();
-          if (title) rows.push(title);
-        }
+    for (const sec of asObjectList(lm.sections)) {
+      for (const row of asObjectList(sec.rows)) {
+        const title = String(row?.title ?? "").trim();
+        if (title) rows.push(title);
       }
     }
     return {
@@ -161,13 +280,9 @@ function parseMessageContent(
   // Nome antigo em alguns builds Baileys / Evolution.
   if (msg.highlyStructuredMessage && typeof msg.highlyStructuredMessage === "object") {
     const hs = msg.highlyStructuredMessage as Record<string, any>;
-    const text = String(hs.hydratedHsm?.hydratedContentText ?? hs.hydratedHsm?.hydratedTitleText ?? "").trim();
+    const h = hs.hydratedHsm ?? hs;
     return {
-      text: composeButtonText(
-        [text],
-        buttonLabels(hs.hydratedHsm?.hydratedButtons),
-        "📄 Mensagem com botões"
-      ),
+      text: extractTemplateLikeText(h, h.hydratedButtons, "📄 Mensagem com botões"),
       type: "chat"
     };
   }
@@ -211,7 +326,24 @@ function parseMessageContent(
   if (msg.stickerMessage) return { text: "", type: "sticker" };
   if (msg.locationMessage) return { text: "📍 Localização", type: "location" };
 
+  // Último recurso: anúncio/CTA no contextInfo (às vezes o template vem vazio).
+  const ctx =
+    (msg.messageContextInfo as Record<string, any> | undefined) ??
+    (payload?.contextInfo as Record<string, any> | undefined);
+  const ad = ctx?.externalAdReply;
+  if (ad && typeof ad === "object") {
+    const text = composeButtonText(
+      [ad.title, ad.body, ad.mediaUrl ?? ad.sourceUrl],
+      [],
+      ""
+    );
+    if (text) return { text, type: "chat" };
+  }
+
   const payloadType = String(payload?.messageType ?? "").toLowerCase();
+  if (payloadType.includes("template") || payloadType.includes("button") || payloadType.includes("interactive")) {
+    return { text: "📄 Mensagem com botões", type: "chat" };
+  }
   if (payloadType.includes("audio")) return { text: "", type: "audio" };
   if (payloadType.includes("image")) return { text: "", type: "image" };
   if (payloadType.includes("video")) return { text: "", type: "video" };
@@ -295,8 +427,19 @@ export function parseEvolutionMessagePayload(
   const chatId = normalizeDirectJid(extractWaId(peer) || peer);
   if (!chatId) return null;
 
-  const msg = (payload.message ?? {}) as Record<string, unknown>;
-  const { text, type } = parseMessageContent(msg, payload);
+  const msg = coerceMessageObject(payload.message);
+  let { text, type } = parseMessageContent(msg, payload);
+
+  // Se o template veio vazio mas o payload tem texto paralelo (alguns syncs Evolution).
+  if (isButtonPlaceholderBody(text) || !text.trim()) {
+    const sideText = [payload.text, payload.body, payload.conversation]
+      .map((v) => (typeof v === "string" ? v.trim() : ""))
+      .find(Boolean);
+    if (sideText && !isButtonPlaceholderBody(sideText)) {
+      text = sideText;
+      type = "chat";
+    }
+  }
 
   const mediaTypes = new Set(["image", "video", "audio", "ptt", "sticker", "document"]);
   if (type === "chat" && !text.trim()) return null;

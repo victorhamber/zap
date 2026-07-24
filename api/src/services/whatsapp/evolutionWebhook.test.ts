@@ -120,6 +120,71 @@ describe("parseEvolutionMessagePayload — mensagens com botão", () => {
     assert.equal(p!.text, "Quero sim");
   });
 
+  it("template só com caption de mídia + botões (sem hydratedContentText)", () => {
+    const p = parseEvolutionMessagePayload(
+      body,
+      payload({
+        templateMessage: {
+          hydratedTemplate: {
+            imageMessage: { caption: "Sua proposta está pronta." },
+            hydratedButtons: {
+              "0": { urlButton: { displayText: "Ver proposta", url: "https://w.meta.me/s/abc" } }
+            }
+          }
+        }
+      })
+    );
+    assert.ok(p);
+    assert.match(p!.text, /Sua proposta está pronta/);
+    assert.match(p!.text, /Ver proposta/);
+    assert.doesNotMatch(p!.text, /Mensagem com botões/);
+  });
+
+  it("message stringificado (JSON) ainda extrai template", () => {
+    const p = parseEvolutionMessagePayload(body, {
+      key: { remoteJid: "441536858300@s.whatsapp.net", fromMe: false, id: "STR1" },
+      messageTimestamp: 1_700_000_000,
+      message: JSON.stringify({
+        templateMessage: {
+          hydratedTemplate: {
+            hydratedContentText: "Olá via JSON string",
+            hydratedButtons: [{ urlButton: { displayText: "Abrir", url: "https://x.test" } }]
+          }
+        }
+      })
+    });
+    assert.ok(p);
+    assert.match(p!.text, /Olá via JSON string/);
+  });
+
+  it("nativeFlow só com messageParamsJson (sem body.text)", () => {
+    const p = parseEvolutionMessagePayload(
+      body,
+      payload({
+        interactiveMessage: {
+          nativeFlowMessage: {
+            messageParamsJson: JSON.stringify({
+              title: "Consorcei",
+              body: "A análise da sua cota foi concluída."
+            }),
+            buttons: [
+              {
+                name: "cta_url",
+                buttonParamsJSON: JSON.stringify({
+                  display_text: "Ver proposta",
+                  url: "https://w.meta.me/s/xyz"
+                })
+              }
+            ]
+          }
+        }
+      })
+    );
+    assert.ok(p);
+    assert.match(p!.text, /análise da sua cota/);
+    assert.match(p!.text, /Ver proposta/);
+  });
+
   it("texto simples continua funcionando", () => {
     const p = parseEvolutionMessagePayload(body, payload({ conversation: "oi tudo bem" }));
     assert.ok(p);
