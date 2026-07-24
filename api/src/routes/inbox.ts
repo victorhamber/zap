@@ -288,6 +288,26 @@ export async function inboxRoutes(app: FastifyInstance) {
     }
   });
 
+  // Sinal barato de "chegou algo novo": só o timestamp da última mensagem do
+  // banco (consulta indexada). O painel checa isto a cada poucos segundos e só
+  // dispara o recarregamento pesado da lista (que chama a Evolution) quando
+  // este número muda — em vez de bater no provedor a cada 20s.
+  app.get("/api/inbox/updates", async () => {
+    if (!prisma) return { latest: 0 };
+    try {
+      const { getInboxSessionName } = await import("../services/inboxStore.js");
+      const session = await getInboxSessionName();
+      const last = await prisma.inboxMessage.findFirst({
+        where: { session },
+        orderBy: { timestamp: "desc" },
+        select: { timestamp: true }
+      });
+      return { latest: last?.timestamp?.getTime() ?? 0 };
+    } catch {
+      return { latest: 0 };
+    }
+  });
+
   app.get("/api/inbox/messages", async (req) => {
     const q = req.query as { chatId?: string; isGroup?: string; sync?: string };
     const chatId = (q.chatId ?? "").trim();

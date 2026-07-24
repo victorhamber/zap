@@ -463,9 +463,33 @@ const MessageRow = memo(function MessageRow({
   );
 });
 
+const CHATS_CACHE_KEY = "zap-inbox-chats";
+
+/** Lê a lista de conversas em cache (localStorage) para render instantâneo ao abrir. */
+function loadCachedChats(): Chat[] {
+  try {
+    const raw = localStorage.getItem(CHATS_CACHE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return Array.isArray(parsed) ? (parsed as Chat[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCachedChats(chats: Chat[]): void {
+  try {
+    // só as 60 mais recentes — o suficiente para a tela abrir cheia
+    localStorage.setItem(CHATS_CACHE_KEY, JSON.stringify(chats.slice(0, 60)));
+  } catch {
+    /* localStorage cheio/indisponível — ignora */
+  }
+}
+
 export function WhatsAppInbox() {
   const pageVisible = usePageVisible();
-  const [chats, setChats] = useState<Chat[]>([]);
+  // Hidrata do cache: a lista aparece na hora, e o fetch real atualiza em seguida.
+  const [chats, setChats] = useState<Chat[]>(loadCachedChats);
+  const lastUpdateRef = useRef(0);
   const [selected, setSelected] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
@@ -564,6 +588,10 @@ export function WhatsAppInbox() {
       setWaConnected(connected);
       const nextChats = filterClientVisibleChats(r.chats ?? []);
       setChats(nextChats);
+      saveCachedChats(nextChats);
+      // marca o mais recente já visto, para o poll de novidade não re-disparar
+      const newestTs = nextChats.reduce((max, c) => Math.max(max, c.timestamp || 0), 0);
+      if (newestTs > lastUpdateRef.current) lastUpdateRef.current = newestTs;
       setSelected((sel) => {
         if (!sel) return null;
         const updated = findMatchingChat(nextChats, sel);
@@ -670,10 +698,35 @@ export function WhatsAppInbox() {
     return () => document.removeEventListener("mousedown", close);
   }, [flowMenuOpen]);
 
+  // Freshness da lista: checa a cada 5s um sinal BARATO (só o timestamp da última
+  // mensagem no banco) e só recarrega a lista de verdade (que chama a Evolution)
+  // quando algo mudou. Antes era um fetch pesado ao provedor a cada 20s, com ou
+  // sem novidade. Uma rede de segurança lenta (90s) pega chats novos sem mensagem.
   useEffect(() => {
     if (!pageVisible) return;
-    const t = setInterval(() => loadChats(true), 20000);
-    return () => clearInterval(t);
+    let alive = true;
+
+    const checkUpdates = async () => {
+      try {
+        const r = await api<{ latest: number }>("/api/inbox/updates");
+        if (!alive) return;
+        if (r.latest && r.latest > lastUpdateRef.current) {
+          lastUpdateRef.current = r.latest;
+          void loadChats(true);
+        }
+      } catch {
+        /* ignora — a rede de segurança abaixo cobre */
+      }
+    };
+
+    void checkUpdates(); // ao abrir/voltar para a aba, checa na hora
+    const fast = setInterval(checkUpdates, 5000);
+    const safety = setInterval(() => loadChats(true), 90000);
+    return () => {
+      alive = false;
+      clearInterval(fast);
+      clearInterval(safety);
+    };
   }, [pageVisible, loadChats]);
 
   useEffect(() => {
