@@ -17,7 +17,8 @@ import {
   countDailyReplies,
   findChatState,
   logAiEvent,
-  resolveChatModeForInbound
+  resolveChatModeForInbound,
+  setChatModeHuman
 } from "./chatState.js";
 import { detectModality, extractInboundTextForReply } from "./mediaExtract.js";
 import {
@@ -80,6 +81,10 @@ async function dispatchMediaResponse(
     });
   }
 }
+
+/** Marcador que o prompt manda a IA emitir ao decidir passar para um humano. */
+const ESCALATE_RE = /\[?\s*escalado\s*\]?/i;
+const HANDOFF_TEXT = "Vou chamar alguém da equipe pra te atender. Um segundo.";
 
 async function resolveClientNameForAi(chatId: string): Promise<string | null> {
   try {
@@ -348,6 +353,33 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
     chatId: payload.chatId,
     inboundTimestamp: inboundBatch.anchorTimestamp
   })) {
+    await clearPendingReply(payload.session, payload.chatId);
+    return;
+  }
+
+  // ESCALAÇÃO: o prompt manda a IA emitir [ESCALADO] quando deve passar para um
+  // humano. Sem tratar, o marcador vazava na mensagem do cliente e ninguém era
+  // avisado. Agora: remove o marcador, manda a frase de handoff, coloca o chat
+  // em modo humano (a IA para de responder) e registra o evento para o painel.
+  if (ESCALATE_RE.test(reply)) {
+    const handoff = reply.replace(ESCALATE_RE, "").trim() || HANDOFF_TEXT;
+    const waMessageId = await sendText(phoneFromChatId(payload.chatId), handoff);
+    await saveInboxMessage({
+      chatId: payload.chatId,
+      body: handoff,
+      fromMe: true,
+      source: "ai",
+      type: "chat",
+      waMessageId,
+      sessionName: payload.session
+    });
+    await setChatModeHuman(payload.session, payload.chatId);
+    await logAiEvent({
+      session: payload.session,
+      chatId: payload.chatId,
+      event: "escalated",
+      detail: handoff.slice(0, 200)
+    });
     await clearPendingReply(payload.session, payload.chatId);
     return;
   }

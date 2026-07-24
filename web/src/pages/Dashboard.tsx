@@ -58,6 +58,42 @@ const STATUS_COLORS: Record<string, string> = {
   waiting: "#f59e0b"
 };
 
+const AI_EVENT_LABELS: Record<string, string> = {
+  replied: "Respondeu",
+  replied_media: "Enviou resposta com mídia",
+  learned: "Aprendeu",
+  escalated: "Passou para humano",
+  skipped_video: "Vídeo — aguardando humano",
+  cancelled_human: "Cancelou (atendente ativo)",
+  rule_softened: "Ajustou resposta (regra)",
+  blocked_rule: "Bloqueou por regra",
+  error: "Erro",
+  history_backfill: "Backfill de histórico"
+};
+
+const AI_EVENT_TONES: Record<string, "success" | "danger" | "info" | "warning" | "neutral"> = {
+  replied: "success",
+  replied_media: "success",
+  learned: "info",
+  escalated: "warning",
+  skipped_video: "warning",
+  cancelled_human: "neutral",
+  rule_softened: "neutral",
+  blocked_rule: "danger",
+  error: "danger",
+  history_backfill: "neutral"
+};
+
+function formatEventTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  return sameDay
+    ? d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+    : d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+}
+
 function formatDay(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);
   return new Date(y, m - 1, d).toLocaleDateString("pt-BR", {
@@ -240,10 +276,27 @@ function DistributionList({
 
 /* ------------------------------------------------------------------ */
 
+type AiStats = {
+  repliesToday: number;
+  knowledgeItems: number;
+  errorsRecent: number;
+  queuePending: number;
+};
+
+type AiEvent = {
+  id: string;
+  event: string;
+  detail: string | null;
+  chatId: string | null;
+  createdAt: string;
+};
+
 export function Dashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [ai, setAi] = useState<AiStats | null>(null);
+  const [aiEvents, setAiEvents] = useState<AiEvent[]>([]);
   const [wpp, setWpp] = useState<{ label: string; connected: boolean }>({
     label: "Verificando…",
     connected: false
@@ -259,6 +312,14 @@ export function Dashboard() {
         setError(e instanceof Error ? e.message : "Não foi possível carregar as estatísticas.")
       )
       .finally(() => setLoading(false));
+
+    // IA é opcional (pode não estar configurada) — falha silenciosa, sem quebrar o painel
+    api<AiStats>("/api/ai/stats")
+      .then(setAi)
+      .catch(() => setAi(null));
+    api<{ items: AiEvent[] }>("/api/ai/events?limit=12")
+      .then((r) => setAiEvents(r.items ?? []))
+      .catch(() => setAiEvents([]));
 
     // `ok` só diz que a checagem respondeu; quem sabe do aparelho é `connected`
     api<{ ok: boolean; connected?: boolean; message?: string }>("/api/settings/wpp/status")
@@ -424,6 +485,78 @@ export function Dashboard() {
           </div>
         </Card>
       </section>
+
+      {/* Assistente IA */}
+      {ai && (
+        <section className="space-y-5">
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <StatCard
+              label="Respostas da IA hoje"
+              value={ai.repliesToday}
+              hint="Mensagens enviadas pelo assistente"
+              icon="spark"
+              tone="brand"
+            />
+            <StatCard
+              label="Aprendizados"
+              value={ai.knowledgeItems}
+              hint="Itens na base de conhecimento"
+              icon="activity"
+              tone="sky"
+            />
+            <StatCard
+              label="Erros (24h)"
+              value={ai.errorsRecent}
+              hint={ai.errorsRecent > 0 ? "Verifique o assistente" : "Tudo certo"}
+              icon="alert"
+              tone={ai.errorsRecent > 0 ? "amber" : "neutral"}
+            />
+            <StatCard
+              label="Na fila"
+              value={ai.queuePending}
+              hint="Respostas/aprendizados pendentes"
+              icon="clock"
+              tone="neutral"
+            />
+          </div>
+
+          <Card>
+            <CardHeader
+              title="Atividade do assistente"
+              subtitle="O que a IA fez recentemente"
+              action={
+                <Link to="/settings" className="text-xs text-brand-400 transition hover:text-brand-300">
+                  Configurar IA
+                </Link>
+              }
+            />
+            <div className="mt-4 space-y-1.5">
+              {aiEvents.length === 0 ? (
+                <p className="py-4 text-sm text-zinc-600">Nenhuma atividade recente da IA.</p>
+              ) : (
+                aiEvents.map((ev) => (
+                  <div
+                    key={ev.id}
+                    className="flex items-center gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 px-3.5 py-2"
+                  >
+                    <Badge tone={AI_EVENT_TONES[ev.event] ?? "neutral"} dot>
+                      {AI_EVENT_LABELS[ev.event] ?? ev.event}
+                    </Badge>
+                    {ev.detail && (
+                      <span className="min-w-0 flex-1 truncate text-xs text-zinc-400">
+                        {ev.detail}
+                      </span>
+                    )}
+                    <span className="ml-auto shrink-0 text-xs tabular-nums text-zinc-600">
+                      {formatEventTime(ev.createdAt)}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </Card>
+        </section>
+      )}
 
       {/* Ranking */}
       <Card>
