@@ -521,10 +521,13 @@ export function isChatHiddenFromInbox(
   hidden: Set<string>,
   session?: string
 ): boolean {
-  if (chat.isGroup || chat.kind === "group" || chat.kind === "community") return false;
   if (hidden.size === 0) return false;
 
   const idNorm = normalizeDirectJid(chat.id);
+  // Grupos só somem se o próprio JID foi ocultado (ex.: "Apagar conversa").
+  if (chat.isGroup || chat.kind === "group" || chat.kind === "community") {
+    return hidden.has(`id:${idNorm}`) || hidden.has(`id:${chat.id}`);
+  }
   if (hidden.has(`id:${idNorm}`)) return true;
 
   if (session) {
@@ -1438,6 +1441,12 @@ export async function deleteInboxConversation(chatId: string): Promise<number> {
   const result = await prisma.inboxMessage.deleteMany({
     where: { session, chatId: { in: variants } }
   });
+  // A lista de conversas vem do provedor (Evolution), não do banco. Só apagar as
+  // mensagens não some com a conversa — ela reaparece na próxima atualização.
+  // Por isso ocultamos também. Volta sozinha se a pessoa mandar nova mensagem
+  // (o recebimento faz unhide).
+  const phone = digitsOnly(chatId.replace(/@.*/, ""));
+  await hideContactFromInbox(session, phone, chatId).catch(() => {});
   return result.count;
 }
 

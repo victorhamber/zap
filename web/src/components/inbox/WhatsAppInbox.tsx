@@ -313,7 +313,8 @@ function hiddenKeysForChat(chat: Chat): string[] {
 }
 
 function isClientHiddenChat(chat: Chat, hidden: Set<string>): boolean {
-  if (chat.isGroup) return false;
+  // Grupo: só some se o próprio id foi marcado (apagar conversa).
+  if (chat.isGroup) return hidden.has(chat.id);
   return hiddenKeysForChat(chat).some((k) => hidden.has(k));
 }
 
@@ -1153,10 +1154,21 @@ export function WhatsAppInbox() {
 
   function handleProfileDeleteConversation() {
     if (!selected) return;
+    markChatHiddenLocally(selected);
+    const removedId = selected.id;
+    const removedPhone = selected.phone;
+    setSelected(null);
     setMessages([]);
+    setShowContactProfile(false);
     setChats((prev) =>
-      prev.map((c) =>
-        c.id === selected.id ? { ...c, lastMessage: "", timestamp: c.timestamp } : c
+      filterClientVisibleChats(
+        prev.filter((c) => {
+          if (c.id === removedId) return false;
+          if (!c.isGroup && removedPhone && chatPhoneDigits(c) === chatPhoneDigits({ id: removedId, phone: removedPhone })) {
+            return false;
+          }
+          return true;
+        })
       )
     );
     void loadChats(true);

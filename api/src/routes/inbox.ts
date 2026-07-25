@@ -618,6 +618,19 @@ export async function inboxRoutes(app: FastifyInstance) {
     }
   });
 
+  // Separado do /profile: fetchAllGroups é lento; o painel carrega isso depois.
+  app.get("/api/contacts/:phone/groups", async (req, reply) => {
+    const phone = decodeURIComponent((req.params as { phone: string }).phone);
+    try {
+      const { getContactSharedGroups } = await import("../services/contactProfile.js");
+      const groups = await getContactSharedGroups(phone);
+      return { ok: true, groups };
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return reply.status(400).send({ ok: false, error: message });
+    }
+  });
+
   app.delete("/api/inbox/conversations/:chatId", async (req, reply) => {
     const chatId = decodeURIComponent((req.params as { chatId: string }).chatId);
     if (!chatId.trim()) return reply.status(400).send({ ok: false, error: "chatId obrigatório" });

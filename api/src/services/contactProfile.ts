@@ -6,7 +6,6 @@ import {
   findPrimaryChatIdForContact,
   resolveAllChatIdsForContact
 } from "./inboxStore.js";
-import * as wpp from "./whatsapp/index.js";
 
 export type ContactProfileGroup = {
   id: string;
@@ -73,12 +72,8 @@ export async function getContactProfile(params: {
     where: { session, chatId: { in: variants } }
   });
 
-  let groups: ContactProfileGroup[] = [];
-  if (wpp.isEvolution && phoneDigits.length >= 10) {
-    const { fetchGroupsForPhone } = await import("./whatsapp/evolution.js");
-    groups = await fetchGroupsForPhone(phoneDigits);
-  }
-
+  // Grupos em comum NÃO são buscados aqui — fetchAllGroups+participantes da
+  // Evolution é pesado e travava a abertura do painel. Use getContactSharedGroups.
   return {
     chatId,
     phone: contact?.phone ?? phoneDigits,
@@ -86,8 +81,18 @@ export async function getContactProfile(params: {
     notes: contact?.notes ?? null,
     isGroup: false,
     contact: contact ? contactToJson(contact) : null,
-    groups,
+    groups: [],
     messageCount,
     createdAt: contact?.createdAt?.toISOString() ?? null
   };
+}
+
+/** Grupos em comum (Evolution). Endpoint separado para não atrasar o perfil. */
+export async function getContactSharedGroups(phoneKey: string): Promise<ContactProfileGroup[]> {
+  const phoneDigits = canonicalBrazilPhone(decodeURIComponent(phoneKey).replace(/@.*/, ""));
+  if (phoneDigits.length < 10) return [];
+  const { isEvolution } = await import("./whatsapp/index.js");
+  if (!isEvolution) return [];
+  const { fetchGroupsForPhone } = await import("./whatsapp/evolution.js");
+  return fetchGroupsForPhone(phoneDigits);
 }

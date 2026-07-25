@@ -1589,6 +1589,12 @@ export async function downloadEvolutionInboundMedia(
 }
 
 /** Grupos em que o telefone participa (Evolution fetchAllGroups + participantes). */
+let groupsCatalogCache: {
+  at: number;
+  list: Record<string, unknown>[];
+} | null = null;
+const GROUPS_CATALOG_TTL_MS = 5 * 60_000;
+
 export async function fetchGroupsForPhone(
   phone: string
 ): Promise<Array<{ id: string; name: string }>> {
@@ -1603,14 +1609,22 @@ export async function fetchGroupsForPhone(
   if (targetKeys.size === 0) return [];
 
   try {
-    const instance = await getInstanceName();
-    const res = await evoFetch(
-      `/group/fetchAllGroups/${encodeURIComponent(instance)}?getParticipants=true`
-    );
-    const data = await readJson(res);
-    if (!res.ok) return [];
+    const now = Date.now();
+    let list = groupsCatalogCache && now - groupsCatalogCache.at < GROUPS_CATALOG_TTL_MS
+      ? groupsCatalogCache.list
+      : null;
 
-    const list = extractEvolutionChatList(data);
+    if (!list) {
+      const instance = await getInstanceName();
+      const res = await evoFetch(
+        `/group/fetchAllGroups/${encodeURIComponent(instance)}?getParticipants=true`
+      );
+      const data = await readJson(res);
+      if (!res.ok) return [];
+      list = extractEvolutionChatList(data);
+      groupsCatalogCache = { at: now, list };
+    }
+
     const out: Array<{ id: string; name: string }> = [];
 
     for (const item of list) {

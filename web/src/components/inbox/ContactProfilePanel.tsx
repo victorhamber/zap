@@ -68,6 +68,7 @@ export function ContactProfilePanel({
 }: Props) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingGroups, setLoadingGroups] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [name, setName] = useState("");
@@ -101,9 +102,31 @@ export function ContactProfilePanel({
     }
   }, [chat.id, chat.isGroup, chat.name, contactKey]);
 
+  const loadGroups = useCallback(async () => {
+    if (chat.isGroup) return;
+    setLoadingGroups(true);
+    try {
+      const r = await api<{ ok: boolean; groups?: ProfileGroup[] }>(
+        `/api/contacts/${encodeURIComponent(contactKey)}/groups`
+      );
+      if (r.ok && Array.isArray(r.groups)) {
+        setProfile((p) => (p ? { ...p, groups: r.groups ?? [] } : p));
+      }
+    } catch {
+      /* grupos são opcionais — não bloqueia o painel */
+    } finally {
+      setLoadingGroups(false);
+    }
+  }, [chat.isGroup, contactKey]);
+
   useEffect(() => {
     void loadProfile();
   }, [loadProfile]);
+
+  useEffect(() => {
+    if (loading || chat.isGroup) return;
+    void loadGroups();
+  }, [loading, chat.isGroup, loadGroups]);
 
   async function saveContact(patch: { name?: string; notes?: string; tagIds?: string[] }) {
     if (chat.isGroup) return;
@@ -314,25 +337,30 @@ export function ContactProfilePanel({
           </section>
         )}
 
-        {!loading && !chat.isGroup && profile && profile.groups.length > 0 && (
+        {!loading && !chat.isGroup && (loadingGroups || (profile && profile.groups.length > 0)) && (
           <section className="px-4 py-4 border-b border-[#2a3942]/60">
             <h3 className="text-xs uppercase tracking-wide text-[#00a884] mb-3">
-              Grupos em comum ({profile.groups.length})
+              Grupos em comum
+              {profile && profile.groups.length > 0 ? ` (${profile.groups.length})` : ""}
             </h3>
-            <ul className="space-y-1">
-              {profile.groups.map((g) => (
-                <li key={g.id}>
-                  <button
-                    type="button"
-                    onClick={() => onOpenGroup(g.id, g.name)}
-                    className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-[#202c33] text-left"
-                  >
-                    <WhatsAppAvatar chatId={g.id} isGroup name={g.name} size={40} />
-                    <span className="text-sm text-[#e9edef] truncate">{g.name}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+            {loadingGroups && profile?.groups.length === 0 ? (
+              <p className="text-xs text-[#8696a0]">Buscando grupos…</p>
+            ) : (
+              <ul className="space-y-1">
+                {(profile?.groups ?? []).map((g) => (
+                  <li key={g.id}>
+                    <button
+                      type="button"
+                      onClick={() => onOpenGroup(g.id, g.name)}
+                      className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-[#202c33] text-left"
+                    >
+                      <WhatsAppAvatar chatId={g.id} isGroup name={g.name} size={40} />
+                      <span className="text-sm text-[#e9edef] truncate">{g.name}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
         )}
 
