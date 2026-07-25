@@ -89,6 +89,13 @@ export async function resolveAllChatIdsForContact(
 
   if (!prisma) return [...out];
 
+  // Grupos/comunidades resolvem SÓ para o próprio JID. O número de um grupo
+  // (120363…@g.us) não é telefone; tratá-lo como tal e casar por prefixo
+  // (startsWith) puxava conversas PRIVADAS de membros para dentro do grupo.
+  if (chatId.includes("@g.us") || chatId.includes("@newsletter")) {
+    return [...out];
+  }
+
   const rawDigits = digitsOnly(chatId.replace(/@.*/, ""));
   const phoneKeys = rawDigits.length >= 10 ? expandPhoneLookupKeys(canonicalBrazilPhone(rawDigits)) : [];
 
