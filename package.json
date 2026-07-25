@@ -24,7 +24,7 @@
     "db:migrate": "prisma migrate deploy",
     "db:seed": "tsx api/src/seed.ts",
     "db:studio": "prisma studio",
-    "test": "tsx --test api/src/services/ai/*.test.ts"
+    "test": "tsx --test \"api/src/**/*.test.ts\""
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",

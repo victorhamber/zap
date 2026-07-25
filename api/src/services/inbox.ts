@@ -175,8 +175,16 @@ function resolveChatId(chatId: string, isGroup?: boolean): string {
 }
 
 function detectKind(id: string, o?: Record<string, unknown>): ChatKind {
-  if (id.includes("@newsletter") || o?.isCommunity === true) return "community";
-  if (id.includes("@g.us") || o?.isGroup === true) return "group";
+  // O JID manda: grupo é sempre @g.us, comunidade/canal @newsletter.
+  if (id.includes("@newsletter")) return "community";
+  if (id.includes("@g.us")) return "group";
+  // Id baseado em telefone é SEMPRE conversa direta — ignore flags do provedor.
+  // A Evolution às vezes marca isGroup=true num contato direto, e ele aparecia
+  // no painel como "Grupos". Grupo real nunca tem id de telefone.
+  const phone = digitsOnly(id.replace(/@.*/, ""));
+  if (isValidWhatsAppPhoneDigits(phone)) return "direct";
+  if (o?.isCommunity === true) return "community";
+  if (o?.isGroup === true) return "group";
   return "direct";
 }
 
@@ -309,10 +317,13 @@ function parseChatItem(item: unknown, session?: string): NormalizedChat | null {
   if (!rawId || rawId === "undefined") return null;
 
   const kindHint = detectKind(rawId.includes("@") ? rawId : `${rawId}@c.us`, o);
+  // NÃO usar `o.isGroup` aqui: detectKind já ignora a flag para ids de telefone,
+  // então confiar nela de novo faria um contato direto virar `...@g.us` (grupo
+  // falso). Só o kindHint decide o sufixo.
   let resolvedId = rawId.includes("@")
     ? normalizeDirectJid(rawId)
     : normalizeDirectJid(
-        resolveChatId(rawId, kindHint === "group" || kindHint === "community" || o.isGroup === true)
+        resolveChatId(rawId, kindHint === "group" || kindHint === "community")
       );
   if (!isValidWaId(resolvedId)) return null;
 
@@ -628,14 +639,22 @@ function mergeChats(map: Map<string, NormalizedChat>, list: NormalizedChat[], se
   }
 }
 
+/** Só é grupo/comunidade de verdade se o JID for @g.us / @newsletter. */
+function isRealGroupJid(id: string): boolean {
+  return id.includes("@g.us") || id.includes("@newsletter");
+}
+
 export function normalizeGroups(raw: unknown): NormalizedChat[] {
   const list = extractArray(raw);
   const out: NormalizedChat[] = [];
   for (const item of list) {
     if (typeof item === "string") {
       const raw = item.trim();
+      // Se o texto já é um telefone, NÃO force @g.us (viraria "grupo" falso).
+      // O contato direto vem pelo list-chats; aqui a gente ignora.
+      if (isPhoneLikeText(raw) && !raw.includes("@")) continue;
       const id = raw.includes("@") ? raw : `${raw.replace(/\D/g, "")}@g.us`;
-      if (!isValidWaId(id)) continue;
+      if (!isValidWaId(id) || !isRealGroupJid(id)) continue;
       out.push({
         id,
         phone: chatIdToPhone(id),
@@ -643,16 +662,20 @@ export function normalizeGroups(raw: unknown): NormalizedChat[] {
         lastMessage: "",
         timestamp: 0,
         isGroup: true,
-        kind: "group",
+        kind: id.includes("@newsletter") ? "community" : "group",
         unreadCount: 0
       });
       continue;
     }
     const c = parseChatItem(item);
     if (!c) continue;
-    c.kind = idIncludesCommunity(c.id) ? "community" : "group";
-    c.isGroup = true;
-    if (!c.id.includes("@")) c.id = `${c.phone}@g.us`;
+    // A Evolution às vezes devolve contato DIRETO na lista de grupos. Só marca
+    // como grupo se o JID for realmente de grupo/comunidade; senão preserva o
+    // que o parseChatItem detectou (evita conversa privada virar "Grupos").
+    if (isRealGroupJid(c.id)) {
+      c.kind = idIncludesCommunity(c.id) ? "community" : "group";
+      c.isGroup = true;
+    }
     out.push(c);
   }
   return out;
