@@ -2,6 +2,7 @@
 import { extractWaId } from "../inbox.js";
 import { mimeFromMessageType } from "../mediaText.js";
 import { canonicalEvolutionChatId, normalizeDirectJid } from "../waJid.js";
+import { asObjectList, extractMetaTemplateComponents } from "./templateText.js";
 
 export function getEvolutionWebhookEvent(body: Record<string, unknown>): string {
   return String(body.event ?? body.type ?? "").toLowerCase();
@@ -24,19 +25,6 @@ export function isButtonPlaceholderBody(body: string): boolean {
     /^(📄\s*)?(Mensagem com botões|Mensagem interativa|Lista)$/i.test(t) ||
     /^📄\s*Template:/i.test(t)
   );
-}
-
-/** Array ou mapa numérico (protobuf JSON às vezes serializa assim). */
-function asObjectList(value: unknown): Record<string, any>[] {
-  if (Array.isArray(value)) {
-    return value.filter((x): x is Record<string, any> => Boolean(x) && typeof x === "object");
-  }
-  if (value && typeof value === "object") {
-    return Object.values(value as Record<string, unknown>).filter(
-      (x): x is Record<string, any> => Boolean(x) && typeof x === "object"
-    );
-  }
-  return [];
 }
 
 /** Lê display_text/url de buttonParamsJSON (nativeFlow / CTA da API oficial). */
@@ -144,6 +132,13 @@ function composeButtonText(parts: unknown[], buttons: string[], fallback: string
   return [body, btns].filter(Boolean).join("\n").trim() || fallback;
 }
 
+/** Echo da Evolution ao enviar template oficial: `▶️nome_do_template◀️`. */
+function textFromEvolutionTemplateEcho(raw: string): string | null {
+  const m = raw.trim().match(/^▶️\s*(.+?)\s*◀️$/);
+  if (!m?.[1]) return null;
+  return `📄 Template: ${m[1].trim()}`;
+}
+
 function coerceMessageObject(raw: unknown): Record<string, unknown> {
   if (!raw) return {};
   if (typeof raw === "string") {
@@ -211,11 +206,22 @@ function extractTemplateLikeText(
   buttonsSource: unknown,
   fallback: string
 ): string {
+  const meta = extractMetaTemplateComponents(container.components);
+  const templateName = String(container.name ?? "").trim();
+  const fieldParts = textFieldsFrom(container).filter((p) => p !== templateName);
   const parts = [
-    ...textFieldsFrom(container),
-    ...textsFromParamsJson(container.messageParamsJson ?? container.messageParamsJSON)
+    ...fieldParts,
+    ...textsFromParamsJson(container.messageParamsJson ?? container.messageParamsJSON),
+    ...meta.parts
   ];
-  return composeButtonText(parts, buttonLabels(buttonsSource ?? container.hydratedButtons ?? container.buttons), fallback);
+  const buttons = [
+    ...buttonLabels(buttonsSource ?? container.hydratedButtons ?? container.buttons),
+    ...meta.buttons
+  ];
+  const composed = composeButtonText(parts, buttons, "");
+  if (composed) return composed;
+  if (templateName) return composeButtonText([`📄 Template: ${templateName}`], buttons, fallback);
+  return fallback;
 }
 
 function parseMessageContent(
@@ -261,10 +267,30 @@ function parseMessageContent(
       tm.fourRowTemplate ??
       tm.hydratedHsm ??
       tm;
+    // Meta Cloud (Evolution Business) manda name/components no próprio templateMessage,
+    // às vezes sem hydratedTemplate — mescla os dois níveis.
+    const merged = h === tm ? tm : { ...tm, ...h, components: h.components ?? tm.components };
     return {
-      text: extractTemplateLikeText(h, h.hydratedButtons ?? tm.hydratedButtons, "📄 Mensagem com botões"),
+      text: extractTemplateLikeText(
+        merged,
+        merged.hydratedButtons ?? tm.hydratedButtons,
+        "📄 Mensagem com botões"
+      ),
       type: "chat"
     };
+  }
+  // Evolution Business às vezes espelha o template Meta sem embrulhar em templateMessage.
+  if (Array.isArray((msg as Record<string, unknown>).components)) {
+    const comps = (msg as Record<string, unknown>).components;
+    const looksMeta = asObjectList(comps).some((c) =>
+      /^(header|body|footer|button|buttons)$/i.test(String(c.type ?? ""))
+    );
+    if (looksMeta) {
+      return {
+        text: extractTemplateLikeText(msg as Record<string, any>, undefined, "📄 Mensagem com botões"),
+        type: "chat"
+      };
+    }
   }
   if (msg.buttonsMessage && typeof msg.buttonsMessage === "object") {
     const bm = msg.buttonsMessage as Record<string, any>;
@@ -478,14 +504,46 @@ export function parseEvolutionMessagePayload(
   const msg = coerceMessageObject(payload.message);
   let { text, type } = parseMessageContent(msg, payload);
 
+  // Echo Evolution ao enviar template oficial: conversation = "▶️nome◀️".
+  if (typeof text === "string") {
+    const echo = textFromEvolutionTemplateEcho(text);
+    if (echo) {
+      text = echo;
+      type = "chat";
+    }
+  }
+
   // Se o template veio vazio mas o payload tem texto paralelo (alguns syncs Evolution).
   if (isButtonPlaceholderBody(text) || !text.trim()) {
-    const sideText = [payload.text, payload.body, payload.conversation]
+    const sideCandidates = [payload.text, payload.body, payload.conversation, msg.conversation]
       .map((v) => (typeof v === "string" ? v.trim() : ""))
-      .find(Boolean);
-    if (sideText && !isButtonPlaceholderBody(sideText)) {
-      text = sideText;
-      type = "chat";
+      .filter(Boolean);
+    for (const sideText of sideCandidates) {
+      const echo = textFromEvolutionTemplateEcho(sideText);
+      if (echo) {
+        text = echo;
+        type = "chat";
+        break;
+      }
+      if (!isButtonPlaceholderBody(sideText)) {
+        text = sideText;
+        type = "chat";
+        break;
+      }
+    }
+  }
+
+  // Último recurso: components Meta no payload (fora de message.*).
+  if (isButtonPlaceholderBody(text) || !text.trim()) {
+    const tpl =
+      (payload.template as Record<string, unknown> | undefined) ??
+      (msg.template as Record<string, unknown> | undefined);
+    if (tpl && typeof tpl === "object") {
+      const hydrated = extractTemplateLikeText(tpl as Record<string, any>, undefined, "");
+      if (hydrated) {
+        text = hydrated;
+        type = "chat";
+      }
     }
   }
 

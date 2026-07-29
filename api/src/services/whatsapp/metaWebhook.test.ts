@@ -41,6 +41,24 @@ describe("parseMetaMessageType — botões / template / interativo", () => {
     assert.match(r.text, /Concluímos a análise/);
   });
 
+  it("template só com parameters e botões URL", () => {
+    const r = parseMetaMessageType({
+      type: "template",
+      template: {
+        name: "proposta",
+        components: [
+          { type: "body", parameters: [{ type: "text", text: "Carlos" }] },
+          {
+            type: "BUTTONS",
+            buttons: [{ type: "URL", text: "Abrir", url: "https://exemplo.com" }]
+          }
+        ]
+      }
+    });
+    assert.match(r.text, /Carlos/);
+    assert.match(r.text, /Abrir/);
+  });
+
   it("tipo desconhecido sem texto fica vazio (para o webhook descartar)", () => {
     const r = parseMetaMessageType({ type: "reaction", reaction: { emoji: "👍" } });
     assert.equal(r.text, "");

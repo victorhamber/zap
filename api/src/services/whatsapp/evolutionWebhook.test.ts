@@ -185,6 +185,66 @@ describe("parseEvolutionMessagePayload — mensagens com botão", () => {
     assert.match(p!.text, /Ver proposta/);
   });
 
+  it("template Meta (name + components BODY) sem hydratedContentText", () => {
+    const p = parseEvolutionMessagePayload(
+      body,
+      payload({
+        templateMessage: {
+          name: "analise_cota",
+          language: { code: "pt_BR" },
+          components: [
+            { type: "BODY", text: "Concluímos a análise da sua cota, João." },
+            {
+              type: "BUTTONS",
+              buttons: [{ type: "URL", text: "Ver proposta", url: "https://w.meta.me/s/abc" }]
+            }
+          ]
+        }
+      })
+    );
+    assert.ok(p);
+    assert.match(p!.text, /Concluímos a análise/);
+    assert.match(p!.text, /Ver proposta/);
+    assert.doesNotMatch(p!.text, /Mensagem com botões/);
+  });
+
+  it("template Meta só com parameters (sem text do BODY)", () => {
+    const p = parseEvolutionMessagePayload(
+      body,
+      payload({
+        templateMessage: {
+          name: "boas_vindas",
+          components: [
+            {
+              type: "body",
+              parameters: [{ type: "text", text: "Maria" }]
+            }
+          ]
+        }
+      })
+    );
+    assert.ok(p);
+    assert.match(p!.text, /Maria/);
+    assert.doesNotMatch(p!.text, /Mensagem com botões/);
+  });
+
+  it("echo Evolution ▶️nome◀️ vira label de template", () => {
+    const p = parseEvolutionMessagePayload(body, payload({ conversation: "▶️analise_cota◀️" }));
+    assert.ok(p);
+    assert.match(p!.text, /Template:\s*analise_cota/);
+  });
+
+  it("templateMessage vazio com messageType ainda não inventa texto falso além do placeholder", () => {
+    const p = parseEvolutionMessagePayload(body, {
+      key: { remoteJid: "5511999999999@s.whatsapp.net", fromMe: true, id: "T1" },
+      messageTimestamp: 1_700_000_000,
+      messageType: "templateMessage",
+      message: { templateMessage: {} }
+    });
+    assert.ok(p);
+    assert.match(p!.text, /Mensagem com botões|Template:/i);
+  });
+
   it("texto simples continua funcionando", () => {
     const p = parseEvolutionMessagePayload(body, payload({ conversation: "oi tudo bem" }));
     assert.ok(p);

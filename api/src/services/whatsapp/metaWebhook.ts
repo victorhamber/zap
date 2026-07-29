@@ -1,4 +1,5 @@
 import { findInstanceByPhoneNumberId, findInstanceByMetaWebhookToken } from "./wppInstanceConfig.js";
+import { extractMetaTemplateComponents } from "./templateText.js";
 
 export type MetaParsedMessage = {
   session: string;
@@ -97,22 +98,9 @@ export function parseMetaMessageType(msg: Record<string, unknown>): { type: stri
   if (t === "template") {
     const tpl = (msg.template as Record<string, unknown> | undefined) ?? {};
     const name = String(tpl.name ?? "").trim();
-    const components = Array.isArray(tpl.components) ? tpl.components : [];
-    const parts: string[] = [];
-    for (const c of components) {
-      if (!c || typeof c !== "object") continue;
-      const comp = c as Record<string, unknown>;
-      const ctype = String(comp.type ?? "").toLowerCase();
-      if (ctype === "header" || ctype === "body" || ctype === "footer") {
-        const text = String(comp.text ?? "").trim();
-        if (text) parts.push(text);
-      }
-      if (ctype === "button") {
-        const text = String(comp.text ?? "").trim();
-        if (text) parts.push(`▸ ${text}`);
-      }
-    }
-    const text = joinParts(parts);
+    const { parts, buttons } = extractMetaTemplateComponents(tpl.components);
+    const buttonLines = buttons.map((b) => `▸ ${b}`);
+    const text = joinParts([...parts, ...buttonLines]);
     return {
       type: "chat",
       text: text || (name ? `📄 Template: ${name}` : "📄 Mensagem com botões")
