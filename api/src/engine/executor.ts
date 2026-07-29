@@ -63,7 +63,9 @@ function sleepMs(ms: number): Promise<void> {
 
 function isRetriableSendError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);
-  return /sendText|sendMedia|HTTP 400|HTTP 429|timeout|econnreset|fetch failed|network|busy/i.test(
+  // sendText já faz 1+3 tentativas internamente — não reempilhar aqui.
+  if (/desistiu após \d+ tentativas|número sem WhatsApp/i.test(message)) return false;
+  return /sendMedia|HTTP 400|HTTP 429|HTTP 500|timeout|econnreset|fetch failed|network|busy|instável/i.test(
     message
   );
 }
@@ -619,7 +621,8 @@ async function executeNode(
       throw new Error("Texto da mensagem vazio");
     }
     try {
-      const waMessageId = await sendWithRetries(() => wpp.sendText(phone, text));
+      // Retries (1+3) e variantes BR ficam em wpp.sendText — sem empilhar retry aqui.
+      const waMessageId = await wpp.sendText(phone, text);
       try {
         await persistFlowOutboundMessage({
           phone,

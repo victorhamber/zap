@@ -329,26 +329,107 @@ export async function markEvolutionChatAsRead(
   }).catch(() => {});
 }
 
+/** 1 envio + 3 novas tentativas — depois desiste. */
+const SEND_TEXT_MAX_ATTEMPTS = 4;
+
+function isPermanentNoWhatsAppError(message: string): boolean {
+  const m = message.toLowerCase();
+  return (
+    m.includes("número sem whatsapp") ||
+    m.includes("not exist") ||
+    m.includes("does not exist") ||
+    m.includes("no whatsapp") ||
+    m.includes("is not on whatsapp") ||
+    m.includes("invalid number")
+  );
+}
+
+function clarifySendTextError(status: number, formatted: string): string {
+  if (isPermanentNoWhatsAppError(formatted)) {
+    return `sendText: número sem WhatsApp — ${formatted}`;
+  }
+  if (status === 500 || /internal server/i.test(formatted)) {
+    return `sendText: Evolution/WhatsApp instável — ${formatted}`;
+  }
+  if ([502, 503, 504].includes(status)) {
+    return `sendText: Evolution indisponível — ${formatted}`;
+  }
+  return `sendText: ${formatted}`;
+}
+
+async function postSendTextOnce(
+  instance: string,
+  number: string,
+  text: string
+): Promise<{ ok: true; id: string | null } | { ok: false; status: number; error: string }> {
+  try {
+    const res = await evoFetch(`/message/sendText/${encodeURIComponent(instance)}`, {
+      method: "POST",
+      body: JSON.stringify({ number, text })
+    });
+    const data = await readJson(res);
+    if (res.ok) return { ok: true, id: extractEvolutionSentMessageId(data) };
+    const formatted = formatWppError(res.status, data);
+    return { ok: false, status: res.status, error: clarifySendTextError(res.status, formatted) };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, status: 0, error: `sendText: ${msg}` };
+  }
+}
+
 export async function sendText(phone: string, message: string): Promise<string | null> {
   const text = String(message ?? "").trim();
   if (!text) throw new Error("sendText: mensagem vazia");
 
   const instance = await getInstanceName();
-  let number = await resolveEvolutionSendNumber(phone);
-  const d = digitsOnly(number);
+  let resolved = await resolveEvolutionSendNumber(phone);
+  const d = digitsOnly(resolved);
   if (d.startsWith("55") && d.length >= 12) {
-    number = canonicalBrazilPhone(d);
+    resolved = canonicalBrazilPhone(d);
   }
-  const res = await evoFetch(`/message/sendText/${encodeURIComponent(instance)}`, {
-    method: "POST",
-    body: JSON.stringify({
-      number,
-      text
-    })
-  });
-  const data = await readJson(res);
-  if (!res.ok) throw new Error(`sendText: ${formatWppError(res.status, data)}`);
-  return extractEvolutionSentMessageId(data);
+  const variants = phoneSendVariants(resolved);
+  let lastError = "sendText: falha desconhecida";
+
+  for (let attempt = 0; attempt < SEND_TEXT_MAX_ATTEMPTS; attempt++) {
+    let hadRetriable = false;
+    let permanentOnly = true;
+
+    for (const number of variants) {
+      const result = await postSendTextOnce(instance, number, text);
+      if (result.ok) return result.id;
+
+      lastError = result.error;
+
+      if (isPermanentNoWhatsAppError(result.error)) {
+        continue;
+      }
+      permanentOnly = false;
+
+      if (isRetriableSendError(result.status, result.error)) {
+        hadRetriable = true;
+        break;
+      }
+
+      throw new Error(`${lastError} (tel. ${number})`);
+    }
+
+    if (permanentOnly && !hadRetriable) {
+      throw new Error(
+        `sendText: número sem WhatsApp ou inválido (tel. ${phone}). Confira o telefone na Hotmart.`
+      );
+    }
+
+    if (hadRetriable && attempt < SEND_TEXT_MAX_ATTEMPTS - 1) {
+      await sleep(3500 * (attempt + 1));
+      continue;
+    }
+
+    break;
+  }
+
+  throw new Error(
+    `${lastError} — desistiu após ${SEND_TEXT_MAX_ATTEMPTS} tentativas (tel. ${phone})`
+  );
 }
 
 function inferMimeType(fileName?: string, mimeHint?: string): string {
@@ -421,10 +502,12 @@ function phoneSendVariants(phone: string): string[] {
 }
 
 function isRetriableSendError(status: number, message: string): boolean {
-  // HTTP 400 em sendMedia costuma ser limite/race da Evolution no broadcast, não telefone inválido.
-  if ([400, 429, 502, 503, 504].includes(status)) return true;
+  // 400/500 intermitentes da Evolution (broadcast/sessão) — não confundir com número inválido permanente.
+  if ([400, 429, 500, 502, 503, 504].includes(status)) return true;
   const m = message.toLowerCase();
-  return /timeout|econnreset|fetch failed|network|rate|busy|media/i.test(m);
+  return /timeout|econnreset|fetch failed|network|rate|busy|media|internal server|instável|indisponível/i.test(
+    m
+  );
 }
 
 function isRetriablePhoneVariantError(message: string): boolean {
