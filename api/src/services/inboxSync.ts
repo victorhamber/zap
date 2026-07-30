@@ -84,9 +84,15 @@ async function syncEvolutionMessagesForJid(
     if (!parsed) continue;
 
     const msgKey = (payload.key ?? {}) as Record<string, unknown>;
+    const { hydrateTemplatePlaceholder } = await import("./whatsapp/metaTemplates.js");
+    const messageBody = await hydrateTemplatePlaceholder({
+      session,
+      text: parsed.text,
+      raw: payload
+    });
     await saveInboxMessage({
       chatId: parsed.chatId,
-      body: parsed.text,
+      body: messageBody,
       fromMe: parsed.fromMe,
       type: parsed.type === "ptt" ? "audio" : parsed.type,
       mediaUrl: parsed.mediaUrl,

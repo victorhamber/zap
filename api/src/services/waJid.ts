@@ -26,6 +26,23 @@ export function digitsOnly(s: string): string {
   return s.replace(/\D/g, "");
 }
 
+/**
+ * Grupo (@g.us), canal/comunidade (@newsletter) ou lista de transmissão.
+ * O "número" desses JIDs (120363…) NÃO é telefone e NÃO é @lid — tratá-lo como
+ * um dos dois fazia o grupo ser mapeado para o telefone de um participante,
+ * misturando conversa privada com grupo (nomes trocados no inbox).
+ */
+export function isGroupLikeJid(jid: string | null | undefined): boolean {
+  const t = String(jid ?? "").trim().toLowerCase();
+  if (!t) return false;
+  return (
+    t.endsWith("@g.us") ||
+    t.includes("@newsletter") ||
+    t.endsWith("@broadcast") ||
+    t.includes("status@broadcast")
+  );
+}
+
 function jidRank(id: string): number {
   if (!id) return 0;
   if (id.endsWith("@g.us") || id.includes("@newsletter")) return 5;
@@ -86,6 +103,9 @@ export function isLikelyInternalLidDigits(digits: string): boolean {
 }
 
 export function isLikelyInternalLidJid(jid: string): boolean {
+  // Grupo/canal nunca é @lid: 120363…@g.us tem 18 dígitos e caía no heurístico
+  // de "id interno", virando chave do mapa @lid→telefone.
+  if (isGroupLikeJid(jid)) return false;
   if (jid.endsWith("@lid")) return true;
   return isLikelyInternalLidDigits(digitsOnly(jid));
 }

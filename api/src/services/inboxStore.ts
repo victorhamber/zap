@@ -9,7 +9,12 @@ import {
   mimeFromMessageType
 } from "./mediaText.js";
 import { phoneDedupeKey, expandPhoneLookupKeys, canonicalBrazilPhone } from "../utils/phone.js";
-import { isValidWhatsAppPhoneDigits, normalizeDirectJid, isLikelyInternalLidJid } from "./waJid.js";
+import {
+  isGroupLikeJid,
+  isValidWhatsAppPhoneDigits,
+  normalizeDirectJid,
+  isLikelyInternalLidJid
+} from "./waJid.js";
 import {
   expandChatIdVariants,
   getLidsMappedToPhone,
@@ -56,21 +61,25 @@ function chatIdVariants(chatId: string): string[] {
   const digits = digitsOnly(raw);
   if (!digits) return out;
 
-  if (raw.includes("@g.us") || chatId.includes("@g.us")) {
-    add(`${digits}@g.us`);
-  } else {
-    add(`${digits}@c.us`);
-    add(`${digits}@lid`);
-    add(`${digits}@s.whatsapp.net`);
+  // Grupo/canal: só o próprio JID. Gerar `<digits>@lid` / `@s.whatsapp.net`
+  // a partir de um 120363…@g.us cruzava o grupo com conversas privadas.
+  if (isGroupLikeJid(raw) || isGroupLikeJid(chatId)) {
+    if (raw.endsWith("@g.us") || chatId.includes("@g.us")) add(`${digits}@g.us`);
+    return out;
   }
+
+  add(`${digits}@c.us`);
+  add(`${digits}@lid`);
+  add(`${digits}@s.whatsapp.net`);
   if (raw.includes("@") && !out.includes(raw)) add(raw);
   return out;
 }
 
 /** JIDs alternativos para sync na Evolution (@lid vs @s.whatsapp.net). */
 export function messageSyncJidCandidates(chatId: string, isGroup?: boolean): string[] {
-  const variants = isGroup || chatId.includes("@g.us") ? chatIdVariants(chatId) : chatIdVariants(chatId);
-  return [...new Set(variants.map((id) => normalizeDirectJid(id)).filter(Boolean))];
+  const digits = digitsOnly(chatId.replace(/@.*/, ""));
+  const seed = isGroup && !isGroupLikeJid(chatId) && digits ? `${digits}@g.us` : chatId;
+  return [...new Set(chatIdVariants(seed).map((id) => normalizeDirectJid(id)).filter(Boolean))];
 }
 
 async function chatIdVariantsResolved(session: string, chatId: string): Promise<string[]> {
@@ -136,10 +145,13 @@ export async function resolveAllChatIdsForContact(
 function preferPrimaryChatId(ids: string[]): string {
   if (ids.length === 0) return "";
   const normalized = [...new Set(ids.map((id) => normalizeDirectJid(id.trim())).filter(Boolean))];
+  // Se um grupo/canal aparecer na lista, ele é o dono da conversa — nunca deixe
+  // um telefone de participante virar o chatId canônico do grupo.
+  const groupId = normalized.find((id) => isGroupLikeJid(id));
+  if (groupId) return groupId;
   const score = (id: string): number => {
     if (id.endsWith("@s.whatsapp.net")) return 100;
     if (id.endsWith("@c.us")) return 90;
-    if (id.endsWith("@g.us")) return 80;
     if (id.endsWith("@lid")) return 20;
     return 50;
   };
@@ -617,6 +629,10 @@ async function resolveStorageChatId(
   chatId: string,
   peerJids: string[] = []
 ): Promise<string> {
+  // Grupo/canal grava sempre no próprio JID. Antes o `participant` do peerJids
+  // era tratado como telefone do chat e a mensagem do grupo caía na conversa
+  // privada daquele participante (mensagens com nome trocado).
+  if (isGroupLikeJid(chatId)) return normalizeDirectJid(chatId);
   await recordWaJidMapping(session, chatId, ...peerJids);
   const mapped = getMappedPhoneJid(session, chatId);
   if (mapped) return normalizeDirectJid(mapped);
@@ -1106,7 +1122,11 @@ export async function saveInboxMessage(params: {
     };
 
     if (!params.fromMe) {
-      const unhidePhone = pickPhoneJid([chatId, ...(params.peerJids ?? []), params.chatId]);
+      // Em grupo, o "telefone" do peer é de um participante — reexibir por ele
+      // ressuscitava a conversa privada apagada dessa pessoa. Grupo reexibe a si.
+      const unhidePhone = isGroupLikeJid(chatId)
+        ? chatId
+        : pickPhoneJid([chatId, ...(params.peerJids ?? []), params.chatId]);
       if (unhidePhone) {
         await unhideContactFromInbox(session, unhidePhone, chatId).catch(() => {});
       }
@@ -1163,7 +1183,7 @@ export async function listStoredChatSummaries(): Promise<NormalizedChat[]> {
   for (const { chatId: rawId } of distinct) {
     const variants = await resolveAllChatIdsForContact(session, rawId);
     const primary = preferPrimaryChatId(variants) || rawId;
-    const isGroup = primary.includes("@g.us");
+    const isGroup = isGroupLikeJid(primary);
     const phoneDigits = digitsOnly(primary.replace(/@.*/, "")) || primary.replace(/@.*/, "");
     const mapKey =
       !isGroup && isValidWhatsAppPhoneDigits(phoneDigits)
@@ -1189,17 +1209,21 @@ export async function listStoredChatSummaries(): Promise<NormalizedChat[]> {
     if (!latest) continue;
 
     const primary = primaryByKey.get(mapKey) ?? idList[0];
-    const isGroup = primary.includes("@g.us");
+    const isGroup = isGroupLikeJid(primary);
     const phoneDigits = digitsOnly(primary.replace(/@.*/, "")) || primary.replace(/@.*/, "");
 
     merged.push({
       id: primary,
-      phone: phoneDigits,
-      name: phoneDigits,
+      phone: isGroup ? "" : phoneDigits,
+      name: isGroup ? "" : phoneDigits,
       lastMessage: latest.body.slice(0, 120),
       timestamp: latest.timestamp.getTime(),
       isGroup,
-      kind: isGroup ? ("group" as const) : ("direct" as const),
+      kind: primary.includes("@newsletter")
+        ? ("community" as const)
+        : isGroup
+          ? ("group" as const)
+          : ("direct" as const),
       unreadCount: 0
     });
   }

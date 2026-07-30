@@ -644,6 +644,25 @@ export async function inboxRoutes(app: FastifyInstance) {
     }
   });
 
+  // Reprocessa mensagens antigas que ficaram como "📄 Template: nome" antes de
+  // existir a busca da definição na Meta.
+  app.post("/api/inbox/repair-templates", async (req, reply) => {
+    const q = req.query as { session?: string; limit?: string };
+    try {
+      const { repairTemplatePlaceholders } = await import(
+        "../services/inboxTemplateRepair.js"
+      );
+      const result = await repairTemplatePlaceholders(
+        q.session,
+        q.limit ? Number(q.limit) : undefined
+      );
+      return { ok: true, ...result };
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return reply.status(400).send({ ok: false, error: message });
+    }
+  });
+
   app.delete("/api/contacts/:phone/crm", async (req, reply) => {
     const phone = decodeURIComponent((req.params as { phone: string }).phone);
     const q = req.query as { chatId?: string };

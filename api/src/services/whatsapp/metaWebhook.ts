@@ -1,5 +1,6 @@
 import { findInstanceByPhoneNumberId, findInstanceByMetaWebhookToken } from "./wppInstanceConfig.js";
 import { extractMetaTemplateComponents } from "./templateText.js";
+import { hydrateMetaTemplateText } from "./metaTemplates.js";
 
 export type MetaParsedMessage = {
   session: string;
@@ -110,6 +111,34 @@ export function parseMetaMessageType(msg: Record<string, unknown>): { type: stri
   return { type: t, text: "" };
 }
 
+async function hydrateTemplateWhenNeeded(
+  session: string,
+  msg: Record<string, unknown>,
+  fallbackText: string
+): Promise<string> {
+  if (String(msg.type ?? "").toLowerCase() !== "template") return fallbackText;
+  const tpl = (msg.template as Record<string, unknown> | undefined) ?? {};
+  const name = String(tpl.name ?? "").trim();
+  if (!name) return fallbackText;
+
+  // Sempre tenta a definição: o payload de envio traz só os PARÂMETROS, então
+  // o fallback vira "📄 Template: nome" ou só o valor da variável ("Carlos").
+  // A definição é cacheada, o custo por mensagem é praticamente zero.
+  try {
+    const hydrated = await hydrateMetaTemplateText({
+      session,
+      name,
+      language: String(
+        (tpl.language as Record<string, unknown> | undefined)?.code ?? tpl.language ?? ""
+      ),
+      components: tpl.components
+    });
+    return hydrated ?? fallbackText;
+  } catch {
+    return fallbackText;
+  }
+}
+
 export async function verifyMetaWebhookChallenge(query: Record<string, unknown>): Promise<string | null> {
   const mode = String(query["hub.mode"] ?? "");
   const token = String(query["hub.verify_token"] ?? "");
@@ -175,8 +204,11 @@ export async function parseMetaWebhookMessages(
         if (!peer) continue;
 
         const { type, text } = parseMetaMessageType(msg);
+        // Template: o webhook só traz nome + parâmetros. Busca a definição na
+        // Meta para montar o texto que o cliente realmente viu no WhatsApp.
+        const finalText = await hydrateTemplateWhenNeeded(session, msg, text);
         // Sem texto útil (ex.: tipos desconhecidos) — não grava bolha vazia.
-        if (!text.trim()) continue;
+        if (!finalText.trim()) continue;
         const ts = Number(msg.timestamp ?? 0);
         const waMessageId = String(msg.id ?? "").trim();
         if (!waMessageId) continue;
@@ -184,7 +216,7 @@ export async function parseMetaWebhookMessages(
         out.push({
           session,
           chatId: chatIdFromPhone(peer),
-          text,
+          text: finalText,
           fromMe: isEcho,
           type,
           waMessageId,

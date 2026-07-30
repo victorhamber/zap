@@ -3,6 +3,7 @@ import path from "node:path";
 import { UPLOAD_DIR, ensureUploadDir } from "./uploads.js";
 import {
   digitsOnly,
+  isGroupLikeJid,
   isLikelyInternalLidJid,
   isValidWhatsAppPhoneDigits,
   normalizeDirectJid,
@@ -17,23 +18,37 @@ function storeKey(session: string, jid: string): string {
   return `${session.trim().toLowerCase()}|${normalizeDirectJid(jid.trim())}`;
 }
 
+/**
+ * v2: mapas gravados antes desta versão podem conter grupos (120363…@lid)
+ * apontando para o telefone de um participante. O nome novo do arquivo descarta
+ * o cache envenenado de uma vez — ele é reaprendido pelos webhooks.
+ */
 function mapFile(session: string): string {
+  const safe = session.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "_") || "default";
+  return path.join(UPLOAD_DIR, `wa-lid-map-v2-${safe}.json`);
+}
+
+function legacyMapFile(session: string): string {
   const safe = session.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "_") || "default";
   return path.join(UPLOAD_DIR, `wa-lid-map-${safe}.json`);
 }
 
+/** Grupos/canais nunca entram no mapa: não são telefone nem @lid. */
 function jidCandidates(...values: unknown[]): string[] {
   const out: string[] = [];
   for (const v of values) {
     if (typeof v !== "string") continue;
     const t = v.trim();
-    if (t && !out.includes(t)) out.push(t);
+    if (!t || isGroupLikeJid(t)) continue;
+    if (!out.includes(t)) out.push(t);
   }
   return out;
 }
 
 export function pickPhoneJid(candidates: string[]): string | null {
-  const normalized = candidates.map((c) => normalizeDirectJid(c)).filter(Boolean);
+  const normalized = candidates
+    .map((c) => normalizeDirectJid(c))
+    .filter((c) => Boolean(c) && !isGroupLikeJid(c));
   const best = pickBestJid(normalized);
   const d = digitsOnly(best);
   if (best && !best.endsWith("@lid") && isValidWhatsAppPhoneDigits(d)) {
@@ -51,7 +66,7 @@ export function pickPhoneJid(candidates: string[]): string | null {
 
 function pickLidJid(candidates: string[]): string | null {
   for (const c of candidates.map((x) => normalizeDirectJid(x))) {
-    if (!c) continue;
+    if (!c || isGroupLikeJid(c)) continue;
     if (c.endsWith("@lid")) return c;
     if (isLikelyInternalLidJid(c)) {
       const d = digitsOnly(c);
@@ -89,11 +104,17 @@ export async function loadWaLidMap(session: string): Promise<void> {
     const raw = await fs.readFile(mapFile(norm), "utf8");
     const data = JSON.parse(raw) as Record<string, string>;
     for (const [lid, phone] of Object.entries(data)) {
-      if (lid && phone) mem.set(storeKey(norm, lid), normalizeDirectJid(phone));
+      if (!lid || !phone) continue;
+      // Cinto e suspensório: entrada com grupo dos dois lados é lixo.
+      if (isGroupLikeJid(lid) || isGroupLikeJid(phone)) continue;
+      mem.set(storeKey(norm, lid), normalizeDirectJid(phone));
     }
   } catch {
     /* primeiro uso */
   }
+
+  // Remove o mapa da v1 (podia ter grupo→telefone de participante).
+  await fs.unlink(legacyMapFile(norm)).catch(() => {});
 }
 
 async function persistWaLidMap(session: string): Promise<void> {
@@ -123,6 +144,12 @@ export async function flushWaLidMap(session: string): Promise<void> {
   await persistWaLidMap(session.trim().toLowerCase()).catch(() => {});
 }
 
+/** Reset apenas em memória (testes) — não toca no arquivo persistido. */
+export function clearWaLidMapMemory(): void {
+  mem.clear();
+  loadedSession = "";
+}
+
 /** Limpa mapeamento @lid ao trocar o número conectado na instância. */
 export async function clearWaLidMap(session: string): Promise<void> {
   const norm = session.trim().toLowerCase();
@@ -139,6 +166,9 @@ export function getMappedPhoneJid(session: string, chatId: string): string | nul
   const norm = session.trim().toLowerCase();
   const id = normalizeDirectJid(chatId.trim());
   if (!id) return null;
+  // Grupo/canal não tem telefone equivalente — resolver isso puxava a conversa
+  // privada de um participante para dentro do grupo.
+  if (isGroupLikeJid(id)) return null;
 
   const direct = mem.get(storeKey(norm, id));
   if (direct) return direct;
@@ -178,14 +208,18 @@ export async function expandChatIdVariants(session: string, chatId: string): Pro
   const raw = chatId.trim();
   add(raw);
   const digits = digitsOnly(raw.replace(/@.*/, ""));
+
+  // Grupo/canal resolve só para o próprio JID. Nada de variantes de telefone
+  // nem de mapa @lid — era assim que mensagens privadas vazavam para o grupo.
+  if (isGroupLikeJid(raw)) {
+    if (digits && raw.endsWith("@g.us")) add(`${digits}@g.us`);
+    return out;
+  }
+
   if (digits) {
-    if (raw.includes("@g.us") || chatId.includes("@g.us")) {
-      add(`${digits}@g.us`);
-    } else {
-      add(`${digits}@c.us`);
-      add(`${digits}@lid`);
-      add(`${digits}@s.whatsapp.net`);
-    }
+    add(`${digits}@c.us`);
+    add(`${digits}@lid`);
+    add(`${digits}@s.whatsapp.net`);
   }
 
   const mapped = getMappedPhoneJid(session, chatId);

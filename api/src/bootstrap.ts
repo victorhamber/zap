@@ -84,6 +84,13 @@ export async function bootstrapDatabase() {
     }
   }
 
+  // Mensagens antigas gravadas como "📄 Template: nome" viram o texto real
+  // assim que a definição chega da Meta. Em segundo plano: não atrasa o boot e
+  // não impede a subida se o Graph API estiver fora do ar.
+  void import("./services/inboxTemplateRepair.js")
+    .then((m) => m.repairTemplatePlaceholders())
+    .catch((err) => console.warn("[bootstrap] repair-templates falhou:", err));
+
   void tryRestoreSessionAfterDeploy();
   startWppReconnectWatchdog();
   startFlowScheduler();

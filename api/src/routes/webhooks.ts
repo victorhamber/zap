@@ -406,15 +406,26 @@ export async function webhookRoutes(app: FastifyInstance) {
 
           const key = (payload.key ?? {}) as Record<string, unknown>;
           const msgType = parsed.type === "ptt" ? "audio" : parsed.type;
+          const sessionName = parsed.instance || activeSession;
+          // Evolution Business encapsula a API oficial: o template chega só com
+          // nome + parâmetros. Busca o texto real do cadastro na Meta.
+          const { hydrateTemplatePlaceholder } = await import(
+            "../services/whatsapp/metaTemplates.js"
+          );
+          const messageBody = await hydrateTemplatePlaceholder({
+            session: sessionName,
+            text: parsed.text,
+            raw: payload
+          });
           await saveInboxMessage({
             chatId: parsed.chatId,
-            body: parsed.text,
+            body: messageBody,
             fromMe: parsed.fromMe,
             type: msgType,
             mediaUrl: parsed.mediaUrl,
             waMessageId: parsed.waMessageId,
             timestamp: parsed.timestamp,
-            sessionName: parsed.instance || activeSession,
+            sessionName,
             peerJids: [
               String(key.remoteJid ?? ""),
               String(key.remoteJidAlt ?? ""),

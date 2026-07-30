@@ -9,6 +9,7 @@ import { WhatsAppAvatar } from "./WhatsAppAvatar";
 import { ForwardMessageModal } from "./ForwardMessageModal";
 import { ContactProfilePanel } from "./ContactProfilePanel";
 import { LinkifyText } from "./LinkifyText";
+import { TemplateMessageBody, hasTemplateButtons } from "./TemplateButtons";
 
 type Tag = { id: string; name: string; color: string };
 type ChatKind = "direct" | "group" | "community";
@@ -257,6 +258,11 @@ const InboxMessageContent = memo(function InboxMessageContent({
       </div>
     );
   }
+  // Template / mensagem com botões: mostra o texto e transforma cada botão em
+  // link (o painel não reproduz o botão nativo do WhatsApp).
+  if (hasTemplateButtons(m.body)) {
+    return <TemplateMessageBody body={m.body} />;
+  }
   return (
     <p className="text-sm whitespace-pre-wrap">
       <LinkifyText text={m.body || "—"} />
@@ -352,6 +358,17 @@ function messagesSignature(list: Message[]): string {
   return `${list.length}|${tail.map((m) => `${m.id}:${m.timestamp}:${m.mediaUrl ?? ""}`).join(";")}`;
 }
 
+/** Prévia da conversa sem as linhas de botão ("▸ Rótulo → url"). */
+function chatPreviewText(raw: string | undefined): string {
+  const lastMessage = raw ?? "";
+  const text = lastMessage
+    .split("\n")
+    .filter((line) => !/^\s*▸/.test(line))
+    .join(" ")
+    .trim();
+  return text || lastMessage.replace(/\s*▸\s*/g, " · ").trim();
+}
+
 function formatTime(ts: number): string {
   if (!ts) return "";
   const d = new Date(ts);
@@ -388,7 +405,9 @@ const ChatListRow = memo(function ChatListRow({
           <span className="text-[11px] text-[#8696a0] shrink-0">{formatTime(chat.timestamp)}</span>
         </div>
         <div className="flex justify-between gap-2 mt-0.5">
-          <span className="text-[13px] text-[#8696a0] truncate">{chat.lastMessage}</span>
+          <span className="text-[13px] text-[#8696a0] truncate">
+            {chatPreviewText(chat.lastMessage)}
+          </span>
           {chat.unreadCount > 0 && (
             <span className="shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-[#00a884] text-[10px] font-semibold text-[#111b21] flex items-center justify-center">
               {chat.unreadCount}

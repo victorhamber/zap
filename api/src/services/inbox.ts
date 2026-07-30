@@ -6,12 +6,13 @@ import {
   canonicalEvolutionChatId,
   digitsOnly,
   isGenericSelfChatName,
+  isGroupLikeJid,
   isLikelyInternalLidJid,
   isOwnerPhoneDigits,
   isValidWhatsAppPhoneDigits,
   normalizeDirectJid
 } from "./waJid.js";
-import { canonicalBrazilPhone, phoneDedupeKey } from "../utils/phone.js";
+import { canonicalBrazilPhone, expandPhoneLookupKeys, phoneDedupeKey } from "../utils/phone.js";
 import {
   expandChatIdVariants,
   extractEvolutionKeyFields,
@@ -244,6 +245,35 @@ function pickChatDisplayName(o: Record<string, unknown>, ...extras: unknown[]): 
   return "";
 }
 
+/**
+ * Nome de grupo/canal só pode vir do assunto do próprio grupo.
+ * `pushName`/`notify` são do REMETENTE da última mensagem — usá-los batizava o
+ * grupo com o nome de um participante (mensagens "com o nome trocado").
+ */
+function pickGroupDisplayName(o: Record<string, unknown>): string {
+  const contactObj =
+    o.contact && typeof o.contact === "object" ? (o.contact as Record<string, unknown>) : null;
+  const groupMeta =
+    o.groupMetadata && typeof o.groupMetadata === "object"
+      ? (o.groupMetadata as Record<string, unknown>)
+      : null;
+  const candidates: unknown[] = [
+    o.subject,
+    groupMeta?.subject,
+    o.groupName,
+    o.communityName,
+    o.formattedTitle,
+    o.name,
+    contactObj?.subject,
+    contactObj?.name
+  ];
+  for (const c of candidates) {
+    const text = coerceDisplayText(c);
+    if (text) return text;
+  }
+  return "";
+}
+
 /** Texto da última mensagem no formato Evolution API (Baileys). */
 function evolutionLastPreview(lastMsg: Record<string, unknown>): string {
   const inner =
@@ -338,22 +368,35 @@ function parseChatItem(item: unknown, session?: string): NormalizedChat | null {
     if (mapped) resolvedId = mapped;
   }
 
-  const displayName = pickChatDisplayName(o);
+  const isGroupChat = kindEarly === "group" || kindEarly === "community";
+  const displayName = isGroupChat ? pickGroupDisplayName(o) : pickChatDisplayName(o);
   if (isLikelyInternalLidJid(resolvedId) && !displayName) return null;
 
   const phoneDigits = digitsOnly(resolvedId);
-  const phone = isValidWhatsAppPhoneDigits(phoneDigits)
-    ? phoneDigits
-    : displayName
-      ? ""
-      : resolvedId.split("@")[0];
+  // Grupo não tem telefone — o 120363… não pode vazar como número no painel.
+  const phone = isGroupChat
+    ? ""
+    : isValidWhatsAppPhoneDigits(phoneDigits)
+      ? phoneDigits
+      : displayName
+        ? ""
+        : resolvedId.split("@")[0];
   const kind = detectKind(resolvedId, o);
   const lastMsg =
     o.lastMessage && typeof o.lastMessage === "object"
       ? (o.lastMessage as Record<string, unknown>)
       : o;
-  const lastMsgPush = pickChatDisplayName(lastMsg);
-  let name = pickChatDisplayName(o, lastMsgPush);
+  // O pushName da última mensagem é do REMETENTE: só serve como nome do chat
+  // em conversa direta recebida. Em grupo é um participante; se fromMe, é você.
+  const lastMsgFromMe =
+    (lastMsg.key as Record<string, unknown> | undefined)?.fromMe === true ||
+    lastMsg.fromMe === true;
+  const lastMsgPush =
+    kind === "direct" && !lastMsgFromMe ? pickChatDisplayName(lastMsg) : "";
+  let name =
+    kind === "group" || kind === "community"
+      ? pickGroupDisplayName(o)
+      : pickChatDisplayName(o, lastMsgPush);
   if (!name && kind === "community") {
     name = `Comunidade ${resolvedId.split("@")[0]?.slice(-6) || ""}`.trim();
   }
@@ -596,7 +639,10 @@ function resolveDirectChatName(
   const phoneDigits = digitsOnly(chat.phone) || digitsOnly(chat.id);
   const fromContacts =
     phoneDigits && isValidWhatsAppPhoneDigits(phoneDigits)
-      ? namesByPhone.get(phoneDigits)
+      ? namesByPhone.get(phoneDigits) ??
+        expandPhoneLookupKeys(phoneDigits)
+          .map((k) => namesByPhone.get(digitsOnly(k)))
+          .find(Boolean)
       : undefined;
   const isSelf = isOwnerPhoneDigits(phoneDigits, ownerDigits);
 
@@ -714,12 +760,18 @@ async function loadEvolutionContactNames(): Promise<Map<string, string>> {
       if (!item || typeof item !== "object") continue;
       const o = item as Record<string, unknown>;
       const id = extractWaId(o.id ?? o.jid ?? o.remoteJid ?? o.phone);
-      const phone = digitsOnly(id);
+      // @lid e grupos não têm telefone: indexá-los pelos dígitos internos podia
+      // colar o nome dessa entrada em um telefone real parecido.
+      if (!id || isGroupLikeJid(id) || id.trim().endsWith("@lid")) continue;
+      const phone = digitsOnly(id.replace(/@.*/, ""));
       const name = String(
         o.pushName ?? o.name ?? o.notify ?? o.verifiedName ?? o.shortName ?? ""
       ).trim();
-      if (phone && name && isValidWhatsAppPhoneDigits(phone)) {
-        map.set(phone, name);
+      if (!phone || !name || !isValidWhatsAppPhoneDigits(phone)) continue;
+      // Indexa com e sem o nono dígito: a agenda e o chat divergem nisso.
+      for (const key of expandPhoneLookupKeys(phone)) {
+        const d = digitsOnly(key);
+        if (isValidWhatsAppPhoneDigits(d) && !map.has(d)) map.set(d, name);
       }
     }
   } catch {

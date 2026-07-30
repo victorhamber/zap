@@ -48,3 +48,76 @@ describe("classificação grupo x direto", () => {
     assert.equal(g.isGroup, true);
   });
 });
+
+describe("nome do chat não pega o remetente da última mensagem", () => {
+  it("grupo usa o assunto, não o pushName de quem mandou por último", () => {
+    const [chat] = normalizeChats([
+      {
+        id: "120363123456789012@g.us",
+        subject: "Time Comercial",
+        pushName: "João Vendedor",
+        notify: "João Vendedor",
+        lastMessage: {
+          key: { remoteJid: "120363123456789012@g.us", participant: "5511987654321@s.whatsapp.net" },
+          pushName: "Maria Cliente",
+          message: { conversation: "bom dia" }
+        }
+      }
+    ]);
+    assert.ok(chat);
+    assert.equal(chat.name, "Time Comercial");
+    assert.equal(chat.kind, "group");
+  });
+
+  it("grupo sem assunto não vira o nome de um participante", () => {
+    const [chat] = normalizeChats([
+      {
+        id: "120363123456789012@g.us",
+        lastMessage: {
+          key: { participant: "5511987654321@s.whatsapp.net" },
+          pushName: "Maria Cliente",
+          message: { conversation: "oi" }
+        }
+      }
+    ]);
+    assert.ok(chat);
+    assert.notEqual(chat.name, "Maria Cliente");
+    assert.match(chat.name, /^Grupo/);
+  });
+
+  it("grupo não expõe o 120363… como telefone", () => {
+    const [chat] = normalizeChats([{ id: "120363123456789012@g.us", subject: "Grupo Y" }]);
+    assert.ok(chat);
+    assert.equal(chat.phone, "");
+  });
+
+  it("conversa direta ainda aproveita o pushName de mensagem recebida", () => {
+    const [chat] = normalizeChats([
+      {
+        id: "5511987654321@s.whatsapp.net",
+        lastMessage: {
+          key: { fromMe: false },
+          pushName: "Carlos",
+          message: { conversation: "oi" }
+        }
+      }
+    ]);
+    assert.ok(chat);
+    assert.equal(chat.name, "Carlos");
+  });
+
+  it("conversa direta ignora pushName quando a última mensagem foi minha", () => {
+    const [chat] = normalizeChats([
+      {
+        id: "5511987654321@s.whatsapp.net",
+        lastMessage: {
+          key: { fromMe: true },
+          pushName: "Eu Mesmo",
+          message: { conversation: "enviado" }
+        }
+      }
+    ]);
+    assert.ok(chat);
+    assert.notEqual(chat.name, "Eu Mesmo");
+  });
+});
