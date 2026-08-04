@@ -1,5 +1,6 @@
 import * as wpp from "./whatsapp/index.js";
 import { listStoredMessages, saveInboxMessage } from "./inboxStore.js";
+import { prisma } from "../prisma.js";
 import { buildWppSendTarget, sendWppApi, sendWppText, extractWppMessageId } from "./wppSend.js";
 import { convertWebmDataUrlToOgg } from "./mediaConvert.js";
 import {
@@ -1060,8 +1061,36 @@ export async function sendChatMessage(
   const { canonicalizeChatId } = await import("./inboxStore.js");
   const session = defaultWhatsAppSession();
   const target = buildWppSendTarget(chatId, isGroup);
-  const waMessageId = await sendWppText(chatId, message, isGroup);
   const canonical = await canonicalizeChatId(session, chatId, [target.jid, chatId]);
+
+  // AI/flow: grava antes do send para o eco da Evolution não armar modo humano.
+  let savedId: string | null = null;
+  if (source === "ai" || source === "flow") {
+    const saved = await saveInboxMessage({
+      chatId: canonical,
+      body: message,
+      fromMe: true,
+      source,
+      type: "chat",
+      peerJids: [target.jid, chatId, canonical]
+    });
+    savedId = saved?.id ?? null;
+  }
+
+  const waMessageId = await sendWppText(chatId, message, isGroup);
+
+  if (source === "ai" || source === "flow") {
+    if (savedId && waMessageId && prisma) {
+      await prisma.inboxMessage
+        .update({
+          where: { id: savedId },
+          data: { waMessageId: waMessageId.slice(0, 240) }
+        })
+        .catch(() => {});
+    }
+    return;
+  }
+
   await saveInboxMessage({
     chatId: canonical,
     body: message,

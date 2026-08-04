@@ -949,8 +949,14 @@ async function findDuplicateInboxMessage(params: {
     createdAt: true
   } as const;
 
-  // Mídia (áudio, imagem…) costuma repetir no webhook — deduplica por tipo + janela de tempo.
+  // Mídia (áudio, imagem…) costuma repetir no webhook — deduplica por tipo + janela
+  // só quando NÃO temos waMessageId (reentrega sem id). Com id distinto = msg distinta
+  // (dois áudios em sequência não podem colapsar).
   if (isMediaMessageType(params.type)) {
+    if (params.waMessageId) {
+      return null;
+    }
+
     const byWindow = await prisma.inboxMessage.findFirst({
       where: {
         session: params.session,
@@ -984,6 +990,26 @@ async function findDuplicateInboxMessage(params: {
       });
     }
     return null;
+  }
+
+  // Eco da Evolution: fromMe webhook com mesmo texto de um reply AI/flow recente.
+  if (params.fromMe) {
+    const text = params.body.trim();
+    if (text.length >= 8) {
+      const echo = await prisma.inboxMessage.findFirst({
+        where: {
+          session: params.session,
+          ...chatIdFilter,
+          fromMe: true,
+          source: { in: ["ai", "flow"] },
+          body: text,
+          timestamp: { gte: windowStart, lte: windowEnd }
+        },
+        orderBy: { timestamp: "desc" },
+        select: selectDup
+      });
+      if (echo) return echo;
+    }
   }
 
   return prisma.inboxMessage.findFirst({

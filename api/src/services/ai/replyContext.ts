@@ -83,11 +83,39 @@ export async function hasManualReplyAfterInbound(params: {
       source: { in: [...HUMAN_ANSWER_SOURCES] },
       timestamp: { gt: params.inboundTimestamp }
     },
-    select: { id: true }
+    select: { id: true, body: true, waMessageId: true }
   });
-  return Boolean(row);
+  if (!row) return false;
+
+  // Eco da Evolution (fromMe webhook) do próprio reply AI não conta como humano.
+  const text = row.body.trim();
+  if (text.length >= 8 || row.waMessageId) {
+    const aiTwin = await prisma.inboxMessage.findFirst({
+      where: {
+        session: params.session,
+        chatId: { in: variants },
+        fromMe: true,
+        source: { in: ["ai", "flow"] },
+        timestamp: {
+          gte: new Date(params.inboundTimestamp.getTime() - 120_000)
+        },
+        OR: [
+          ...(row.waMessageId ? [{ waMessageId: row.waMessageId }] : []),
+          ...(text.length >= 8 ? [{ body: text }] : [])
+        ]
+      },
+      select: { id: true }
+    });
+    if (aiTwin) return false;
+  }
+  return true;
 }
 
+/**
+ * True se já existe reply AI que cobre este inbound.
+ * Depende do timestamp da mensagem AI (âncora do job + 1ms), não do wall-clock
+ * do fim do Whisper/GPT — senão msgs que chegaram DURANTE o job eram abortadas.
+ */
 export async function hasAiReplyAfterInbound(params: {
   session: string;
   chatId: string;

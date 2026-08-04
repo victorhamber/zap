@@ -58,6 +58,46 @@ export async function resolveChatModeForInbound(
   // função devolve "auto". `inboundTimestamp` fica para diagnóstico futuro.
   void inboundTimestamp;
 
+  // Eco Evolution já armou human no passado: se o "humano" coincide com reply AI
+  // e não houve resposta manual no painel, libera.
+  if (state.lastHumanAt) {
+    const variants = await resolveAllChatIdsForContact(session, chatId);
+    const around = state.lastHumanAt.getTime();
+    const window = {
+      gte: new Date(around - 30_000),
+      lte: new Date(around + 30_000)
+    };
+    const aiNear = await prisma.inboxMessage.findFirst({
+      where: {
+        session,
+        chatId: { in: variants },
+        fromMe: true,
+        source: { in: ["ai", "flow"] },
+        timestamp: window
+      },
+      select: { id: true }
+    });
+    if (aiNear) {
+      const manualNear = await prisma.inboxMessage.findFirst({
+        where: {
+          session,
+          chatId: { in: variants },
+          fromMe: true,
+          source: "manual",
+          timestamp: window
+        },
+        select: { id: true }
+      });
+      if (!manualNear) {
+        await prisma.instanceAiChatState.update({
+          where: { session_chatId: { session: state.session, chatId: state.chatId } },
+          data: { mode: "auto" }
+        });
+        return "auto";
+      }
+    }
+  }
+
   const last = state.lastHumanAt?.getTime() ?? 0;
   const idleMs = humanIdleSec * 1000;
   if (Date.now() - last >= idleMs) {

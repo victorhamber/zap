@@ -203,6 +203,31 @@ export async function finishReplyScheduling(params: {
   });
 }
 
+/** Eco fromMe da Evolution de um reply AI/flow recente — não é atendente humano. */
+async function isLikelyAiOrFlowEcho(msg: SavedInboxMessage): Promise<boolean> {
+  if (!prisma || !msg.fromMe) return false;
+  const text = msg.body.trim();
+  if (!msg.waMessageId && text.length < 8) return false;
+
+  const variants = await resolveAllChatIdsForContact(msg.session, msg.chatId);
+  const since = new Date(Date.now() - 180_000);
+  const twin = await prisma.inboxMessage.findFirst({
+    where: {
+      session: msg.session,
+      chatId: { in: variants },
+      fromMe: true,
+      source: { in: ["ai", "flow"] },
+      timestamp: { gte: since },
+      OR: [
+        ...(msg.waMessageId ? [{ waMessageId: msg.waMessageId }] : []),
+        ...(text.length >= 8 ? [{ body: text }] : [])
+      ]
+    },
+    select: { id: true }
+  });
+  return Boolean(twin);
+}
+
 async function runEnqueue(msg: SavedInboxMessage): Promise<void> {
   const settings = await getAiSettings(msg.session);
   if (!settings.learnEnabled && !settings.autoReplyEnabled) return;
@@ -245,6 +270,10 @@ async function runEnqueue(msg: SavedInboxMessage): Promise<void> {
   }
 
   if (msg.fromMe && isHumanAnswerSource(msg.source)) {
+    // Eco Evolution do reply da IA (source webhook) não deve armar modo humano.
+    if (await isLikelyAiOrFlowEcho(msg)) {
+      return;
+    }
     await setChatModeHuman(msg.session, msg.chatId);
     await cancelAiReplyJob(msg.session, msg.chatId);
     await clearPendingReply(msg.session, msg.chatId);

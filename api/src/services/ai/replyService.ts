@@ -44,6 +44,40 @@ import {
 } from "./replyContext.js";
 import type { OfficialLink } from "../../types/ai.js";
 
+/** Timestamp do outbound AI ancorado no inbound respondido (+1ms) — evita o gate
+ *  hasAiReplyAfterInbound abortar msgs que chegaram DURANTE o Whisper/GPT. */
+function aiOutboundTimestamp(anchor: Date): Date {
+  return new Date(anchor.getTime() + 1);
+}
+
+async function sendAiChatText(params: {
+  session: string;
+  chatId: string;
+  text: string;
+  anchorTimestamp: Date;
+}): Promise<void> {
+  const ts = aiOutboundTimestamp(params.anchorTimestamp);
+  // Grava ANTES do send: eco da Evolution deduplica como AI e não arma modo humano.
+  const saved = await saveInboxMessage({
+    chatId: params.chatId,
+    body: params.text,
+    fromMe: true,
+    source: "ai",
+    type: "chat",
+    timestamp: ts,
+    sessionName: params.session
+  });
+  const waMessageId = await sendText(phoneFromChatId(params.chatId), params.text);
+  if (saved?.id && waMessageId && prisma) {
+    await prisma.inboxMessage
+      .update({
+        where: { id: saved.id },
+        data: { waMessageId: waMessageId.slice(0, 240) }
+      })
+      .catch(() => {});
+  }
+}
+
 /**
  * Envia uma resposta pronta (texto e/ou mídia) cadastrada pelo dono, marcando
  * source "ai" para não virar aprendizado nem ativar o modo humano.
@@ -165,7 +199,12 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
       event: "cancelled_human",
       detail: "Modo humano ativo"
     });
-    await clearPendingReply(payload.session, payload.chatId);
+    await finishReplyScheduling({
+      session: payload.session,
+      chatId: payload.chatId,
+      answeredInboundId: payload.inboundMessageId,
+      afterTimestamp: inbound.timestamp
+    });
     return;
   }
 
@@ -408,15 +447,11 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
   // em modo humano (a IA para de responder) e registra o evento para o painel.
   if (ESCALATE_RE.test(reply)) {
     const handoff = reply.replace(ESCALATE_RE, "").trim() || HANDOFF_TEXT;
-    const waMessageId = await sendText(phoneFromChatId(payload.chatId), handoff);
-    await saveInboxMessage({
+    await sendAiChatText({
+      session: payload.session,
       chatId: payload.chatId,
-      body: handoff,
-      fromMe: true,
-      source: "ai",
-      type: "chat",
-      waMessageId,
-      sessionName: payload.session
+      text: handoff,
+      anchorTimestamp: inboundBatch.anchorTimestamp
     });
     await setChatModeHuman(payload.session, payload.chatId);
     await logAiEvent({
@@ -476,16 +511,11 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
     }
   }
 
-  const waMessageId = await sendText(phoneFromChatId(payload.chatId), reply);
-
-  await saveInboxMessage({
+  await sendAiChatText({
+    session: payload.session,
     chatId: payload.chatId,
-    body: reply,
-    fromMe: true,
-    source: "ai",
-    type: "chat",
-    waMessageId,
-    sessionName: payload.session
+    text: reply,
+    anchorTimestamp: inboundBatch.anchorTimestamp
   });
 
   await logAiEvent({
