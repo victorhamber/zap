@@ -31,7 +31,10 @@ function isButtonPlaceholderBody(body: string): boolean {
   const t = body.replace(/^\uFEFF/, "").trim();
   return (
     /^(📄\s*)?(Mensagem com botões|Mensagem interativa|Lista)$/i.test(t) ||
-    /^📄\s*Template:/i.test(t)
+    /^📄\s*Template:/i.test(t) ||
+    /^📄\s*Mensagem interativa/i.test(t) ||
+    t.includes("não chega pela Evolution") ||
+    t.includes("nao chega pela Evolution")
   );
 }
 

@@ -242,7 +242,41 @@ describe("parseEvolutionMessagePayload — mensagens com botão", () => {
       message: { templateMessage: {} }
     });
     assert.ok(p);
-    assert.match(p!.text, /Mensagem com botões|Template:/i);
+    assert.match(p!.text, /Mensagem interativa|Template|Evolution|botões/i);
+  });
+
+  it("template opaco da Meta explica para ver no celular", () => {
+    const p = parseEvolutionMessagePayload(body, {
+      ...payload({
+        templateMessage: {
+          hydratedTemplate: {
+            hydratedButtons: [{ urlButton: { displayText: "Saiba mais", url: "https://meta.com" } }]
+          }
+        }
+      }),
+      messageType: "templateMessage"
+    });
+    assert.ok(p);
+    assert.match(p!.text, /Evolution|celular/i);
+    assert.match(p!.text, /Saiba mais/);
+  });
+
+  it("varredura profunda acha texto escondido em messageParamsJson", () => {
+    const p = parseEvolutionMessagePayload(
+      body,
+      payload({
+        interactiveMessage: {
+          nativeFlowMessage: {
+            messageParamsJson: JSON.stringify({
+              title: "Atualizacao da Meta",
+              body: "Revise as novas politicas da conta."
+            })
+          }
+        }
+      })
+    );
+    assert.ok(p);
+    assert.match(p!.text, /Atualizacao da Meta|politicas/i);
   });
 
   it("texto simples continua funcionando", () => {
