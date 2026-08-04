@@ -881,6 +881,13 @@ function isMediaMessageType(type: string): boolean {
   return MEDIA_MESSAGE_TYPES.has(type.toLowerCase());
 }
 
+/** Body genérico de mídia sem legenda — NÃO usar para colapsar msgs distintas. */
+function isGenericMediaLabel(body: string): boolean {
+  return /^(📷\s*Imagem|🎬\s*Vídeo|🎤\s*Áudio|📎\s*Documento|📍\s*Localização)$/i.test(
+    body.replace(/^\uFEFF/, "").trim()
+  );
+}
+
 function inboxMessageDedupeKey(row: {
   waMessageId: string | null;
   fromMe: boolean;
@@ -957,6 +964,16 @@ async function findDuplicateInboxMessage(params: {
       return null;
     }
 
+    // Sem waMessageId: áudio/ptt e labels genéricos nunca colapsam por janela.
+    const mediaKind = params.type.toLowerCase();
+    if (
+      mediaKind === "audio" ||
+      mediaKind === "ptt" ||
+      isGenericMediaLabel(params.body)
+    ) {
+      return null;
+    }
+
     const byWindow = await prisma.inboxMessage.findFirst({
       where: {
         session: params.session,
@@ -971,9 +988,13 @@ async function findDuplicateInboxMessage(params: {
     if (byWindow) return byWindow;
 
     // Mesma legenda/caption com IDs WA diferentes (sync com Date.now vs webhook real).
-    // Janela ampla: cobre o caso 12:14 vs 12:33 do mesmo vídeo.
+    // Só com legenda real — "🎤 Áudio" / "📷 Imagem" não contam (senão some áudio no inbox).
     const caption = params.body.trim();
-    if (caption.length >= 8 && !caption.startsWith("data:")) {
+    if (
+      caption.length >= 8 &&
+      !caption.startsWith("data:") &&
+      !isGenericMediaLabel(caption)
+    ) {
       const captionStart = new Date(params.timestamp.getTime() - 2 * 60 * 60_000);
       const captionEnd = new Date(params.timestamp.getTime() + 2 * 60 * 60_000);
       return prisma.inboxMessage.findFirst({
@@ -1327,8 +1348,15 @@ export async function listStoredMessages(
     if (seen.has(key)) continue;
     seen.add(key);
 
-    // Colapsa o mesmo vídeo/imagem com legenda idêntica gravado 2x (IDs WA diferentes).
-    if (isMediaMessageType(r.type) && r.body.trim().length >= 8 && !r.body.startsWith("data:")) {
+    // Colapsa o mesmo vídeo/imagem com LEGENDA idêntica gravado 2x (IDs WA diferentes).
+    // Nunca colapsar áudio/imagem sem legenda ("🎤 Áudio") — senão N áudios viram 1 no painel
+    // enquanto a IA ainda responde a cada um.
+    if (
+      isMediaMessageType(r.type) &&
+      r.body.trim().length >= 8 &&
+      !r.body.startsWith("data:") &&
+      !isGenericMediaLabel(r.body)
+    ) {
       const twin = kept.find(
         (k) =>
           k.fromMe === r.fromMe &&
