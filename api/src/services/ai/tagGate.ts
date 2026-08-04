@@ -1,12 +1,13 @@
 import { prisma } from "../../prisma.js";
-import { expandPhoneLookupKeys } from "../../utils/phone.js";
 import { findContactByPhoneLoose } from "../contacts.js";
 
 export async function contactHasLearnTags(
   phone: string,
   learnTagIds: string[]
 ): Promise<boolean> {
-  if (!prisma || learnTagIds.length === 0) return false;
+  // Sem tags configuradas = todos elegíveis (filtro só quando a lista tem IDs).
+  if (learnTagIds.length === 0) return true;
+  if (!prisma) return false;
 
   const contact = await findContactByPhoneLoose(phone);
   if (!contact) return false;

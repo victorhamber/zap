@@ -76,3 +76,6 @@ export const purgeOrphanWppSessions = p.purgeOrphanWppSessions;
 export const runWppDiagnostics = p.runWppDiagnostics;
 export const validateProxyPath = p.validateProxyPath;
 export const callSessionApi = p.callSessionApi;
+export const fetchGroupSubjectMap = isEvolution
+  ? evolution.fetchGroupSubjectMap
+  : async (): Promise<Map<string, string>> => new Map();

@@ -1224,9 +1224,23 @@ let cachedProfile: {
   expires: number;
 } | null = null;
 
+/** Grupos em que o telefone participa (Evolution fetchAllGroups + participantes). */
+let groupsCatalogCache: {
+  at: number;
+  list: Record<string, unknown>[];
+} | null = null;
+/** Só subject/nome — usado no inbox quando findChats vem sem assunto. */
+let groupSubjectsCache: {
+  at: number;
+  map: Map<string, string>;
+} | null = null;
+const GROUPS_CATALOG_TTL_MS = 5 * 60_000;
+
 export function clearEvolutionInstanceCache(): void {
   cachedOwnerDigits = null;
   cachedProfile = null;
+  groupsCatalogCache = null;
+  groupSubjectsCache = null;
 }
 
 function parseInstanceList(raw: unknown): unknown[] {
@@ -1446,22 +1460,17 @@ export async function callSessionApi(
   }
 
   if (safe.startsWith("/all-groups")) {
-    const res = await evoFetch(`/chat/findChats/${encodeURIComponent(instance)}`, {
-      method: "POST",
-      body: JSON.stringify({})
-    });
+    // findChats costuma omitir o subject; fetchAllGroups traz o nome real do grupo.
+    const res = await evoFetch(
+      `/group/fetchAllGroups/${encodeURIComponent(instance)}?getParticipants=false`
+    );
     const data = await readJson(res);
     if (!res.ok) throw new Error(formatWppError(res.status, data));
     const list = extractEvolutionChatList(data);
+    rememberGroupSubjects(list);
     const groups = list.filter((item) => {
-      const o = item as Record<string, unknown>;
-      const jid = String(
-        (o.key as Record<string, unknown> | undefined)?.remoteJid ??
-          o.remoteJid ??
-          o.id ??
-          ""
-      );
-      return jid.includes("@g.us");
+      const jid = groupIdFromCatalogItem(item);
+      return jid.includes("@g.us") || jid.includes("@newsletter");
     });
     return { response: groups };
   }
@@ -1671,12 +1680,67 @@ export async function downloadEvolutionInboundMedia(
   return data;
 }
 
-/** Grupos em que o telefone participa (Evolution fetchAllGroups + participantes). */
-let groupsCatalogCache: {
-  at: number;
-  list: Record<string, unknown>[];
-} | null = null;
-const GROUPS_CATALOG_TTL_MS = 5 * 60_000;
+/** Grupos: catálogo Evolution (fetchAllGroups) para subject e grupos em comum. */
+
+function groupIdFromCatalogItem(item: Record<string, unknown>): string {
+  return String(
+    item.id ??
+      item.jid ??
+      (item.key as Record<string, unknown> | undefined)?.remoteJid ??
+      ""
+  ).trim();
+}
+
+function groupSubjectFromCatalogItem(item: Record<string, unknown>): string {
+  return String(
+    item.subject ?? item.name ?? item.pushName ?? item.formattedTitle ?? ""
+  ).trim();
+}
+
+function subjectsMapFromCatalog(list: Record<string, unknown>[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const item of list) {
+    const id = groupIdFromCatalogItem(item);
+    if (!id.includes("@g.us") && !id.includes("@newsletter")) continue;
+    const name = groupSubjectFromCatalogItem(item);
+    if (name) map.set(id, name);
+  }
+  return map;
+}
+
+function rememberGroupSubjects(list: Record<string, unknown>[]): Map<string, string> {
+  const map = subjectsMapFromCatalog(list);
+  groupSubjectsCache = { at: Date.now(), map };
+  return map;
+}
+
+/**
+ * Mapa JID → subject real via fetchAllGroups (sem participantes — mais leve).
+ * findChats muitas vezes omite o assunto; o inbox usa isso para trocar
+ * "Grupo 876541" pelo nome de verdade.
+ */
+export async function fetchGroupSubjectMap(): Promise<Map<string, string>> {
+  const now = Date.now();
+  if (groupSubjectsCache && now - groupSubjectsCache.at < GROUPS_CATALOG_TTL_MS) {
+    return new Map(groupSubjectsCache.map);
+  }
+  if (groupsCatalogCache && now - groupsCatalogCache.at < GROUPS_CATALOG_TTL_MS) {
+    return new Map(rememberGroupSubjects(groupsCatalogCache.list));
+  }
+
+  try {
+    const instance = await getInstanceName();
+    const res = await evoFetch(
+      `/group/fetchAllGroups/${encodeURIComponent(instance)}?getParticipants=false`
+    );
+    const data = await readJson(res);
+    if (!res.ok) return new Map();
+    const list = extractEvolutionChatList(data);
+    return new Map(rememberGroupSubjects(list));
+  } catch {
+    return new Map();
+  }
+}
 
 export async function fetchGroupsForPhone(
   phone: string
@@ -1706,17 +1770,13 @@ export async function fetchGroupsForPhone(
       if (!res.ok) return [];
       list = extractEvolutionChatList(data);
       groupsCatalogCache = { at: now, list };
+      rememberGroupSubjects(list);
     }
 
     const out: Array<{ id: string; name: string }> = [];
 
     for (const item of list) {
-      const id = String(
-        item.id ??
-          item.jid ??
-          (item.key as Record<string, unknown> | undefined)?.remoteJid ??
-          ""
-      ).trim();
+      const id = groupIdFromCatalogItem(item);
       if (!id.includes("@g.us")) continue;
 
       const participants = item.participants;
@@ -1736,9 +1796,7 @@ export async function fetchGroupsForPhone(
       }
       if (!member) continue;
 
-      const name = String(
-        item.subject ?? item.name ?? item.pushName ?? item.formattedTitle ?? ""
-      ).trim();
+      const name = groupSubjectFromCatalogItem(item);
       out.push({ id, name: name || id.replace(/@.*/, "") });
     }
 

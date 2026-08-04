@@ -1,4 +1,4 @@
-import type { InboxMessageSource } from "../../types/ai.js";
+﻿import type { InboxMessageSource } from "../../types/ai.js";
 import { prisma } from "../../prisma.js";
 import { expandPhoneLookupKeys } from "../../utils/phone.js";
 import {
@@ -26,6 +26,9 @@ import { getAiSettings } from "./settings.js";
 /** Espera o download assíncrono da mídia antes de tentar aprender com ela. */
 const MEDIA_LEARN_DELAY_MS = 20_000;
 
+/** Serializa enqueue por chat — evita race setPending vs cancel. */
+const enqueueLocks = new Map<string, Promise<void>>();
+
 export type SavedInboxMessage = {
   id: string;
   session: string;
@@ -49,10 +52,32 @@ function modalityAllowed(
   return modalityAllowedForLearn(modality, flags);
 }
 
+function lockKey(session: string, chatId: string): string {
+  return `${session}::${chatId}`;
+}
+
 export function enqueueAiPipeline(msg: SavedInboxMessage): void {
-  void runEnqueue(msg).catch((err) => {
+  void runEnqueueSerialized(msg).catch((err) => {
     console.error("[ai] enqueue failed", err);
   });
+}
+
+async function runEnqueueSerialized(msg: SavedInboxMessage): Promise<void> {
+  const key = lockKey(msg.session, msg.chatId);
+  const prev = enqueueLocks.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const gate = new Promise<void>((r) => {
+    release = r;
+  });
+  const chain = prev.then(() => gate);
+  enqueueLocks.set(key, chain);
+  await prev;
+  try {
+    await runEnqueue(msg);
+  } finally {
+    release();
+    if (enqueueLocks.get(key) === chain) enqueueLocks.delete(key);
+  }
 }
 
 /** Reprocessa a última mensagem inbound após tag aplicada no contato. */
@@ -79,7 +104,7 @@ export async function retryAiPipelineForContact(phone: string): Promise<void> {
   });
   if (!lastInbound) return;
 
-  await runEnqueue({
+  await runEnqueueSerialized({
     id: lastInbound.id,
     session: lastInbound.session,
     chatId: lastInbound.chatId,
@@ -91,19 +116,52 @@ export async function retryAiPipelineForContact(phone: string): Promise<void> {
   });
 }
 
+/**
+ * Depois de uma resposta (ou abort), se chegou inbound mais novo sem reply AI,
+ * agenda de novo — cobre burst enquanto o job estava active.
+ */
+export async function drainNewerInboundForReply(params: {
+  session: string;
+  chatId: string;
+  afterTimestamp: Date;
+}): Promise<void> {
+  if (!prisma) return;
+  const newer = await prisma.inboxMessage.findFirst({
+    where: {
+      session: params.session,
+      chatId: params.chatId,
+      fromMe: false,
+      timestamp: { gt: params.afterTimestamp }
+    },
+    orderBy: { timestamp: "desc" }
+  });
+  if (!newer) return;
+
+  enqueueAiPipeline({
+    id: newer.id,
+    session: newer.session,
+    chatId: newer.chatId,
+    fromMe: newer.fromMe,
+    source: newer.source as InboxMessageSource,
+    type: newer.type,
+    body: newer.body,
+    waMessageId: newer.waMessageId
+  });
+}
+
 async function runEnqueue(msg: SavedInboxMessage): Promise<void> {
   const settings = await getAiSettings(msg.session);
   if (!settings.learnEnabled && !settings.autoReplyEnabled) return;
   if (isGroupChatId(msg.chatId)) return;
 
   const phone = phoneFromChatId(msg.chatId);
-  const hasTags = await contactHasLearnTags(phone, settings.learnTagIds);
-  if (!hasTags) return;
+  // Lista vazia = não filtra por tag (antes bloqueava 100% da IA).
+  if (settings.learnTagIds.length > 0) {
+    const hasTags = await contactHasLearnTags(phone, settings.learnTagIds);
+    if (!hasTags) return;
+  }
 
   const modality = detectModality(msg.type);
-  // O download/descriptografia da mídia roda de forma assíncrona após salvar a
-  // mensagem. Sem atraso, o job de aprendizado lia mediaUrl ainda nula e
-  // aprendia o placeholder. Damos tempo para o download concluir.
   const learnDelayMs = modality === "text" ? 0 : MEDIA_LEARN_DELAY_MS;
 
   if (settings.learnEnabled && modalityAllowed(modality, settings)) {
@@ -119,11 +177,6 @@ async function runEnqueue(msg: SavedInboxMessage): Promise<void> {
         learnDelayMs
       );
     } else if (isHumanAnswerSource(msg.source)) {
-      // "manual" (painel) OU "webhook" (atendente respondeu pelo celular).
-      // Sem o "webhook", quem atende pelo aparelho não ensinava o bot ao vivo —
-      // só entravam perguntas de cliente. Respostas da IA têm source "ai" e o
-      // eco da própria resposta é deduplicado antes de chegar aqui, então não há
-      // risco de o bot aprender com ele mesmo.
       await enqueueAiLearnJob(
         {
           session: msg.session,
@@ -138,11 +191,6 @@ async function runEnqueue(msg: SavedInboxMessage): Promise<void> {
   }
 
   if (msg.fromMe && isHumanAnswerSource(msg.source)) {
-    // Atendente respondeu — pelo painel ("manual") ou pelo celular ("webhook").
-    // Entra em modo humano E cancela a resposta automática que estava na fila,
-    // para o bot não falar por cima nem gastar chamada à OpenAI. Respostas da IA
-    // têm source "ai" e não caem aqui; o eco da própria resposta é deduplicado
-    // antes de chegar neste ponto.
     await setChatModeHuman(msg.session, msg.chatId);
     await cancelAiReplyJob(msg.session, msg.chatId);
     await clearPendingReply(msg.session, msg.chatId);
@@ -159,11 +207,6 @@ async function runEnqueue(msg: SavedInboxMessage): Promise<void> {
   );
   if (mode === "human") return;
 
-  // REGRA: vídeo do cliente → o bot NÃO responde; deixa para um humano ver e
-  // responder. A mensagem fica sem resposta e sem ser marcada como lida, então
-  // aparece como não lida no WhatsApp para o atendente notar. Ligar
-  // "Vídeo (resposta)" no painel faz o bot transcrever o áudio do vídeo e
-  // responder normalmente.
   if (modality === "video" && !settings.replyVideo) {
     await logAiEvent({
       session: msg.session,

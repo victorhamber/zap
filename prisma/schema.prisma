@@ -65,9 +65,9 @@ model InstanceAiSettings {
   learnAudio       Boolean  @default(false)
   learnVideo       Boolean  @default(false)
   replyText        Boolean  @default(true)
-  replyImage       Boolean  @default(false)
-  replyAudio       Boolean  @default(false)
-  replyVideo       Boolean  @default(false)
+  replyImage       Boolean  @default(true)
+  replyAudio       Boolean  @default(true)
+  replyVideo       Boolean  @default(true)
   productContext   String   @default("")
   /**
    * Fatos oficiais fixos — prioridade sobre aprendizado histórico (ex.: capital mínimo por tipo de conta).

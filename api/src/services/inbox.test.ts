@@ -1,6 +1,11 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { normalizeChats, normalizeGroups } from "./inbox.js";
+import {
+  isPlaceholderGroupName,
+  mergeGroupSubjects,
+  normalizeChats,
+  normalizeGroups
+} from "./inbox.js";
 
 describe("classificação grupo x direto", () => {
   it("contato de telefone com flag isGroup=true NÃO vira grupo", () => {
@@ -119,5 +124,42 @@ describe("nome do chat não pega o remetente da última mensagem", () => {
     ]);
     assert.ok(chat);
     assert.notEqual(chat.name, "Eu Mesmo");
+  });
+});
+
+describe("enriquecimento do nome de grupo", () => {
+  it("detecta fallback Grupo/Comunidade + dígitos", () => {
+    assert.equal(isPlaceholderGroupName("Grupo 876541"), true);
+    assert.equal(isPlaceholderGroupName("Comunidade 123456"), true);
+    assert.equal(isPlaceholderGroupName("EA TREND"), false);
+    assert.equal(isPlaceholderGroupName("Grupo de ofertas"), false);
+  });
+
+  it("substitui Grupo 876541 pelo subject do fetchAllGroups", () => {
+    const [chat] = normalizeChats([
+      {
+        id: "120363422676383326@g.us",
+        lastMessage: { pushName: "Alguém", message: { conversation: "oi" } }
+      }
+    ]);
+    assert.ok(chat);
+    assert.equal(chat.name, "Grupo 383326");
+
+    const [fixed] = mergeGroupSubjects(
+      [chat],
+      new Map([["120363422676383326@g.us", "EA TREND Oficial"]])
+    );
+    assert.equal(fixed.name, "EA TREND Oficial");
+  });
+
+  it("não sobrescreve assunto real já presente", () => {
+    const [chat] = normalizeChats([
+      { id: "120363123456789012@g.us", subject: "Time Comercial" }
+    ]);
+    const [out] = mergeGroupSubjects(
+      [chat],
+      new Map([["120363123456789012@g.us", "Outro Nome"]])
+    );
+    assert.equal(out.name, "Time Comercial");
   });
 });

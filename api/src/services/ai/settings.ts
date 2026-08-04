@@ -121,9 +121,9 @@ export async function getAiSettings(session?: string): Promise<AiSettingsDto> {
         learnAudio: false,
         learnVideo: false,
         replyText: true,
-        replyImage: false,
-        replyAudio: false,
-        replyVideo: false,
+        replyImage: true,
+        replyAudio: true,
+        replyVideo: true,
         productContext: "",
         officialFacts: "",
         rulesAllowed: "",
@@ -143,6 +143,17 @@ export async function getAiSettings(session?: string): Promise<AiSettingsDto> {
       s
     );
   }
+
+  // Migração suave: installs antigas tinham mídia off por default.
+  if (!row.replyAudio && !row.replyImage && !row.replyVideo && prisma) {
+    await prisma.instanceAiSettings.update({
+      where: { session: s },
+      data: { replyAudio: true, replyImage: true, replyVideo: true }
+    });
+    const refreshed = await loadSettingsRow(s);
+    if (refreshed) return toDto(refreshed, s);
+  }
+
   return toDto(row, s);
 }
 
@@ -202,9 +213,9 @@ export async function saveAiSettings(
     learnAudio: body.learnAudio ?? existing?.learnAudio ?? false,
     learnVideo: body.learnVideo ?? existing?.learnVideo ?? false,
     replyText: body.replyText ?? existing?.replyText ?? true,
-    replyImage: body.replyImage ?? existing?.replyImage ?? false,
-    replyAudio: body.replyAudio ?? existing?.replyAudio ?? false,
-    replyVideo: body.replyVideo ?? existing?.replyVideo ?? false,
+    replyImage: body.replyImage ?? existing?.replyImage ?? true,
+    replyAudio: body.replyAudio ?? existing?.replyAudio ?? true,
+    replyVideo: body.replyVideo ?? existing?.replyVideo ?? true,
     productContext: body.productContext ?? existing?.productContext ?? "",
     officialFacts: body.officialFacts ?? existing?.officialFacts ?? "",
     rulesAllowed: body.rulesAllowed ?? existing?.rulesAllowed ?? "",

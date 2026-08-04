@@ -619,14 +619,36 @@ function preferChatId(a: string, b: string): string {
   return a.length >= b.length ? a : b;
 }
 
+/** Fallback local `Grupo 876541` / `Comunidade 123456` — não é o assunto real. */
+export function isPlaceholderGroupName(name: string): boolean {
+  return /^(Grupo|Comunidade)\s+\d{1,12}$/i.test(name.trim());
+}
+
 function pickBetterName(a: NormalizedChat, b: NormalizedChat): string {
   const score = (c: NormalizedChat) => {
     if (!c.name || c.name === c.phone) return 0;
     if (isGenericSelfChatName(c.name)) return 0;
+    if (isPlaceholderGroupName(c.name)) return 0;
     if (/^\d{10,}$/.test(c.name.replace(/\D/g, ""))) return 1;
     return c.name.length + (/\s/.test(c.name) ? 3 : 0);
   };
   return score(a) >= score(b) ? a.name : b.name;
+}
+
+export function mergeGroupSubjects(
+  chats: NormalizedChat[],
+  subjectsById: Map<string, string>
+): NormalizedChat[] {
+  if (subjectsById.size === 0) return chats;
+  return chats.map((c) => {
+    if (c.kind !== "group" && c.kind !== "community" && !c.isGroup) return c;
+    const real = subjectsById.get(c.id)?.trim();
+    if (!real) return c;
+    if (!c.name || isPlaceholderGroupName(c.name) || c.name === c.id) {
+      return { ...c, name: real };
+    }
+    return c;
+  });
 }
 
 function resolveDirectChatName(
@@ -877,14 +899,27 @@ export async function fetchChats(): Promise<FetchChatsResult> {
           })
         : dedupedChats;
 
+    const needsGroupSubjects = scopedChats.some(
+      (c) =>
+        (c.kind === "group" || c.kind === "community" || c.isGroup) &&
+        (!c.name.trim() || isPlaceholderGroupName(c.name))
+    );
+    const [contactNames, groupSubjects] = await Promise.all([
+      loadEvolutionContactNames(),
+      needsGroupSubjects ? wpp.fetchGroupSubjectMap() : Promise.resolve(new Map<string, string>())
+    ]);
+
     const chats = dedupeChatsByPhone(
-      mergeContactNames(
-        scopedChats.sort((a, b) => {
-          if (a.timestamp !== b.timestamp) return b.timestamp - a.timestamp;
-          return a.name.localeCompare(b.name, "pt-BR");
-        }),
-        await loadEvolutionContactNames(),
-        wpp.isEvolution ? await wpp.getConnectedOwnerDigits() : null
+      mergeGroupSubjects(
+        mergeContactNames(
+          scopedChats.sort((a, b) => {
+            if (a.timestamp !== b.timestamp) return b.timestamp - a.timestamp;
+            return a.name.localeCompare(b.name, "pt-BR");
+          }),
+          contactNames,
+          wpp.isEvolution ? await wpp.getConnectedOwnerDigits() : null
+        ),
+        groupSubjects
       ).map((c) => ({
         ...c,
         unreadCount: isChatReadLocally(session, c.id) ? 0 : c.unreadCount

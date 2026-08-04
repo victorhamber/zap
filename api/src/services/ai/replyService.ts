@@ -21,6 +21,7 @@ import {
   setChatModeHuman
 } from "./chatState.js";
 import { detectModality, extractInboundTextForReply } from "./mediaExtract.js";
+import { drainNewerInboundForReply, enqueueAiPipeline } from "./enqueue.js";
 import {
   buildMediaResponsesBlock,
   extractMediaResponseMarker,
@@ -121,7 +122,10 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
   const settingsRow = await prisma.instanceAiSettings.findUnique({
     where: { session: payload.session }
   });
-  if (!settingsRow?.autoReplyEnabled) return;
+  if (!settingsRow?.autoReplyEnabled) {
+    await clearPendingReply(payload.session, payload.chatId);
+    return;
+  }
 
   const inbound = await prisma.inboxMessage.findFirst({
     where: {
@@ -129,7 +133,10 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
       OR: [{ id: payload.inboundMessageId }, { waMessageId: payload.inboundMessageId }]
     }
   });
-  if (!inbound || inbound.fromMe) return;
+  if (!inbound || inbound.fromMe) {
+    await clearPendingReply(payload.session, payload.chatId);
+    return;
+  }
 
   // REGRA: mensagem âncora em vídeo (com "Vídeo (resposta)" desligado) → o bot
   // não responde, deixa para um humano. Rede de segurança além do gate no
@@ -164,6 +171,27 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
 
   const state = await findChatState(payload.session, payload.chatId);
   if (state?.pendingInboundId && state.pendingInboundId !== payload.inboundMessageId) {
+    // Job antigo: pending já aponta para mensagem mais nova — reagenda a partir dela.
+    const newerId = state.pendingInboundId;
+    await clearPendingReply(payload.session, payload.chatId);
+    const newer = await prisma.inboxMessage.findFirst({
+      where: {
+        session: payload.session,
+        OR: [{ id: newerId }, { waMessageId: newerId }]
+      }
+    });
+    if (newer && !newer.fromMe) {
+      enqueueAiPipeline({
+        id: newer.id,
+        session: newer.session,
+        chatId: newer.chatId,
+        fromMe: newer.fromMe,
+        source: newer.source as import("../../types/ai.js").InboxMessageSource,
+        type: newer.type,
+        body: newer.body,
+        waMessageId: newer.waMessageId
+      });
+    }
     return;
   }
 
@@ -205,6 +233,7 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
       event: "error",
       detail: "Limite diário de respostas atingido"
     });
+    await clearPendingReply(payload.session, payload.chatId);
     return;
   }
 
@@ -216,6 +245,7 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
       event: "error",
       detail: "Chave OpenAI não configurada nesta instância"
     });
+    await clearPendingReply(payload.session, payload.chatId);
     return;
   }
 
@@ -381,6 +411,11 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
       detail: handoff.slice(0, 200)
     });
     await clearPendingReply(payload.session, payload.chatId);
+    await drainNewerInboundForReply({
+      session: payload.session,
+      chatId: payload.chatId,
+      afterTimestamp: inboundBatch.anchorTimestamp
+    });
     return;
   }
 
@@ -406,6 +441,11 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
         apiKey,
         model: settingsRow.modelChat
       }).catch((err) => console.warn("[ai] post-reply memory refresh failed", err));
+      await drainNewerInboundForReply({
+        session: payload.session,
+        chatId: payload.chatId,
+        afterTimestamp: inboundBatch.anchorTimestamp
+      });
       return;
     }
     reply = stripMediaResponseMarker(reply);
@@ -442,6 +482,12 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
     apiKey,
     model: settingsRow.modelChat
   }).catch((err) => console.warn("[ai] post-reply memory refresh failed", err));
+
+  await drainNewerInboundForReply({
+    session: payload.session,
+    chatId: payload.chatId,
+    afterTimestamp: inboundBatch.anchorTimestamp
+  });
 }
 
 export async function simulateReply(params: {

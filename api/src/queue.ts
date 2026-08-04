@@ -110,10 +110,30 @@ export async function enqueueAiReplyJob(
   jobId: string
 ) {
   const queue = getAiQueue();
+  const id = sanitizeQueueJobId(jobId);
+  const existing = await queue.getJob(id);
+  if (existing) {
+    const state = await existing.getState();
+    if (state === "delayed" || state === "waiting") {
+      await existing.updateData(payload);
+      await existing.changeDelay(Math.max(0, delayMs));
+      return existing;
+    }
+    if (state === "active") {
+      // Job em processamento: o drain no fim do reply reagenda msgs novas.
+      return null;
+    }
+    try {
+      await existing.remove();
+    } catch {
+      /* ignore */
+    }
+  }
   return queue.add("reply", payload, {
     delay: Math.max(0, delayMs),
-    jobId: sanitizeQueueJobId(jobId),
-    attempts: 1
+    jobId: id,
+    attempts: 3,
+    backoff: { type: "exponential", delay: 5000 }
   });
 }
 
@@ -121,7 +141,14 @@ export async function cancelAiReplyJob(session: string, chatId: string): Promise
   const queue = getAiQueue();
   const jobId = aiReplyJobId(session, chatId);
   const job = await queue.getJob(jobId);
-  if (job) await job.remove();
+  if (!job) return;
+  const state = await job.getState();
+  if (state === "active") return;
+  try {
+    await job.remove();
+  } catch {
+    /* ignore */
+  }
 }
 
 export async function getAiQueueCounts(): Promise<{ pending: number; active: number }> {
