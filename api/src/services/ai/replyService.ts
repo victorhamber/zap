@@ -21,7 +21,7 @@ import {
   setChatModeHuman
 } from "./chatState.js";
 import { detectModality, extractInboundTextForReply } from "./mediaExtract.js";
-import { drainNewerInboundForReply, enqueueAiPipeline } from "./enqueue.js";
+import { enqueueAiPipeline, finishReplyScheduling } from "./enqueue.js";
 import {
   buildMediaResponsesBlock,
   extractMediaResponseMarker,
@@ -206,7 +206,12 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
     chatId: payload.chatId,
     inboundTimestamp: inboundBatch.anchorTimestamp
   })) {
-    await clearPendingReply(payload.session, payload.chatId);
+    await finishReplyScheduling({
+      session: payload.session,
+      chatId: payload.chatId,
+      answeredInboundId: payload.inboundMessageId,
+      afterTimestamp: inboundBatch.anchorTimestamp
+    });
     return;
   }
 
@@ -221,7 +226,12 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
       event: "cancelled_human",
       detail: "Atendente já respondeu manualmente"
     });
-    await clearPendingReply(payload.session, payload.chatId);
+    await finishReplyScheduling({
+      session: payload.session,
+      chatId: payload.chatId,
+      answeredInboundId: payload.inboundMessageId,
+      afterTimestamp: inboundBatch.anchorTimestamp
+    });
     return;
   }
 
@@ -383,7 +393,12 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
     chatId: payload.chatId,
     inboundTimestamp: inboundBatch.anchorTimestamp
   })) {
-    await clearPendingReply(payload.session, payload.chatId);
+    await finishReplyScheduling({
+      session: payload.session,
+      chatId: payload.chatId,
+      answeredInboundId: payload.inboundMessageId,
+      afterTimestamp: inboundBatch.anchorTimestamp
+    });
     return;
   }
 
@@ -410,10 +425,10 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
       event: "escalated",
       detail: handoff.slice(0, 200)
     });
-    await clearPendingReply(payload.session, payload.chatId);
-    await drainNewerInboundForReply({
+    await finishReplyScheduling({
       session: payload.session,
       chatId: payload.chatId,
+      answeredInboundId: payload.inboundMessageId,
       afterTimestamp: inboundBatch.anchorTimestamp
     });
     return;
@@ -434,16 +449,16 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
         event: "replied_media",
         detail: matched.label || matched.id
       });
-      await clearPendingReply(payload.session, payload.chatId);
       void refreshConversationMemory({
         session: payload.session,
         chatId: payload.chatId,
         apiKey,
         model: settingsRow.modelChat
       }).catch((err) => console.warn("[ai] post-reply memory refresh failed", err));
-      await drainNewerInboundForReply({
+      await finishReplyScheduling({
         session: payload.session,
         chatId: payload.chatId,
+        answeredInboundId: payload.inboundMessageId,
         afterTimestamp: inboundBatch.anchorTimestamp
       });
       return;
@@ -451,7 +466,12 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
     reply = stripMediaResponseMarker(reply);
     if (!reply) {
       // só tinha o marcador e ele era inválido — não manda mensagem vazia
-      await clearPendingReply(payload.session, payload.chatId);
+      await finishReplyScheduling({
+        session: payload.session,
+        chatId: payload.chatId,
+        answeredInboundId: payload.inboundMessageId,
+        afterTimestamp: inboundBatch.anchorTimestamp
+      });
       return;
     }
   }
@@ -474,7 +494,6 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
     event: "replied",
     detail: reply.slice(0, 200)
   });
-  await clearPendingReply(payload.session, payload.chatId);
 
   void refreshConversationMemory({
     session: payload.session,
@@ -483,9 +502,10 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
     model: settingsRow.modelChat
   }).catch((err) => console.warn("[ai] post-reply memory refresh failed", err));
 
-  await drainNewerInboundForReply({
+  await finishReplyScheduling({
     session: payload.session,
     chatId: payload.chatId,
+    answeredInboundId: payload.inboundMessageId,
     afterTimestamp: inboundBatch.anchorTimestamp
   });
 }

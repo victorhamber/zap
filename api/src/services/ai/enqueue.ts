@@ -1,6 +1,7 @@
 ﻿import type { InboxMessageSource } from "../../types/ai.js";
 import { prisma } from "../../prisma.js";
 import { expandPhoneLookupKeys } from "../../utils/phone.js";
+import { resolveAllChatIdsForContact } from "../inboxStore.js";
 import {
   contactHasLearnTags,
   isGroupChatId,
@@ -13,6 +14,7 @@ import {
   resolveChatModeForInbound,
   setPendingReply,
   clearPendingReply,
+  findChatState,
   logAiEvent
 } from "./chatState.js";
 import {
@@ -118,18 +120,47 @@ export async function retryAiPipelineForContact(phone: string): Promise<void> {
 
 /**
  * Depois de uma resposta (ou abort), se chegou inbound mais novo sem reply AI,
- * agenda de novo — cobre burst enquanto o job estava active.
+ * agenda de novo — cobre burst enquanto o job estava active e jobId preso.
  */
 export async function drainNewerInboundForReply(params: {
   session: string;
   chatId: string;
   afterTimestamp: Date;
+  /** Se pending apontava para outra msg enquanto o job rodava. */
+  preferredInboundId?: string | null;
 }): Promise<void> {
   if (!prisma) return;
+
+  if (params.preferredInboundId) {
+    const preferred = await prisma.inboxMessage.findFirst({
+      where: {
+        session: params.session,
+        OR: [
+          { id: params.preferredInboundId },
+          { waMessageId: params.preferredInboundId }
+        ]
+      }
+    });
+    if (preferred && !preferred.fromMe) {
+      enqueueAiPipeline({
+        id: preferred.id,
+        session: preferred.session,
+        chatId: preferred.chatId,
+        fromMe: preferred.fromMe,
+        source: preferred.source as InboxMessageSource,
+        type: preferred.type,
+        body: preferred.body,
+        waMessageId: preferred.waMessageId
+      });
+      return;
+    }
+  }
+
+  const variants = await resolveAllChatIdsForContact(params.session, params.chatId);
   const newer = await prisma.inboxMessage.findFirst({
     where: {
       session: params.session,
-      chatId: params.chatId,
+      chatId: { in: variants },
       fromMe: false,
       timestamp: { gt: params.afterTimestamp }
     },
@@ -146,6 +177,29 @@ export async function drainNewerInboundForReply(params: {
     type: newer.type,
     body: newer.body,
     waMessageId: newer.waMessageId
+  });
+}
+
+/**
+ * Limpa pending do job atual sem apagar um pending mais novo; depois drena.
+ */
+export async function finishReplyScheduling(params: {
+  session: string;
+  chatId: string;
+  answeredInboundId: string;
+  afterTimestamp: Date;
+}): Promise<void> {
+  const state = await findChatState(params.session, params.chatId);
+  const preferred =
+    state?.pendingInboundId && state.pendingInboundId !== params.answeredInboundId
+      ? state.pendingInboundId
+      : null;
+  await clearPendingReply(params.session, params.chatId);
+  await drainNewerInboundForReply({
+    session: params.session,
+    chatId: params.chatId,
+    afterTimestamp: params.afterTimestamp,
+    preferredInboundId: preferred
   });
 }
 
@@ -221,7 +275,7 @@ async function runEnqueue(msg: SavedInboxMessage): Promise<void> {
 
   const inboundId = msg.id;
   const jobId = aiReplyJobId(msg.session, msg.chatId);
-  await enqueueAiReplyJob(
+  const job = await enqueueAiReplyJob(
     {
       session: msg.session,
       chatId: msg.chatId,
@@ -231,5 +285,15 @@ async function runEnqueue(msg: SavedInboxMessage): Promise<void> {
     settings.replyDelaySec * 1000,
     jobId
   );
+  // Mesmo se o job atual está active (job=null), grava pending para o drain
+  // reagendar esta mensagem quando o job terminar.
   await setPendingReply(msg.session, msg.chatId, inboundId, jobId);
+  if (!job) {
+    await logAiEvent({
+      session: msg.session,
+      chatId: msg.chatId,
+      event: "reply_deferred",
+      detail: `Reply em andamento — msg ${inboundId} fica na fila do drain`
+    });
+  }
 }

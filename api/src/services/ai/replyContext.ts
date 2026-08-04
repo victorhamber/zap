@@ -101,7 +101,7 @@ export async function hasAiReplyAfterInbound(params: {
       chatId: { in: variants },
       fromMe: true,
       source: "ai",
-      timestamp: { gte: params.inboundTimestamp }
+      timestamp: { gt: params.inboundTimestamp }
     },
     select: { id: true }
   });

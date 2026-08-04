@@ -111,6 +111,16 @@ export async function enqueueAiReplyJob(
 ) {
   const queue = getAiQueue();
   const id = sanitizeQueueJobId(jobId);
+  const replyJobOpts = {
+    delay: Math.max(0, delayMs),
+    attempts: 3,
+    backoff: { type: "exponential" as const, delay: 5000 },
+    // Sem isso o jobId fixo por chat fica no Redis (default removeOnComplete:2000)
+    // e a 2ª mensagem do mesmo chat não consegue agendar reply.
+    removeOnComplete: true as const,
+    removeOnFail: 100
+  };
+
   const existing = await queue.getJob(id);
   if (existing) {
     const state = await existing.getState();
@@ -126,16 +136,19 @@ export async function enqueueAiReplyJob(
     }
     try {
       await existing.remove();
-    } catch {
-      /* ignore */
+    } catch (err) {
+      console.warn("[ai/queue] não removeu job reply antigo", id, state, err);
     }
   }
-  return queue.add("reply", payload, {
-    delay: Math.max(0, delayMs),
-    jobId: id,
-    attempts: 3,
-    backoff: { type: "exponential", delay: 5000 }
-  });
+
+  try {
+    return await queue.add("reply", payload, { ...replyJobOpts, jobId: id });
+  } catch (err) {
+    // JobId ainda preso: agenda com id único para não ghostar o cliente.
+    const fallbackId = sanitizeQueueJobId(`${id}_${payload.inboundMessageId}`);
+    console.warn("[ai/queue] jobId reply ocupado, fallback", id, "->", fallbackId, err);
+    return queue.add("reply", payload, { ...replyJobOpts, jobId: fallbackId });
+  }
 }
 
 export async function cancelAiReplyJob(session: string, chatId: string): Promise<void> {
