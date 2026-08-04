@@ -106,9 +106,36 @@ function mediaCaptionFrom(obj: Record<string, any> | null | undefined): string {
   return "";
 }
 
+/** Nomes internos de botão/fluxo nativo — não são texto legível. */
+const NATIVE_FLOW_TOKEN =
+  /^(cta_url|cta_call|cta_copy|cta_catalog|quick_reply|copy_code|call_|mpm|catalog_message|single_product|multi_product|payment_info|review_and_pay|order_details|form_message|send_location|address_message|wa_flow|galaxy_message)$/i;
+
+/**
+ * Descarta lixo estrutural que a varredura profunda às vezes puxa
+ * (nome do tipo de botão, JSON de layout, IDs numéricos longos).
+ */
+export function isReadableHarvestPart(raw: string): boolean {
+  const t = raw.replace(/^\uFEFF/, "").trim();
+  if (t.length < 2 || t.length > 500) return false;
+  if (/^(true|false|null|undefined)$/i.test(t)) return false;
+  if (NATIVE_FLOW_TOKEN.test(t)) return false;
+  // Blob JSON cru (ex.: {"bottom_sheet":{...}})
+  if (/^[{\[]/.test(t) && /[}\]]$/.test(t)) return false;
+  // IDs numéricos / hex longos
+  if (/^\d{10,}$/.test(t)) return false;
+  if (/^[0-9a-f-]{20,}$/i.test(t)) return false;
+  if (/^[A-Za-z0-9+/=]{40,}$/.test(t)) return false;
+  if (/^data:/.test(t)) return false;
+  if (/@(s\.whatsapp\.net|c\.us|g\.us|lid)$/i.test(t)) return false;
+  // snake_case / camelCase de protocolo sem espaço (name: "cta_url", "in_thread_buttons_limit")
+  if (/^[a-z][a-z0-9_]{1,60}$/i.test(t) && /_/.test(t) && !/\s/.test(t)) return false;
+  return true;
+}
+
 /** Campos de texto comuns em hydratedTemplate / buttonsMessage / JSON de fluxo. */
 function textFieldsFrom(obj: Record<string, any> | null | undefined): string[] {
   if (!obj || typeof obj !== "object") return [];
+  // "name" de botão nativo costuma ser "cta_url" — só aceita se passar no filtro.
   const keys = [
     "hydratedTitleText",
     "hydratedContentText",
@@ -124,21 +151,21 @@ function textFieldsFrom(obj: Record<string, any> | null | undefined): string[] {
     "name",
     "displayName",
     "productTitle",
-    "businessOwnerJid",
-    "inviteCode",
     "inviteMessage"
   ];
   const out: string[] = [];
   for (const k of keys) {
     const v = obj[k];
-    if (typeof v === "string" && v.trim()) out.push(v.trim());
-    else if (v && typeof v === "object" && typeof (v as { text?: unknown }).text === "string") {
+    if (typeof v === "string" && v.trim()) {
+      const t = v.trim();
+      if (isReadableHarvestPart(t)) out.push(t);
+    } else if (v && typeof v === "object" && typeof (v as { text?: unknown }).text === "string") {
       const t = String((v as { text: string }).text).trim();
-      if (t) out.push(t);
+      if (t && isReadableHarvestPart(t)) out.push(t);
     }
   }
   const mediaCap = mediaCaptionFrom(obj);
-  if (mediaCap) out.push(mediaCap);
+  if (mediaCap && isReadableHarvestPart(mediaCap)) out.push(mediaCap);
   return out;
 }
 
@@ -146,6 +173,27 @@ function textFieldsFrom(obj: Record<string, any> | null | undefined): string[] {
  * Varredura profunda: Meta/Facebook às vezes manda o texto em campos aninhados
  * que o parser tipado não cobre. Coleta strings “legíveis” e rótulos de botão.
  */
+const HARVEST_SKIP_KEYS = new Set([
+  "key",
+  "messageContextInfo",
+  "deviceListMetadata",
+  "contextInfo",
+  "messageSecret",
+  "bottom_sheet",
+  "divider_indices",
+  "in_thread_buttons_limit",
+  "webview_presentation",
+  "webview_interaction",
+  "landing_page_url",
+  "merchant_url",
+  "thumbnailUrl",
+  "jpegThumbnail",
+  "mediaKey",
+  "fileSha256",
+  "fileEncSha256",
+  "directPath"
+]);
+
 function deepHarvestInteractive(root: unknown, depth = 0): { parts: string[]; buttons: string[] } {
   const parts: string[] = [];
   const buttons: string[] = [];
@@ -153,30 +201,29 @@ function deepHarvestInteractive(root: unknown, depth = 0): { parts: string[]; bu
 
   if (typeof root === "string") {
     const t = root.trim();
-    if (
-      t.length >= 2 &&
-      t.length <= 500 &&
-      !/^(true|false|null|undefined)$/i.test(t) &&
-      !/^[A-Za-z0-9+/=]{40,}$/.test(t) &&
-      !/^data:/.test(t) &&
-      !/^[0-9a-f-]{20,}$/i.test(t) &&
-      !/@(s\.whatsapp\.net|c\.us|g\.us|lid)$/i.test(t)
-    ) {
-      parts.push(t);
-    }
     const fromJson = labelsFromParamsJson(t);
     if (fromJson) {
-      buttons.push(fromJson.url ? `${fromJson.label} → ${fromJson.url}` : fromJson.label);
-    } else {
-      try {
-        const parsed = JSON.parse(t);
+      const label = fromJson.label;
+      if (label && !NATIVE_FLOW_TOKEN.test(label)) {
+        buttons.push(fromJson.url ? `${label} → ${fromJson.url}` : label);
+      } else if (fromJson.url) {
+        buttons.push(String(fromJson.url));
+      }
+      return { parts, buttons };
+    }
+    // JSON estrutural: só desce nos campos; NÃO grava o blob cru no corpo.
+    try {
+      const parsed = JSON.parse(t);
+      if (parsed && typeof parsed === "object") {
         const nested = deepHarvestInteractive(parsed, depth + 1);
         parts.push(...nested.parts);
         buttons.push(...nested.buttons);
-      } catch {
-        /* not json */
+        return { parts, buttons };
       }
+    } catch {
+      /* not json */
     }
+    if (isReadableHarvestPart(t)) parts.push(t);
     return { parts, buttons };
   }
 
@@ -224,12 +271,20 @@ function deepHarvestInteractive(root: unknown, depth = 0): { parts: string[]; bu
     "cards",
     "action",
     "parameters",
-    "components"
+    "components",
+    "buttonParamsJSON",
+    "buttonParamsJson",
+    "messageParamsJson",
+    "messageParamsJSON"
   ]);
 
   for (const [k, v] of Object.entries(o)) {
-    if (k === "key" || k === "messageContextInfo" || k === "deviceListMetadata") continue;
-    if (interestingKeys.has(k) || depth <= 2) {
+    if (HARVEST_SKIP_KEYS.has(k)) continue;
+    if (interestingKeys.has(k) || (depth <= 2 && typeof v === "object")) {
+      const nested = deepHarvestInteractive(v, depth + 1);
+      parts.push(...nested.parts);
+      buttons.push(...nested.buttons);
+    } else if (typeof v === "string" && interestingKeys.has(k)) {
       const nested = deepHarvestInteractive(v, depth + 1);
       parts.push(...nested.parts);
       buttons.push(...nested.buttons);
@@ -266,9 +321,13 @@ function textsFromParamsJson(raw: unknown): string[] {
 function composeButtonText(parts: unknown[], buttons: string[], fallback: string): string {
   const body = parts
     .map((p) => String(p ?? "").trim())
-    .filter(Boolean)
+    .filter((p) => p && isReadableHarvestPart(p))
     .join("\n");
-  const btns = buttons.map((b) => `▸ ${b}`).join("\n");
+  const btns = buttons
+    .map((b) => b.trim())
+    .filter((b) => b && !NATIVE_FLOW_TOKEN.test(b) && !/^[{\[]/.test(b))
+    .map((b) => `▸ ${b}`)
+    .join("\n");
   return [body, btns].filter(Boolean).join("\n").trim() || fallback;
 }
 

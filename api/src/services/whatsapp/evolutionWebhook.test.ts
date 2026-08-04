@@ -279,6 +279,41 @@ describe("parseEvolutionMessagePayload — mensagens com botão", () => {
     assert.match(p!.text, /Atualizacao da Meta|politicas/i);
   });
 
+  it("não vaza cta_url nem JSON de bottom_sheet no corpo", () => {
+    const p = parseEvolutionMessagePayload(
+      body,
+      payload({
+        interactiveMessage: {
+          body: {
+            text: "Olá, Victor. Alguém acabou de criar uma chave de acesso para a sua conta do Facebook."
+          },
+          nativeFlowMessage: {
+            buttons: [
+              {
+                name: "cta_url",
+                buttonParamsJSON: JSON.stringify({
+                  display_text: "Não fui eu",
+                  url: "https://facebook.com/security",
+                  bottom_sheet: { in_thread_buttons_limit: 3, divider_indices: [] }
+                })
+              }
+            ],
+            messageParamsJson: JSON.stringify({
+              bottom_sheet: { in_thread_buttons_limit: 3, divider_indices: [] }
+            })
+          }
+        }
+      })
+    );
+    assert.ok(p);
+    assert.match(p!.text, /chave de acesso/);
+    assert.match(p!.text, /Não fui eu/);
+    assert.doesNotMatch(p!.text, /cta_url/i);
+    assert.doesNotMatch(p!.text, /bottom_sheet/);
+    assert.doesNotMatch(p!.text, /in_thread_buttons_limit/);
+    assert.doesNotMatch(p!.text, /^\d{10,}$/m);
+  });
+
   it("texto simples continua funcionando", () => {
     const p = parseEvolutionMessagePayload(body, payload({ conversation: "oi tudo bem" }));
     assert.ok(p);

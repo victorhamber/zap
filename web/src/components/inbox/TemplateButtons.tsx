@@ -28,10 +28,21 @@ export function parseTemplateBody(body: string): ParsedTemplateBody {
   for (const line of lines) {
     const match = BUTTON_LINE.exec(line);
     if (!match) {
+      // Lixo estrutural que o parser antigo às vezes gravava no corpo.
+      const t = line.trim();
+      if (
+        /^(cta_url|cta_call|quick_reply|copy_code)$/i.test(t) ||
+        (/^[{\[]/.test(t) && /[}\]]$/.test(t)) ||
+        /^\d{10,}$/.test(t)
+      ) {
+        continue;
+      }
       textLines.push(line);
       continue;
     }
     const raw = match[1].trim();
+    if (/^(cta_url|cta_call|quick_reply|copy_code)$/i.test(raw)) continue;
+    if (/^[{\[]/.test(raw) && /[}\]]$/.test(raw)) continue;
     const withUrl = LABEL_URL.exec(raw);
     if (withUrl) {
       buttons.push({ label: withUrl[1].trim() || withUrl[2], url: withUrl[2] });
