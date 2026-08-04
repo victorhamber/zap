@@ -1,4 +1,4 @@
-import { Queue } from "bullmq";
+import { Queue, type Job } from "bullmq";
 import { env } from "./env.js";
 import type { FlowJobPayload, FlowStartRunJobPayload } from "./types/flow.js";
 import type { AiLearnJobPayload, AiReplyJobPayload } from "./types/ai.js";
@@ -115,7 +115,8 @@ export async function enqueueAiReplyJob(
   if (existing) {
     const state = await existing.getState();
     if (state === "delayed" || state === "waiting") {
-      await existing.updateData(payload);
+      // Queue tipada como union: updateData exige interseção; este jobId é sempre reply.
+      await (existing as Job<AiReplyJobPayload>).updateData(payload);
       await existing.changeDelay(Math.max(0, delayMs));
       return existing;
     }
