@@ -333,14 +333,19 @@ function markChatHiddenLocally(chat: Chat): void {
 function filterClientVisibleChats(chats: Chat[]): Chat[] {
   const hidden = loadClientHiddenContacts();
   if (hidden.size === 0) return chats;
-  const visible = chats.filter((c) => !isClientHiddenChat(c, hidden));
+
+  // A API já omite contatos ocultos no servidor. Se o chat voltou na lista,
+  // houve nova mensagem (unhide no backend) — limpa o hide otimista do browser.
+  // Antes só reabria com unreadCount > 0, mas o resumo local sempre manda unread=0.
+  let changed = false;
   for (const c of chats) {
-    if (c.unreadCount > 0) {
-      for (const k of hiddenKeysForChat(c)) hidden.delete(k);
+    if (!isClientHiddenChat(c, hidden)) continue;
+    for (const k of hiddenKeysForChat(c)) {
+      if (hidden.delete(k)) changed = true;
     }
   }
-  saveClientHiddenContacts(hidden);
-  return visible;
+  if (changed) saveClientHiddenContacts(hidden);
+  return chats;
 }
 
 function findMatchingChat(chats: Chat[], current: Chat): Chat | undefined {

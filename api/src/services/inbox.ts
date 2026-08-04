@@ -928,8 +928,23 @@ export async function fetchChats(): Promise<FetchChatsResult> {
       session
     );
 
-    const { getHiddenInboxContactKeys, isChatHiddenFromInbox } = await import("./inboxStore.js");
-    const hiddenKeys = await getHiddenInboxContactKeys(session);
+    const {
+      getHiddenInboxContactKeys,
+      isChatHiddenFromInbox,
+      unhideContactFromInbox
+    } = await import("./inboxStore.js");
+    let hiddenKeys = await getHiddenInboxContactKeys(session);
+    // Apagar conversa zera o DB e oculta o contato. Se já há mensagens locais de novo,
+    // a pessoa falou outra vez — reabre o card (sem ressuscitar histórico apagado).
+    if (hiddenKeys.size > 0 && stored.length > 0) {
+      let unhid = false;
+      for (const c of stored) {
+        if (!isChatHiddenFromInbox(c, hiddenKeys, session)) continue;
+        await unhideContactFromInbox(session, c.phone || c.id, c.id).catch(() => {});
+        unhid = true;
+      }
+      if (unhid) hiddenKeys = await getHiddenInboxContactKeys(session);
+    }
     const visibleChats =
       hiddenKeys.size === 0
         ? chats

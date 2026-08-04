@@ -622,6 +622,20 @@ export async function unhideContactFromInbox(
   // Usa o mesmo conjunto de chaves gerado ao ocultar (telefone + @lid + variantes),
   // senão o contato continua oculto por chaves residuais após nova mensagem.
   const remove = new Set(await collectHiddenKeysForContact(session, phone, chatId));
+  // Cinto: qualquer id: residual do chatId cru / normalizado.
+  if (chatId?.trim()) {
+    const cid = normalizeDirectJid(chatId);
+    remove.add(`id:${cid}`);
+    remove.add(`id:${chatId.trim()}`);
+  }
+  const phoneDigits = digitsOnly(phone.replace(/@.*/, ""));
+  if (isValidWhatsAppPhoneDigits(phoneDigits)) {
+    remove.add(`p:${phoneDedupeKey(phoneDigits)}`);
+    for (const lk of expandPhoneLookupKeys(phoneDigits)) {
+      const ld = digitsOnly(lk);
+      if (isValidWhatsAppPhoneDigits(ld)) remove.add(`p:${phoneDedupeKey(ld)}`);
+    }
+  }
   const hidden = entry.hiddenContacts.filter((k) => !remove.has(k));
   map[norm] = { ...entry, hiddenContacts: hidden.length > 0 ? hidden : undefined };
   await writeInboxSessionMap(map);
@@ -1174,12 +1188,12 @@ export async function saveInboxMessage(params: {
     if (!params.fromMe) {
       // Em grupo, o "telefone" do peer é de um participante — reexibir por ele
       // ressuscitava a conversa privada apagada dessa pessoa. Grupo reexibe a si.
+      // Sempre passa chatId: pickPhoneJid pode falhar em @lid puro e o unhide
+      // precisa limpar as chaves id:… gravadas no "Apagar conversa".
       const unhidePhone = isGroupLikeJid(chatId)
         ? chatId
-        : pickPhoneJid([chatId, ...(params.peerJids ?? []), params.chatId]);
-      if (unhidePhone) {
-        await unhideContactFromInbox(session, unhidePhone, chatId).catch(() => {});
-      }
+        : pickPhoneJid([chatId, ...(params.peerJids ?? []), params.chatId]) ?? chatId;
+      await unhideContactFromInbox(session, unhidePhone, chatId).catch(() => {});
     }
 
     const { enqueueAiPipeline } = await import("./ai/enqueue.js");
@@ -1254,7 +1268,7 @@ export async function listStoredChatSummaries(): Promise<NormalizedChat[]> {
     const latest = await prisma.inboxMessage.findFirst({
       where: { session, chatId: { in: idList } },
       orderBy: { timestamp: "desc" },
-      select: { body: true, timestamp: true }
+      select: { body: true, timestamp: true, fromMe: true }
     });
     if (!latest) continue;
 
@@ -1274,7 +1288,8 @@ export async function listStoredChatSummaries(): Promise<NormalizedChat[]> {
         : isGroup
           ? ("group" as const)
           : ("direct" as const),
-      unreadCount: 0
+      // 1 = há inbound recente sem "lido" local — reabre card após "Apagar conversa".
+      unreadCount: latest.fromMe ? 0 : 1
     });
   }
 
