@@ -23,8 +23,33 @@ export function isButtonPlaceholderBody(body: string): boolean {
   const t = body.replace(/^\uFEFF/, "").trim();
   return (
     /^(📄\s*)?(Mensagem com botões|Mensagem interativa|Lista)$/i.test(t) ||
-    /^📄\s*Template:/i.test(t)
+    /^📄\s*Template:/i.test(t) ||
+    /^📄\s*Mensagem interativa/i.test(t) ||
+    t.includes("não chega pela Evolution") ||
+    t.includes("nao chega pela Evolution")
   );
+}
+
+/** Texto padrão quando a Evolution/Baileys não entrega o corpo do template (ex.: Meta→você). */
+export const OPAQUE_INTERACTIVE_HINT =
+  "📄 Mensagem interativa\nO texto completo não chega pela Evolution (conexão não oficial). Veja no WhatsApp do celular.";
+
+function opaqueInteractiveFallback(opts?: {
+  title?: string;
+  kind?: string;
+  buttons?: string[];
+}): string {
+  const title = (opts?.title ?? "").trim();
+  const kind = (opts?.kind ?? "").trim();
+  const head = title
+    ? `📄 ${title}`
+    : kind
+      ? `📄 Mensagem interativa (${kind})`
+      : "📄 Mensagem interativa";
+  const hint =
+    "O texto completo não chega pela Evolution (conexão não oficial). Veja no WhatsApp do celular.";
+  const btns = (opts?.buttons ?? []).map((b) => `▸ ${b}`);
+  return [head, hint, ...btns].filter(Boolean).join("\n");
 }
 
 /** Lê display_text/url de buttonParamsJSON (nativeFlow / CTA da API oficial). */
@@ -92,10 +117,16 @@ function textFieldsFrom(obj: Record<string, any> | null | undefined): string[] {
     "footerText",
     "text",
     "title",
+    "subtitle",
     "body",
     "description",
     "caption",
-    "name"
+    "name",
+    "displayName",
+    "productTitle",
+    "businessOwnerJid",
+    "inviteCode",
+    "inviteMessage"
   ];
   const out: string[] = [];
   for (const k of keys) {
@@ -108,6 +139,115 @@ function textFieldsFrom(obj: Record<string, any> | null | undefined): string[] {
   }
   const mediaCap = mediaCaptionFrom(obj);
   if (mediaCap) out.push(mediaCap);
+  return out;
+}
+
+/**
+ * Varredura profunda: Meta/Facebook às vezes manda o texto em campos aninhados
+ * que o parser tipado não cobre. Coleta strings “legíveis” e rótulos de botão.
+ */
+function deepHarvestInteractive(root: unknown, depth = 0): { parts: string[]; buttons: string[] } {
+  const parts: string[] = [];
+  const buttons: string[] = [];
+  if (root == null || depth > 8) return { parts, buttons };
+
+  if (typeof root === "string") {
+    const t = root.trim();
+    if (
+      t.length >= 2 &&
+      t.length <= 500 &&
+      !/^(true|false|null|undefined)$/i.test(t) &&
+      !/^[A-Za-z0-9+/=]{40,}$/.test(t) &&
+      !/^data:/.test(t) &&
+      !/^[0-9a-f-]{20,}$/i.test(t) &&
+      !/@(s\.whatsapp\.net|c\.us|g\.us|lid)$/i.test(t)
+    ) {
+      parts.push(t);
+    }
+    const fromJson = labelsFromParamsJson(t);
+    if (fromJson) {
+      buttons.push(fromJson.url ? `${fromJson.label} → ${fromJson.url}` : fromJson.label);
+    } else {
+      try {
+        const parsed = JSON.parse(t);
+        const nested = deepHarvestInteractive(parsed, depth + 1);
+        parts.push(...nested.parts);
+        buttons.push(...nested.buttons);
+      } catch {
+        /* not json */
+      }
+    }
+    return { parts, buttons };
+  }
+
+  if (Array.isArray(root)) {
+    for (const item of root) {
+      const nested = deepHarvestInteractive(item, depth + 1);
+      parts.push(...nested.parts);
+      buttons.push(...nested.buttons);
+    }
+    return { parts, buttons };
+  }
+
+  if (typeof root !== "object") return { parts, buttons };
+  const o = root as Record<string, any>;
+
+  // Preferência: campos tipados de UI
+  parts.push(...textFieldsFrom(o));
+  buttons.push(...buttonLabels(o.hydratedButtons ?? o.buttons ?? o.templateButtons));
+
+  const interestingKeys = new Set([
+    "hydratedTemplate",
+    "hydratedFourRowTemplate",
+    "fourRowTemplate",
+    "hydratedHsm",
+    "nativeFlowMessage",
+    "buttonMessage",
+    "carouselMessage",
+    "header",
+    "body",
+    "footer",
+    "interactiveMessage",
+    "templateMessage",
+    "buttonsMessage",
+    "listMessage",
+    "highlyStructuredMessage",
+    "productMessage",
+    "orderMessage",
+    "groupInviteMessage",
+    "newsletterAdminInviteMessage",
+    "externalAdReply",
+    "hydratedButtons",
+    "buttons",
+    "sections",
+    "rows",
+    "cards",
+    "action",
+    "parameters",
+    "components"
+  ]);
+
+  for (const [k, v] of Object.entries(o)) {
+    if (k === "key" || k === "messageContextInfo" || k === "deviceListMetadata") continue;
+    if (interestingKeys.has(k) || depth <= 2) {
+      const nested = deepHarvestInteractive(v, depth + 1);
+      parts.push(...nested.parts);
+      buttons.push(...nested.buttons);
+    }
+  }
+
+  return { parts, buttons };
+}
+
+function uniqKeepOrder(items: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of items) {
+    const t = raw.trim();
+    if (!t || seen.has(t)) continue;
+    seen.add(t);
+    out.push(t);
+  }
   return out;
 }
 
@@ -208,19 +348,30 @@ function extractTemplateLikeText(
 ): string {
   const meta = extractMetaTemplateComponents(container.components);
   const templateName = String(container.name ?? "").trim();
+  const deep = deepHarvestInteractive(container);
   const fieldParts = textFieldsFrom(container).filter((p) => p !== templateName);
-  const parts = [
+  const parts = uniqKeepOrder([
     ...fieldParts,
     ...textsFromParamsJson(container.messageParamsJson ?? container.messageParamsJSON),
-    ...meta.parts
-  ];
-  const buttons = [
+    ...meta.parts,
+    ...deep.parts.filter((p) => p !== templateName && !/^📄/.test(p))
+  ]);
+  const buttons = uniqKeepOrder([
     ...buttonLabels(buttonsSource ?? container.hydratedButtons ?? container.buttons),
-    ...meta.buttons
-  ];
+    ...meta.buttons,
+    ...deep.buttons
+  ]);
   const composed = composeButtonText(parts, buttons, "");
-  if (composed) return composed;
-  if (templateName) return composeButtonText([`📄 Template: ${templateName}`], buttons, fallback);
+  if (composed && !isButtonPlaceholderBody(composed)) return composed;
+  if (templateName) {
+    return opaqueInteractiveFallback({
+      title: `Template: ${templateName}`,
+      buttons
+    });
+  }
+  if (buttons.length > 0) {
+    return opaqueInteractiveFallback({ buttons });
+  }
   return fallback;
 }
 
@@ -240,7 +391,9 @@ function parseMessageContent(
       (msg.editedMessage as Record<string, unknown> | undefined)?.message ??
       (msg.deviceSentMessage as Record<string, unknown> | undefined)?.message ??
       (msg.futureProofMessage as Record<string, unknown> | undefined)?.message ??
-      (msg.botInvokeMessage as Record<string, unknown> | undefined)?.message;
+      (msg.botInvokeMessage as Record<string, unknown> | undefined)?.message ??
+      (msg.associatedChildMessage as Record<string, unknown> | undefined)?.message ??
+      (msg.groupStatusMessage as Record<string, unknown> | undefined)?.message;
     if (wrapped) {
       const inner = coerceMessageObject(wrapped);
       if (Object.keys(inner).length > 0) {
@@ -257,7 +410,9 @@ function parseMessageContent(
     return { text: String(ext.text ?? "").trim(), type: "chat" };
   }
 
-  // Mensagens com BOTÃO / template / lista / interativas (API oficial).
+  const opaque = opaqueInteractiveFallback();
+
+  // Mensagens com BOTÃO / template / lista / interativas (API oficial / Meta→você).
   // Sem isto, caíam no fallback vazio e eram DESCARTADAS (nunca gravadas).
   if (msg.templateMessage && typeof msg.templateMessage === "object") {
     const tm = msg.templateMessage as Record<string, any>;
@@ -274,7 +429,7 @@ function parseMessageContent(
       text: extractTemplateLikeText(
         merged,
         merged.hydratedButtons ?? tm.hydratedButtons,
-        "📄 Mensagem com botões"
+        opaqueInteractiveFallback({ kind: "template" })
       ),
       type: "chat"
     };
@@ -287,7 +442,11 @@ function parseMessageContent(
     );
     if (looksMeta) {
       return {
-        text: extractTemplateLikeText(msg as Record<string, any>, undefined, "📄 Mensagem com botões"),
+        text: extractTemplateLikeText(
+          msg as Record<string, any>,
+          undefined,
+          opaqueInteractiveFallback({ kind: "template" })
+        ),
         type: "chat"
       };
     }
@@ -295,7 +454,11 @@ function parseMessageContent(
   if (msg.buttonsMessage && typeof msg.buttonsMessage === "object") {
     const bm = msg.buttonsMessage as Record<string, any>;
     return {
-      text: extractTemplateLikeText(bm, bm.buttons, "📄 Mensagem com botões"),
+      text: extractTemplateLikeText(
+        bm,
+        bm.buttons,
+        opaqueInteractiveFallback({ kind: "botões" })
+      ),
       type: "chat"
     };
   }
@@ -311,25 +474,34 @@ function parseMessageContent(
     const cardButtons = cards.flatMap((c) =>
       buttonLabels(c.nativeFlowMessage?.buttons ?? c.buttons)
     );
-    const buttons = [
+    const buttons = uniqKeepOrder([
       ...buttonLabels(im.nativeFlowMessage?.buttons),
       ...buttonLabels(im.buttonMessage?.buttons),
       ...buttonLabels(im.buttons),
       ...cardButtons
-    ];
+    ]);
+    const deep = deepHarvestInteractive(im);
+    const text = composeButtonText(
+      uniqKeepOrder([
+        im.header?.title,
+        im.body?.text,
+        im.footer?.text,
+        ...textFieldsFrom(im),
+        ...textsFromParamsJson(im.nativeFlowMessage?.messageParamsJson),
+        ...cardTexts,
+        ...deep.parts
+      ]),
+      uniqKeepOrder([...buttons, ...deep.buttons]),
+      ""
+    );
     return {
-      text: composeButtonText(
-        [
-          im.header?.title,
-          im.body?.text,
-          im.footer?.text,
-          ...textFieldsFrom(im),
-          ...textsFromParamsJson(im.nativeFlowMessage?.messageParamsJson),
-          ...cardTexts
-        ],
-        buttons,
-        "📄 Mensagem interativa"
-      ),
+      text:
+        text && !isButtonPlaceholderBody(text)
+          ? text
+          : opaqueInteractiveFallback({
+              kind: "interativa",
+              buttons: uniqKeepOrder([...buttons, ...deep.buttons])
+            }),
       type: "chat"
     };
   }
@@ -356,9 +528,38 @@ function parseMessageContent(
     const hs = msg.highlyStructuredMessage as Record<string, any>;
     const h = hs.hydratedHsm ?? hs;
     return {
-      text: extractTemplateLikeText(h, h.hydratedButtons, "📄 Mensagem com botões"),
+      text: extractTemplateLikeText(
+        h,
+        h.hydratedButtons,
+        opaqueInteractiveFallback({ kind: "HSM" })
+      ),
       type: "chat"
     };
+  }
+  if (msg.productMessage && typeof msg.productMessage === "object") {
+    const pm = msg.productMessage as Record<string, any>;
+    const product = (pm.product ?? pm) as Record<string, any>;
+    const text = composeButtonText(
+      [
+        product.title ?? product.name,
+        product.description,
+        product.currencyCode && product.priceAmount1000 != null
+          ? `${product.currencyCode} ${(Number(product.priceAmount1000) / 1000).toFixed(2)}`
+          : ""
+      ],
+      [],
+      opaqueInteractiveFallback({ kind: "produto" })
+    );
+    return { text, type: "chat" };
+  }
+  if (msg.groupInviteMessage && typeof msg.groupInviteMessage === "object") {
+    const gi = msg.groupInviteMessage as Record<string, any>;
+    const text = composeButtonText(
+      [gi.groupName ? `Convite: ${gi.groupName}` : "Convite de grupo", gi.caption ?? gi.inviteMessage],
+      [],
+      opaqueInteractiveFallback({ kind: "convite" })
+    );
+    return { text, type: "chat" };
   }
   // Respostas do cliente a botões/listas.
   if (msg.templateButtonReplyMessage && typeof msg.templateButtonReplyMessage === "object") {
@@ -414,15 +615,48 @@ function parseMessageContent(
     if (text) return { text, type: "chat" };
   }
 
+  // Varredura profunda no message + payload antes de desistir.
+  const harvested = deepHarvestInteractive({ msg, payload });
+  const harvestedText = composeButtonText(
+    uniqKeepOrder(harvested.parts).slice(0, 6),
+    uniqKeepOrder(harvested.buttons).slice(0, 8),
+    ""
+  );
+  if (harvestedText && !isButtonPlaceholderBody(harvestedText)) {
+    return { text: harvestedText, type: "chat" };
+  }
+
   const payloadType = String(payload?.messageType ?? "").toLowerCase();
-  if (payloadType.includes("template") || payloadType.includes("button") || payloadType.includes("interactive")) {
-    return { text: "📄 Mensagem com botões", type: "chat" };
+  if (
+    payloadType.includes("template") ||
+    payloadType.includes("button") ||
+    payloadType.includes("interactive") ||
+    payloadType.includes("hsm") ||
+    payloadType.includes("list")
+  ) {
+    return {
+      text: opaqueInteractiveFallback({
+        kind: payloadType.replace(/message$/i, "") || "Meta",
+        buttons: uniqKeepOrder(harvested.buttons).slice(0, 8)
+      }),
+      type: "chat"
+    };
   }
   if (payloadType.includes("audio")) return { text: "", type: "audio" };
   if (payloadType.includes("image")) return { text: "", type: "image" };
   if (payloadType.includes("video")) return { text: "", type: "video" };
   if (payloadType.includes("document")) return { text: "📎 Documento", type: "document" };
   if (payloadType.includes("sticker")) return { text: "", type: "sticker" };
+
+  // Se o message tem chaves tipicamente interativas mas vazias:
+  if (
+    msg.templateMessage ||
+    msg.buttonsMessage ||
+    msg.interactiveMessage ||
+    msg.highlyStructuredMessage
+  ) {
+    return { text: opaque, type: "chat" };
+  }
 
   return { text: "", type: "chat" };
 }

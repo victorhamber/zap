@@ -9,7 +9,7 @@ import { WhatsAppAvatar } from "./WhatsAppAvatar";
 import { ForwardMessageModal } from "./ForwardMessageModal";
 import { ContactProfilePanel } from "./ContactProfilePanel";
 import { LinkifyText } from "./LinkifyText";
-import { TemplateMessageBody, hasTemplateButtons } from "./TemplateButtons";
+import { TemplateMessageBody, hasTemplateButtons, isOpaqueInteractiveBody } from "./TemplateButtons";
 
 type Tag = { id: string; name: string; color: string };
 type ChatKind = "direct" | "group" | "community";
@@ -260,7 +260,7 @@ const InboxMessageContent = memo(function InboxMessageContent({
   }
   // Template / mensagem com botões: mostra o texto e transforma cada botão em
   // link (o painel não reproduz o botão nativo do WhatsApp).
-  if (hasTemplateButtons(m.body)) {
+  if (hasTemplateButtons(m.body) || isOpaqueInteractiveBody(m.body)) {
     return <TemplateMessageBody body={m.body} />;
   }
   return (
@@ -778,7 +778,7 @@ export function WhatsAppInbox() {
     void loadMessages(selected, true, true);
     // Poll rápido só-banco (leve) + sync completo esporádico como rede de segurança
     // caso o webhook perca alguma mensagem.
-    const fast = setInterval(() => loadMessages(selected, true, false), 3000);
+    const fast = setInterval(() => loadMessages(selected, true, false), 2000);
     const full = setInterval(() => loadMessages(selected, true, true), 20000);
     return () => {
       clearInterval(fast);

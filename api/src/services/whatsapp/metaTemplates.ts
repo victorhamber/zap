@@ -266,7 +266,8 @@ export async function hydrateTemplatePlaceholder(params: {
 }): Promise<string> {
   const text = params.text ?? "";
   const namedPlaceholder = text.trim().match(/^📄\s*Template:\s*(.+)$/i);
-  const isGeneric = /^(📄\s*)?(Mensagem com botões|Mensagem interativa)$/i.test(text.trim());
+  const isGeneric = /^(📄\s*)?(Mensagem com botões|Mensagem interativa)/i.test(text.trim()) ||
+    /não chega pela Evolution/i.test(text);
   if (!namedPlaceholder && !isGeneric) return text;
 
   const node = findTemplateNode(params.raw);
