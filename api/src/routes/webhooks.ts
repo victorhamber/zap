@@ -231,7 +231,7 @@ export async function webhookRoutes(app: FastifyInstance) {
         error: "Webhook não autorizado",
         sampleSaved: true,
         hint:
-          "A Trajettu não envia header. Deixe o segredo vazio no gatilho OU cole a URL com ?secret=SEU_SEGREDO no painel da Trajettu."
+          "Segredo inválido ou ausente. Deixe o segredo vazio no gatilho OU envie x-webhook-secret / ?secret= na URL."
       });
     }
 

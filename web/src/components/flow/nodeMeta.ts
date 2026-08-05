@@ -105,9 +105,7 @@ export function defaultNodeData(type: string): Record<string, unknown> {
         }
       };
     case "trigger_custom_webhook":
-      // Segredo vazio por padrão: Trajettu (e a maioria dos forms) só faz POST JSON
-      // sem header custom. Se quiser proteger, preencha o segredo e cole a URL
-      // com ?secret=... no painel da Trajettu.
+      // Genérico: qualquer origem POST JSON. Segredo opcional.
       return {
         secret: "",
         mapping: {

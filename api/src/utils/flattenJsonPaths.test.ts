@@ -43,7 +43,7 @@ describe("extractCustomWebhookVariables", () => {
     assert.match(String(vars.phone), /5511988887777|11988887777/);
   });
 
-  it("reconhece payload Trajettu (fn/ln/phone/email) sem mapeamento", () => {
+  it("reconhece payload comum (fn/ln/phone/email) sem mapeamento", () => {
     const vars = extractCustomWebhookVariables(
       {
         fn: "victor",
@@ -59,6 +59,17 @@ describe("extractCustomWebhookVariables", () => {
     assert.equal(vars.email, "v@x.com");
     assert.equal(vars.externalId, "abc123");
     assert.match(String(vars.phone), /5511999998888/);
+  });
+
+  it("path mapeado tem prioridade e falha se vazio", () => {
+    assert.throws(
+      () =>
+        extractCustomWebhookVariables(
+          { phone: "5511999998888", other: "x" },
+          { phonePath: "$.missing", namePath: "$.other", emailPath: "" }
+        ),
+      /Telefone não encontrado/
+    );
   });
 
   it("exige telefone em algum lugar", () => {

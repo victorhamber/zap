@@ -832,10 +832,10 @@ export function FlowNodeProperties({
                 </button>
               </div>
               <p className="text-zinc-500">
-                Cole esta URL em <strong className="text-zinc-400">Webhooks</strong> do formulário Trajettu.
-                O embed já dispara o POST da Trajettu para cá. Depois: envie um lead de teste →{" "}
-                <strong className="text-zinc-400">Atualizar sample</strong> → (se precisar) mapear → ativar o
-                fluxo.
+                URL genérica: qualquer plataforma que faça <strong className="text-zinc-400">POST JSON</strong>{" "}
+                pode usar. Fluxo: enviar um payload de teste →{" "}
+                <strong className="text-zinc-400">Atualizar sample</strong> → mapear nome / telefone / e-mail →
+                salvar e ativar.
               </p>
             </div>
 
@@ -844,7 +844,7 @@ export function FlowNodeProperties({
               <input
                 value={String(config.secret ?? "")}
                 onChange={(e) => onUpdate({ secret: e.target.value })}
-                placeholder="deixe vazio para Trajettu"
+                placeholder="opcional"
                 className="flex-1 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white font-mono"
               />
               <button
@@ -855,11 +855,10 @@ export function FlowNodeProperties({
                 {copiedSecret ? "OK" : "Copiar"}
               </button>
             </div>
-            <p className="text-[11px] text-amber-200/80">
-              Se o segredo estiver preenchido e a Trajettu não incluir{" "}
-              <code>?secret=...</code> na URL, o Zap recebe o lead (sample) mas{" "}
-              <strong>não dispara o fluxo</strong>. Deixe vazio ou use &quot;Copiar URL&quot; (já inclui o
-              secret).
+            <p className="text-[11px] text-zinc-500">
+              Se preenchido, a origem deve enviar header <code>x-webhook-secret</code> ou{" "}
+              <code>?secret=</code> na URL (o botão Copiar URL já inclui o secret). Sem segredo, qualquer POST
+              na URL é aceito.
             </p>
 
             {!webhookInfo?.sample ? (

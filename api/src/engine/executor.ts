@@ -912,9 +912,10 @@ export function getCustomWebhookConfigFromGraph(graph: FlowGraph): TriggerCustom
 }
 
 /**
- * Extrai name/phone/email de um payload genérico via JSONPath configurado no nó.
- * Se o mapeamento estiver vazio, tenta campos comuns de formulários Trajettu/captura
- * (fn/ln/phone/email, name/fullname, fields.*).
+ * Extrai name/phone/email de QUALQUER payload JSON via mapeamento (JSONPath).
+ * Sem acoplamento a plataforma: o match é só o que o usuário configurou no nó.
+ * Se um path estiver vazio, tenta chaves genéricas comuns (phone, email, name…)
+ * só para facilitar o primeiro teste — o mapeamento explícito sempre tem prioridade.
  */
 export function extractCustomWebhookVariables(
   payload: unknown,
@@ -934,83 +935,106 @@ export function extractCustomWebhookVariables(
     return "";
   };
 
-  const rawPhone =
-    pickFirst(
-      phonePath,
-      "$.phone",
-      "$.telefone",
-      "$.tel",
-      "$.celular",
-      "$.whatsapp",
-      "$.data.phone",
-      "$.buyer.phone",
-      "$.customer.phone",
-      "$.fields.phone",
-      "$.fields.telefone"
-    ) || "";
+  // Path mapeado é contrato: se definido, só ele. Senão, chaves genéricas.
+  const rawPhone = phonePath
+    ? pickFirst(phonePath)
+    : pickFirst(
+        "$.phone",
+        "$.telefone",
+        "$.tel",
+        "$.celular",
+        "$.whatsapp",
+        "$.mobile",
+        "$.data.phone",
+        "$.buyer.phone",
+        "$.customer.phone",
+        "$.contact.phone",
+        "$.fields.phone",
+        "$.fields.telefone"
+      );
 
   if (!rawPhone) {
     throw new Error(
       phonePath
         ? `Telefone não encontrado no path ${phonePath}`
-        : "Telefone não encontrado (mapeie phonePath ou envie phone/telefone no JSON)."
+        : "Telefone não encontrado. Mapeie o campo telefone no gatilho (ou envie phone no JSON)."
     );
   }
 
-  // Trajettu split: fn + ln → nome completo
-  const fn = pickFirst("$.fn", "$.first_name", "$.firstname", "$.fields.fn");
-  const ln = pickFirst("$.ln", "$.last_name", "$.lastname", "$.fields.ln");
-  const composedFromParts = [fn, ln].filter(Boolean).join(" ").trim();
+  let fullName = "";
+  if (namePath) {
+    fullName = pickFirst(namePath);
+  } else {
+    const fn = pickFirst(
+      "$.fn",
+      "$.first_name",
+      "$.firstname",
+      "$.firstName",
+      "$.fields.fn",
+      "$.fields.first_name"
+    );
+    const ln = pickFirst(
+      "$.ln",
+      "$.last_name",
+      "$.lastname",
+      "$.lastName",
+      "$.fields.ln",
+      "$.fields.last_name"
+    );
+    const composed = [fn, ln].filter(Boolean).join(" ").trim();
+    fullName =
+      pickFirst(
+        "$.fullname",
+        "$.name",
+        "$.nome",
+        "$.full_name",
+        "$.fullName",
+        "$.buyer.name",
+        "$.customer.name",
+        "$.contact.name",
+        "$.fields.fullname",
+        "$.fields.name",
+        "$.fields.nome"
+      ) || composed;
+  }
 
-  const fullName =
-    pickFirst(
-      namePath,
-      "$.fullname",
-      "$.name",
-      "$.nome",
-      "$.full_name",
-      "$.fullName",
-      "$.buyer.name",
-      "$.customer.name",
-      "$.fields.fullname",
-      "$.fields.name",
-      "$.fields.nome"
-    ) ||
-    composedFromParts ||
-    "Cliente";
-
-  if (!namePath && !composedFromParts && fullName === "Cliente") {
-    // Ainda sem nome mapeado e sem fn — avisa só se o usuário já tentou mapear
-    if (mapping.namePath?.trim()) {
-      throw new Error(`Nome não encontrado no path ${mapping.namePath}`);
+  if (!fullName.trim()) {
+    if (namePath) {
+      throw new Error(`Nome não encontrado no path ${namePath}`);
     }
+    fullName = "Cliente";
   }
 
   const name = firstNameFromFullName(fullName);
-  const email = pickFirst(
-    emailPath,
-    "$.email",
-    "$.mail",
-    "$.e_mail",
-    "$.buyer.email",
-    "$.customer.email",
-    "$.fields.email"
-  );
-  const externalId = pickFirst(
-    externalIdPath,
-    "$.event_id",
-    "$.eventId",
-    "$.id",
-    "$.order_id",
-    "$.transaction_id"
-  );
+  const email = emailPath
+    ? pickFirst(emailPath)
+    : pickFirst(
+        "$.email",
+        "$.mail",
+        "$.e_mail",
+        "$.buyer.email",
+        "$.customer.email",
+        "$.contact.email",
+        "$.fields.email"
+      );
+  const externalId = externalIdPath
+    ? pickFirst(externalIdPath)
+    : pickFirst(
+        "$.event_id",
+        "$.eventId",
+        "$.id",
+        "$.order_id",
+        "$.orderId",
+        "$.transaction_id",
+        "$.transactionId"
+      );
 
   const normalizedPhone = assertValidWhatsAppPhone(rawPhone);
 
   return {
     phone: normalizedPhone,
     name,
-    fullName,
+    fullName: fullName.trim(),
     email,
     externalId,
     source: "custom_webhook"
