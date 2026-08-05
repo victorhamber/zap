@@ -43,14 +43,32 @@ describe("extractCustomWebhookVariables", () => {
     assert.match(String(vars.phone), /5511988887777|11988887777/);
   });
 
-  it("exige mapeamento de telefone", () => {
+  it("reconhece payload Trajettu (fn/ln/phone/email) sem mapeamento", () => {
+    const vars = extractCustomWebhookVariables(
+      {
+        fn: "victor",
+        ln: "hamber",
+        email: "v@x.com",
+        phone: "+5511999998888",
+        event_id: "abc123"
+      },
+      { phonePath: "", namePath: "", emailPath: "" }
+    );
+    assert.equal(vars.name, "victor");
+    assert.equal(vars.fullName, "victor hamber");
+    assert.equal(vars.email, "v@x.com");
+    assert.equal(vars.externalId, "abc123");
+    assert.match(String(vars.phone), /5511999998888/);
+  });
+
+  it("exige telefone em algum lugar", () => {
     assert.throws(
       () =>
         extractCustomWebhookVariables(
           { a: 1 },
           { namePath: "$.a", phonePath: "", emailPath: "" }
         ),
-      /telefone|phonePath/i
+      /Telefone/i
     );
   });
 });

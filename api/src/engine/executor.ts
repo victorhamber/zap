@@ -913,33 +913,97 @@ export function getCustomWebhookConfigFromGraph(graph: FlowGraph): TriggerCustom
 
 /**
  * Extrai name/phone/email de um payload genérico via JSONPath configurado no nó.
- * Diferente do Hotmart: sem eventos/status e sem builder de DDD Hotmart.
+ * Se o mapeamento estiver vazio, tenta campos comuns de formulários Trajettu/captura
+ * (fn/ln/phone/email, name/fullname, fields.*).
  */
 export function extractCustomWebhookVariables(
   payload: unknown,
   mapping: CustomWebhookMapping
 ): Record<string, unknown> {
-  if (!mapping.phonePath?.trim()) {
-    throw new Error("Mapeie o campo telefone (phonePath) no gatilho Webhook personalizado.");
-  }
-  if (!mapping.namePath?.trim()) {
-    throw new Error("Mapeie o campo nome (namePath) no gatilho Webhook personalizado.");
+  const phonePath = mapping.phonePath?.trim() || "";
+  const namePath = mapping.namePath?.trim() || "";
+  const emailPath = mapping.emailPath?.trim() || "";
+  const externalIdPath = mapping.externalIdPath?.trim() || "";
+
+  const pickFirst = (...paths: string[]): string => {
+    for (const p of paths) {
+      if (!p) continue;
+      const v = asString(getByPath(payload, p));
+      if (v?.trim()) return v.trim();
+    }
+    return "";
+  };
+
+  const rawPhone =
+    pickFirst(
+      phonePath,
+      "$.phone",
+      "$.telefone",
+      "$.tel",
+      "$.celular",
+      "$.whatsapp",
+      "$.data.phone",
+      "$.buyer.phone",
+      "$.customer.phone",
+      "$.fields.phone",
+      "$.fields.telefone"
+    ) || "";
+
+  if (!rawPhone) {
+    throw new Error(
+      phonePath
+        ? `Telefone não encontrado no path ${phonePath}`
+        : "Telefone não encontrado (mapeie phonePath ou envie phone/telefone no JSON)."
+    );
   }
 
-  const rawPhone = asString(getByPath(payload, mapping.phonePath));
-  if (!rawPhone?.trim()) {
-    throw new Error(`Telefone não encontrado no path ${mapping.phonePath}`);
-  }
+  // Trajettu split: fn + ln → nome completo
+  const fn = pickFirst("$.fn", "$.first_name", "$.firstname", "$.fields.fn");
+  const ln = pickFirst("$.ln", "$.last_name", "$.lastname", "$.fields.ln");
+  const composedFromParts = [fn, ln].filter(Boolean).join(" ").trim();
 
   const fullName =
-    asString(getByPath(payload, mapping.namePath))?.trim() || "Cliente";
+    pickFirst(
+      namePath,
+      "$.fullname",
+      "$.name",
+      "$.nome",
+      "$.full_name",
+      "$.fullName",
+      "$.buyer.name",
+      "$.customer.name",
+      "$.fields.fullname",
+      "$.fields.name",
+      "$.fields.nome"
+    ) ||
+    composedFromParts ||
+    "Cliente";
+
+  if (!namePath && !composedFromParts && fullName === "Cliente") {
+    // Ainda sem nome mapeado e sem fn — avisa só se o usuário já tentou mapear
+    if (mapping.namePath?.trim()) {
+      throw new Error(`Nome não encontrado no path ${mapping.namePath}`);
+    }
+  }
+
   const name = firstNameFromFullName(fullName);
-  const email = mapping.emailPath?.trim()
-    ? asString(getByPath(payload, mapping.emailPath)) ?? ""
-    : "";
-  const externalId = mapping.externalIdPath?.trim()
-    ? asString(getByPath(payload, mapping.externalIdPath)) ?? ""
-    : "";
+  const email = pickFirst(
+    emailPath,
+    "$.email",
+    "$.mail",
+    "$.e_mail",
+    "$.buyer.email",
+    "$.customer.email",
+    "$.fields.email"
+  );
+  const externalId = pickFirst(
+    externalIdPath,
+    "$.event_id",
+    "$.eventId",
+    "$.id",
+    "$.order_id",
+    "$.transaction_id"
+  );
 
   const normalizedPhone = assertValidWhatsAppPhone(rawPhone);
 

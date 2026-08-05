@@ -825,7 +825,9 @@ export function FlowNodeProperties({
                 </button>
               </div>
               <p className="text-zinc-500">
-                1) Copie a URL · 2) Envie um POST JSON de qualquer lugar · 3) Mapeie os campos abaixo · 4) Salve e
+                1) Copie a URL · 2) No formulário Trajettu (ou qualquer origem), configure o webhook de saída /
+                um POST para esta URL — o embed HTML sozinho posta em{" "}
+                <code>api.trajettu.com</code>, não no Zap · 3) Mapeie os campos (ou use sugestões) · 4) Salve e
                 ative o fluxo.
               </p>
             </div>
