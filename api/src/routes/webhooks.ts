@@ -203,21 +203,14 @@ export async function webhookRoutes(app: FastifyInstance) {
 
     const config = getCustomWebhookConfigFromGraph(graph);
     const expectedSecret = config.secret?.trim();
-    if (expectedSecret) {
-      const headerSecret = req.headers["x-webhook-secret"];
-      const qs = (req.query as { secret?: string }).secret;
-      const provided =
-        (typeof headerSecret === "string" ? headerSecret : "") ||
-        (typeof qs === "string" ? qs : "");
-      if (provided !== expectedSecret) {
-        return reply.status(401).send({
-          error: "Webhook não autorizado",
-          hint: "Envie o header x-webhook-secret ou ?secret= com o segredo configurado no gatilho."
-        });
-      }
-    }
+    const headerSecret = req.headers["x-webhook-secret"];
+    const qs = (req.query as { secret?: string }).secret;
+    const provided =
+      (typeof headerSecret === "string" ? headerSecret : "") ||
+      (typeof qs === "string" ? qs : "");
+    const authOk = !expectedSecret || provided === expectedSecret;
 
-    // Sempre salva o sample (mesmo se mapping incompleto) para o usuário mapear na UI.
+    // Sempre grava o sample (mesmo com segredo errado) para diagnosticar no editor.
     await prisma.flow
       .update({
         where: { id: flowId },
@@ -229,6 +222,18 @@ export async function webhookRoutes(app: FastifyInstance) {
       .catch((err: unknown) => {
         console.warn("[custom-webhook] falha ao gravar sample:", err);
       });
+
+    if (!authOk) {
+      console.warn(
+        `[custom-webhook] flow=${flowId} secret inválido/ausente — sample salvo, run bloqueado`
+      );
+      return reply.status(401).send({
+        error: "Webhook não autorizado",
+        sampleSaved: true,
+        hint:
+          "A Trajettu não envia header. Deixe o segredo vazio no gatilho OU cole a URL com ?secret=SEU_SEGREDO no painel da Trajettu."
+      });
+    }
 
     if (!flow.enabled) {
       console.warn(`[custom-webhook] Fluxo ${flowId} desativado — sample salvo, run ignorado`);

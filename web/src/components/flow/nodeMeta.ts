@@ -91,12 +91,6 @@ export function customWebhookUrl(flowId: string): string {
   return `${origin}/api/webhooks/custom/${flowId}`;
 }
 
-function randomWebhookSecret(): string {
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 export function defaultNodeData(type: string): Record<string, unknown> {
   switch (type) {
     case "trigger_hotmart":
@@ -111,8 +105,11 @@ export function defaultNodeData(type: string): Record<string, unknown> {
         }
       };
     case "trigger_custom_webhook":
+      // Segredo vazio por padrão: Trajettu (e a maioria dos forms) só faz POST JSON
+      // sem header custom. Se quiser proteger, preencha o segredo e cole a URL
+      // com ?secret=... no painel da Trajettu.
       return {
-        secret: randomWebhookSecret(),
+        secret: "",
         mapping: {
           phonePath: "",
           namePath: "",

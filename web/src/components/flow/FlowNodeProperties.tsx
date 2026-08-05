@@ -279,8 +279,15 @@ export function FlowNodeProperties({
 
   async function copyWebhookUrl() {
     if (!webhookUrl) return;
+    // Trajettu não manda header — se houver segredo, cola ?secret= na URL.
+    const secret =
+      nodeType === "trigger_custom_webhook" ? String(config.secret ?? "").trim() : "";
+    const toCopy =
+      secret && !webhookUrl.includes("secret=")
+        ? `${webhookUrl}?secret=${encodeURIComponent(secret)}`
+        : webhookUrl;
     try {
-      await navigator.clipboard.writeText(webhookUrl);
+      await navigator.clipboard.writeText(toCopy);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -825,10 +832,10 @@ export function FlowNodeProperties({
                 </button>
               </div>
               <p className="text-zinc-500">
-                1) Copie a URL · 2) No formulário Trajettu (ou qualquer origem), configure o webhook de saída /
-                um POST para esta URL — o embed HTML sozinho posta em{" "}
-                <code>api.trajettu.com</code>, não no Zap · 3) Mapeie os campos (ou use sugestões) · 4) Salve e
-                ative o fluxo.
+                Cole esta URL em <strong className="text-zinc-400">Webhooks</strong> do formulário Trajettu.
+                O embed já dispara o POST da Trajettu para cá. Depois: envie um lead de teste →{" "}
+                <strong className="text-zinc-400">Atualizar sample</strong> → (se precisar) mapear → ativar o
+                fluxo.
               </p>
             </div>
 
@@ -837,7 +844,7 @@ export function FlowNodeProperties({
               <input
                 value={String(config.secret ?? "")}
                 onChange={(e) => onUpdate({ secret: e.target.value })}
-                placeholder="x-webhook-secret"
+                placeholder="deixe vazio para Trajettu"
                 className="flex-1 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white font-mono"
               />
               <button
@@ -848,9 +855,11 @@ export function FlowNodeProperties({
                 {copiedSecret ? "OK" : "Copiar"}
               </button>
             </div>
-            <p className="text-[11px] text-zinc-600">
-              Se preenchido, o provedor deve enviar header <code>x-webhook-secret</code> ou{" "}
-              <code>?secret=</code>.
+            <p className="text-[11px] text-amber-200/80">
+              Se o segredo estiver preenchido e a Trajettu não incluir{" "}
+              <code>?secret=...</code> na URL, o Zap recebe o lead (sample) mas{" "}
+              <strong>não dispara o fluxo</strong>. Deixe vazio ou use &quot;Copiar URL&quot; (já inclui o
+              secret).
             </p>
 
             {!webhookInfo?.sample ? (
