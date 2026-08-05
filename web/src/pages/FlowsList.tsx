@@ -12,13 +12,49 @@ import {
   PageHeader,
   Skeleton
 } from "../components/ui";
+import { customWebhookUrl, hotmartWebhookUrl } from "../components/flow/nodeMeta";
+
+type FlowGraphNode = { type?: string };
 
 type Flow = {
   id: string;
   name: string;
   enabled: boolean;
   updatedAt: string;
+  graphJson?: { nodes?: FlowGraphNode[] };
 };
+
+type WebhookShortcut = {
+  kind: "hotmart" | "custom" | null;
+  path: string;
+  fullUrl: string;
+  label: string;
+};
+
+function webhookShortcutForFlow(flow: Flow): WebhookShortcut | null {
+  const nodes = flow.graphJson?.nodes ?? [];
+  const types = new Set(nodes.map((n) => String(n.type ?? "")));
+
+  if (types.has("trigger_custom_webhook")) {
+    const fullUrl = customWebhookUrl(flow.id);
+    return {
+      kind: "custom",
+      path: `/api/webhooks/custom/${flow.id}`,
+      fullUrl,
+      label: "Webhook personalizado"
+    };
+  }
+  if (types.has("trigger_hotmart") || types.has("trigger_hotmart_pending")) {
+    const fullUrl = hotmartWebhookUrl(flow.id);
+    return {
+      kind: "hotmart",
+      path: `/api/webhooks/hotmart/${flow.id}`,
+      fullUrl,
+      label: "Webhook Hotmart"
+    };
+  }
+  return null;
+}
 
 function formatUpdatedAt(iso: string): string {
   const d = new Date(iso);
@@ -95,16 +131,17 @@ export function FlowsList() {
   }
 
   async function copyWebhook(flow: Flow) {
-    const url = `${window.location.origin}/api/webhooks/hotmart/${flow.id}`;
+    const shortcut = webhookShortcutForFlow(flow);
+    if (!shortcut) return;
     try {
-      await navigator.clipboard.writeText(url);
+      await navigator.clipboard.writeText(shortcut.fullUrl);
       setCopiedId(flow.id);
       window.setTimeout(
         () => setCopiedId((c) => (c === flow.id ? null : c)),
         2000
       );
     } catch {
-      window.prompt("Copie a URL do webhook:", url);
+      window.prompt("Copie a URL do webhook:", shortcut.fullUrl);
     }
   }
 
