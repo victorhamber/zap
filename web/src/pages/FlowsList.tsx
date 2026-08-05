@@ -178,7 +178,9 @@ export function FlowsList() {
         />
       ) : (
         <div className="space-y-3">
-          {flows.map((f) => (
+          {flows.map((f) => {
+            const webhook = webhookShortcutForFlow(f);
+            return (
             <Card key={f.id} padded={false} interactive className="p-4">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
@@ -193,10 +195,11 @@ export function FlowsList() {
                     Atualizado em {formatUpdatedAt(f.updatedAt)}
                   </p>
 
+                  {webhook ? (
                   <button
                     type="button"
                     onClick={() => void copyWebhook(f)}
-                    title="Copiar URL do webhook Hotmart"
+                    title={`Copiar URL — ${webhook.label}`}
                     className="group mt-3 inline-flex max-w-full items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-2.5 py-1.5 text-left transition hover:border-brand-500/30"
                   >
                     <Icon
@@ -208,9 +211,10 @@ export function FlowsList() {
                     <code className="truncate font-mono text-[11px] text-zinc-400">
                       {copiedId === f.id
                         ? "URL do webhook copiada!"
-                        : `/api/webhooks/hotmart/${f.id}`}
+                        : webhook.path}
                     </code>
                   </button>
+                  ) : null}
                 </div>
 
                 <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -240,7 +244,8 @@ export function FlowsList() {
                 </div>
               </div>
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
