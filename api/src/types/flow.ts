@@ -1,6 +1,7 @@
 export type NodeType =
   | "trigger_hotmart"
   | "trigger_hotmart_pending"
+  | "trigger_custom_webhook"
   | "trigger_tag"
   | "trigger_broadcast"
   | "trigger_inbound"
@@ -49,6 +50,15 @@ export type HotmartMapping = {
   loginPath?: string;
   passwordPath?: string;
   accessLinkPath?: string;
+};
+
+/** Mapeamento genérico: JSONPath do payload → campos do Zap. */
+export type CustomWebhookMapping = {
+  phonePath: string;
+  namePath: string;
+  emailPath?: string;
+  /** Opcional — dedup de execuções (ex.: id do pedido). */
+  externalIdPath?: string;
 };
 
 export type OfferCodeBranch = {
@@ -118,6 +128,12 @@ export type TriggerHotmartData = {
 
 export type TriggerHotmartPendingData = {
   mapping: HotmartMapping;
+};
+
+export type TriggerCustomWebhookData = {
+  mapping: CustomWebhookMapping;
+  /** Se definido, exige header x-webhook-secret ou ?secret= */
+  secret?: string;
 };
 
 export type TriggerInboundData = {

@@ -1,6 +1,7 @@
 export const NODE_LABELS: Record<string, string> = {
   trigger_hotmart: "Hotmart",
   trigger_hotmart_pending: "Aguardando pagamento",
+  trigger_custom_webhook: "Webhook personalizado",
   trigger_tag: "Gatilho tag",
   trigger_broadcast: "Broadcast",
   trigger_inbound: "Msg recebida",
@@ -34,6 +35,7 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
     items: [
       { type: "trigger_hotmart", label: "Hotmart (compra aprovada)" },
       { type: "trigger_hotmart_pending", label: "Hotmart (aguardando pagamento)" },
+      { type: "trigger_custom_webhook", label: "Webhook personalizado" },
       { type: "trigger_tag", label: "Tag do contato" },
       { type: "trigger_broadcast", label: "Broadcast (todos)" },
       { type: "trigger_inbound", label: "Mensagem recebida" },
@@ -84,6 +86,17 @@ export function hotmartWebhookUrl(flowId: string): string {
   return `${origin}/api/webhooks/hotmart/${flowId}`;
 }
 
+export function customWebhookUrl(flowId: string): string {
+  const origin = window.location.origin.replace(/\/$/, "");
+  return `${origin}/api/webhooks/custom/${flowId}`;
+}
+
+function randomWebhookSecret(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 export function defaultNodeData(type: string): Record<string, unknown> {
   switch (type) {
     case "trigger_hotmart":
@@ -95,6 +108,16 @@ export function defaultNodeData(type: string): Record<string, unknown> {
           emailPath: "$.data.buyer.email",
           productNamePath: "$.data.product.name",
           purchaseIdPath: "$.data.purchase.transaction"
+        }
+      };
+    case "trigger_custom_webhook":
+      return {
+        secret: randomWebhookSecret(),
+        mapping: {
+          phonePath: "",
+          namePath: "",
+          emailPath: "",
+          externalIdPath: ""
         }
       };
     case "condition_contact_tag":

@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Flow" ADD COLUMN IF NOT EXISTS "webhookSample" JSONB;
+ALTER TABLE "Flow" ADD COLUMN IF NOT EXISTS "webhookSampleAt" TIMESTAMP(3);

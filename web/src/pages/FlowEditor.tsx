@@ -69,6 +69,11 @@ function summaryFor(type: string, data: Record<string, unknown>): string {
     return `Round robin · ${n} ramos`;
   }
   if (type === "trigger_hotmart_pending") return "PIX / boleto gerado";
+  if (type === "trigger_custom_webhook") {
+    const mapping = (data.mapping as { phonePath?: string; namePath?: string } | undefined) ?? {};
+    if (mapping.phonePath && mapping.namePath) return "Mapeado · name/phone";
+    return "Aguardando mapeamento";
+  }
   if (type === "tag_action") {
     const mode = data.mode === "remove" ? "Remover" : "Adicionar";
     const names = (data.tagNames as string[] | undefined) ?? [];

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Node } from "@xyflow/react";
 import { api } from "../../api/client";
-import { hotmartWebhookUrl, NODE_LABELS } from "./nodeMeta";
+import { hotmartWebhookUrl, customWebhookUrl, NODE_LABELS } from "./nodeMeta";
 import { TemplateVariablesHelp } from "./TemplateVariablesHelp";
 
 type Props = {
@@ -44,6 +44,22 @@ type FlowRecord = {
   enabled: boolean;
 };
 
+type FlatPath = { path: string; value: string; type: string };
+
+type CustomWebhookInfo = {
+  ok: boolean;
+  url: string;
+  paths: FlatPath[];
+  sample: unknown;
+  sampleAt: string | null;
+  suggestions: {
+    phonePath: string;
+    namePath: string;
+    emailPath: string;
+    externalIdPath: string;
+  };
+};
+
 export function FlowNodeProperties({
   selectedNode,
   flowId,
@@ -53,13 +69,20 @@ export function FlowNodeProperties({
 }: Props) {
   const nodeType = String(selectedNode.data.nodeType);
   const [copied, setCopied] = useState(false);
+  const [copiedSecret, setCopiedSecret] = useState(false);
   const [allTags, setAllTags] = useState<TagRecord[]>([]);
   const [allFlows, setAllFlows] = useState<FlowRecord[]>([]);
   const [newTagName, setNewTagName] = useState("");
   const [creatingTag, setCreatingTag] = useState(false);
   const [dispatchingTag, setDispatchingTag] = useState(false);
   const [dispatchStatus, setDispatchStatus] = useState("");
-  const webhookUrl = flowId ? hotmartWebhookUrl(flowId) : "";
+  const [webhookInfo, setWebhookInfo] = useState<CustomWebhookInfo | null>(null);
+  const [loadingSample, setLoadingSample] = useState(false);
+  const webhookUrl = flowId
+    ? nodeType === "trigger_custom_webhook"
+      ? customWebhookUrl(flowId)
+      : hotmartWebhookUrl(flowId)
+    : "";
   const textRef = useRef<HTMLTextAreaElement>(null);
   const captionRef = useRef<HTMLTextAreaElement>(null);
 
@@ -105,6 +128,72 @@ export function FlowNodeProperties({
       .then(setAllFlows)
       .catch(() => setAllFlows([]));
   }, [nodeType]);
+
+  useEffect(() => {
+    if (nodeType !== "trigger_custom_webhook" || !flowId) {
+      setWebhookInfo(null);
+      return;
+    }
+    let cancelled = false;
+    setLoadingSample(true);
+    api<CustomWebhookInfo>(`/api/flows/${flowId}/custom-webhook`)
+      .then((res) => {
+        if (!cancelled) setWebhookInfo(res);
+      })
+      .catch(() => {
+        if (!cancelled) setWebhookInfo(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingSample(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [nodeType, flowId]);
+
+  async function refreshWebhookSample() {
+    if (!flowId) return;
+    setLoadingSample(true);
+    try {
+      const res = await api<CustomWebhookInfo>(`/api/flows/${flowId}/custom-webhook`);
+      setWebhookInfo(res);
+    } catch {
+      /* ignore */
+    } finally {
+      setLoadingSample(false);
+    }
+  }
+
+  const customMapping = (config.mapping as Record<string, string> | undefined) ?? {};
+
+  function patchCustomMapping(patch: Record<string, string>) {
+    onUpdate({
+      mapping: {
+        phonePath: "",
+        namePath: "",
+        emailPath: "",
+        externalIdPath: "",
+        ...customMapping,
+        ...patch
+      }
+    });
+  }
+
+  function applyWebhookSuggestions() {
+    if (!webhookInfo?.suggestions) return;
+    const s = webhookInfo.suggestions;
+    patchCustomMapping({
+      phonePath: customMapping.phonePath || s.phonePath || "",
+      namePath: customMapping.namePath || s.namePath || "",
+      emailPath: customMapping.emailPath || s.emailPath || "",
+      externalIdPath: customMapping.externalIdPath || s.externalIdPath || ""
+    });
+  }
+
+  function pathPreview(path: string): string {
+    if (!path || !webhookInfo?.paths) return "";
+    return webhookInfo.paths.find((p) => p.path === path)?.value ?? "";
+  }
 
   function toggleTagName(name: string) {
     const normalized = name.trim();
@@ -194,6 +283,18 @@ export function FlowNodeProperties({
       await navigator.clipboard.writeText(webhookUrl);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function copyWebhookSecret() {
+    const secret = String(config.secret ?? "");
+    if (!secret) return;
+    try {
+      await navigator.clipboard.writeText(secret);
+      setCopiedSecret(true);
+      window.setTimeout(() => setCopiedSecret(false), 2000);
     } catch {
       /* ignore */
     }
@@ -694,6 +795,131 @@ export function FlowNodeProperties({
             <p className="mt-2 text-zinc-600">
               Na Hotmart, marque o evento de <strong>aguardando pagamento / boleto impresso</strong> ou{" "}
               <strong>compra aprovada</strong> conforme o gatilho deste fluxo.
+            </p>
+          </div>
+        )}
+
+        {nodeType === "trigger_custom_webhook" && (
+          <div className="space-y-3">
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 text-xs text-zinc-400 space-y-2">
+              <p className="font-medium text-zinc-300">URL do webhook</p>
+              <code className="block break-all text-sky-400 leading-relaxed">
+                {webhookUrl || "Salve o fluxo para gerar a URL"}
+              </code>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void copyWebhookUrl()}
+                  disabled={!webhookUrl}
+                  className="rounded-lg border border-zinc-700 px-2.5 py-1 text-[11px] text-zinc-300 hover:bg-zinc-800 disabled:opacity-40"
+                >
+                  {copied ? "Copiado!" : "Copiar URL"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void refreshWebhookSample()}
+                  disabled={!flowId || loadingSample}
+                  className="rounded-lg border border-zinc-700 px-2.5 py-1 text-[11px] text-zinc-300 hover:bg-zinc-800 disabled:opacity-40"
+                >
+                  {loadingSample ? "Atualizando…" : "Atualizar sample"}
+                </button>
+              </div>
+              <p className="text-zinc-500">
+                1) Copie a URL · 2) Envie um POST JSON de qualquer lugar · 3) Mapeie os campos abaixo · 4) Salve e
+                ative o fluxo.
+              </p>
+            </div>
+
+            <label className="text-xs text-zinc-500">Segredo (opcional)</label>
+            <div className="flex gap-2">
+              <input
+                value={String(config.secret ?? "")}
+                onChange={(e) => onUpdate({ secret: e.target.value })}
+                placeholder="x-webhook-secret"
+                className="flex-1 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white font-mono"
+              />
+              <button
+                type="button"
+                onClick={() => void copyWebhookSecret()}
+                className="rounded-xl border border-zinc-700 px-3 text-[11px] text-zinc-300 hover:bg-zinc-800"
+              >
+                {copiedSecret ? "OK" : "Copiar"}
+              </button>
+            </div>
+            <p className="text-[11px] text-zinc-600">
+              Se preenchido, o provedor deve enviar header <code>x-webhook-secret</code> ou{" "}
+              <code>?secret=</code>.
+            </p>
+
+            {!webhookInfo?.sample ? (
+              <div className="rounded-xl border border-dashed border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-100/90">
+                {loadingSample
+                  ? "Carregando último payload…"
+                  : "Ainda sem sample. Envie um POST para a URL acima (pode ser com o fluxo desativado) e clique em Atualizar sample."}
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs text-zinc-500">
+                    Sample recebido
+                    {webhookInfo.sampleAt
+                      ? ` · ${new Date(webhookInfo.sampleAt).toLocaleString("pt-BR")}`
+                      : ""}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={applyWebhookSuggestions}
+                    className="rounded-lg border border-sky-500/40 px-2.5 py-1 text-[11px] text-sky-300 hover:bg-sky-500/10"
+                  >
+                    Usar sugestões
+                  </button>
+                </div>
+
+                {(
+                  [
+                    { key: "namePath", label: "Nome", required: true },
+                    { key: "phonePath", label: "Telefone (WhatsApp)", required: true },
+                    { key: "emailPath", label: "E-mail", required: false },
+                    { key: "externalIdPath", label: "ID externo (dedup)", required: false }
+                  ] as const
+                ).map((field) => (
+                  <div key={field.key} className="space-y-1">
+                    <label className="text-xs text-zinc-500">
+                      {field.label}
+                      {field.required ? " *" : ""}
+                    </label>
+                    <select
+                      value={String(customMapping[field.key] ?? "")}
+                      onChange={(e) => patchCustomMapping({ [field.key]: e.target.value })}
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
+                    >
+                      <option value="">— selecione o campo do JSON —</option>
+                      {(webhookInfo.paths ?? []).map((p) => (
+                        <option key={p.path} value={p.path}>
+                          {p.path} → {p.value.slice(0, 40)}
+                        </option>
+                      ))}
+                    </select>
+                    {customMapping[field.key] ? (
+                      <p className="text-[11px] text-emerald-400/90 truncate">
+                        Valor: {pathPreview(customMapping[field.key]) || "(vazio no sample)"}
+                      </p>
+                    ) : null}
+                  </div>
+                ))}
+
+                <details className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-2 text-[11px] text-zinc-500">
+                  <summary className="cursor-pointer text-zinc-400">Ver JSON recebido</summary>
+                  <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all text-zinc-500">
+                    {JSON.stringify(webhookInfo.sample, null, 2)}
+                  </pre>
+                </details>
+              </>
+            )}
+
+            <p className="text-[11px] text-zinc-600">
+              Variáveis no fluxo: {"{{name}}"}, {"{{fullName}}"}, {"{{phone}}"}, {"{{email}}"}.
+              Salve o fluxo depois de mapear.
             </p>
           </div>
         )}

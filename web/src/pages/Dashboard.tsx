@@ -38,6 +38,7 @@ type DashboardStats = {
 const TRIGGER_LABELS: Record<string, string> = {
   trigger_hotmart: "Hotmart (aprovada)",
   trigger_hotmart_pending: "Hotmart (aguardando)",
+  trigger_custom_webhook: "Webhook personalizado",
   trigger_tag: "Tag",
   trigger_inbound: "Mensagem",
   trigger_broadcast: "Broadcast",

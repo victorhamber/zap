@@ -3,8 +3,11 @@ import { prisma } from "../prisma.js";
 import { env } from "../env.js";
 import {
   extractHotmartVariables,
+  extractCustomWebhookVariables,
   getHotmartMappingFromGraph,
   getHotmartTriggerFromGraph,
+  getCustomWebhookConfigFromGraph,
+  getCustomWebhookTriggerFromGraph,
   matchInboundFlows
 } from "../engine/executor.js";
 import { queueFlowRunStart } from "../services/flowDispatch.js";
@@ -175,6 +178,94 @@ export async function webhookRoutes(app: FastifyInstance) {
     );
 
     return { ...result, event, triggerType: hotmartTrigger.triggerType };
+  });
+
+  /**
+   * Webhook personalizado: qualquer provedor POST JSON → mapeia campos no nó
+   * `trigger_custom_webhook` (name / phone / email) e dispara o fluxo.
+   * Sempre grava o último payload em Flow.webhookSample para a UI de mapeamento.
+   */
+  app.post("/api/webhooks/custom/:flowId", async (req, reply) => {
+    if (!prisma) return reply.status(503).send({ error: "Banco indisponível" });
+
+    const flowId = (req.params as { flowId: string }).flowId;
+    const flow = await prisma.flow.findUnique({ where: { id: flowId } });
+    if (!flow) return reply.status(404).send({ error: "Fluxo não encontrado" });
+
+    const payload = req.body;
+    const graph = parseGraph(flow.graphJson);
+    const customTrigger = getCustomWebhookTriggerFromGraph(graph);
+    if (!customTrigger) {
+      return reply.status(400).send({
+        error: "Este fluxo não tem gatilho Webhook personalizado."
+      });
+    }
+
+    const config = getCustomWebhookConfigFromGraph(graph);
+    const expectedSecret = config.secret?.trim();
+    if (expectedSecret) {
+      const headerSecret = req.headers["x-webhook-secret"];
+      const qs = (req.query as { secret?: string }).secret;
+      const provided =
+        (typeof headerSecret === "string" ? headerSecret : "") ||
+        (typeof qs === "string" ? qs : "");
+      if (provided !== expectedSecret) {
+        return reply.status(401).send({
+          error: "Webhook não autorizado",
+          hint: "Envie o header x-webhook-secret ou ?secret= com o segredo configurado no gatilho."
+        });
+      }
+    }
+
+    // Sempre salva o sample (mesmo se mapping incompleto) para o usuário mapear na UI.
+    await prisma.flow
+      .update({
+        where: { id: flowId },
+        data: {
+          webhookSample: payload as object,
+          webhookSampleAt: new Date()
+        }
+      })
+      .catch((err: unknown) => {
+        console.warn("[custom-webhook] falha ao gravar sample:", err);
+      });
+
+    if (!flow.enabled) {
+      console.warn(`[custom-webhook] Fluxo ${flowId} desativado — sample salvo, run ignorado`);
+      return {
+        ok: true,
+        skipped: true,
+        reason: "flow_disabled",
+        sampleSaved: true,
+        hint: "Payload salvo. Ative o fluxo e mapeie nome/telefone/e-mail no gatilho."
+      };
+    }
+
+    let vars: Record<string, unknown>;
+    try {
+      vars = extractCustomWebhookVariables(payload, config.mapping);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[custom-webhook] flow=${flowId} erro ao extrair:`, message);
+      return reply.status(422).send({
+        error: message,
+        flowId,
+        sampleSaved: true,
+        hint: "Payload salvo. Abra o gatilho no editor e mapeie os campos."
+      });
+    }
+
+    const externalId = String(vars.externalId ?? "").trim() || undefined;
+    const result = await queueFlowRunStart({
+      flowId,
+      triggerType: "trigger_custom_webhook",
+      contactPhone: String(vars.phone),
+      variables: vars,
+      externalId: externalId ? `custom_${externalId}` : undefined
+    });
+
+    console.log(`[custom-webhook] flow=${flowId} phone=${vars.phone}`, result);
+    return { ...result, triggerType: "trigger_custom_webhook", sampleSaved: true };
   });
 
   app.get("/api/webhooks/wppconnect", async () => {

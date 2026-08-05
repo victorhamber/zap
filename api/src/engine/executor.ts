@@ -25,6 +25,7 @@ import type {
   ConditionContactTagData,
   ConditionContactRepliedData,
   ConditionOfferCodeData,
+  CustomWebhookMapping,
   DelayNodeData,
   DelayUnit,
   FlowGraph,
@@ -35,6 +36,7 @@ import type {
   SplitRoundRobinData,
   StartFlowData,
   TagActionData,
+  TriggerCustomWebhookData,
   TriggerHotmartData,
   TriggerInboundData
 } from "../types/flow.js";
@@ -122,6 +124,7 @@ export function resolveFlowTriggerType(graph: FlowGraph): string {
     return "trigger_hotmart_pending";
   }
   if (graph.nodes.some((n) => n.type === "trigger_hotmart")) return "trigger_hotmart";
+  if (graph.nodes.some((n) => n.type === "trigger_custom_webhook")) return "trigger_custom_webhook";
   if (graph.nodes.some((n) => n.type === "trigger_broadcast")) return "trigger_broadcast";
   if (graph.nodes.some((n) => n.type === "trigger_tag")) return "trigger_tag";
   if (graph.nodes.some((n) => n.type === "trigger_inbound")) return "trigger_inbound";
@@ -886,4 +889,66 @@ export function getHotmartMappingFromGraph(graph: FlowGraph): HotmartMapping {
   const trigger = getHotmartTriggerFromGraph(graph);
   if (!trigger) throw new Error("Gatilho Hotmart não configurado no fluxo");
   return (trigger.node.data as unknown as TriggerHotmartData).mapping;
+}
+
+export function getCustomWebhookTriggerFromGraph(graph: FlowGraph) {
+  const node = graph.nodes.find((n) => n.type === "trigger_custom_webhook");
+  if (!node) return null;
+  return { node, triggerType: "trigger_custom_webhook" as const };
+}
+
+export function getCustomWebhookConfigFromGraph(graph: FlowGraph): TriggerCustomWebhookData {
+  const trigger = getCustomWebhookTriggerFromGraph(graph);
+  if (!trigger) throw new Error("Gatilho Webhook personalizado não configurado no fluxo");
+  const data = trigger.node.data as unknown as TriggerCustomWebhookData;
+  return {
+    mapping: data.mapping ?? {
+      phonePath: "",
+      namePath: "",
+      emailPath: ""
+    },
+    secret: typeof data.secret === "string" ? data.secret : undefined
+  };
+}
+
+/**
+ * Extrai name/phone/email de um payload genérico via JSONPath configurado no nó.
+ * Diferente do Hotmart: sem eventos/status e sem builder de DDD Hotmart.
+ */
+export function extractCustomWebhookVariables(
+  payload: unknown,
+  mapping: CustomWebhookMapping
+): Record<string, unknown> {
+  if (!mapping.phonePath?.trim()) {
+    throw new Error("Mapeie o campo telefone (phonePath) no gatilho Webhook personalizado.");
+  }
+  if (!mapping.namePath?.trim()) {
+    throw new Error("Mapeie o campo nome (namePath) no gatilho Webhook personalizado.");
+  }
+
+  const rawPhone = asString(getByPath(payload, mapping.phonePath));
+  if (!rawPhone?.trim()) {
+    throw new Error(`Telefone não encontrado no path ${mapping.phonePath}`);
+  }
+
+  const fullName =
+    asString(getByPath(payload, mapping.namePath))?.trim() || "Cliente";
+  const name = firstNameFromFullName(fullName);
+  const email = mapping.emailPath?.trim()
+    ? asString(getByPath(payload, mapping.emailPath)) ?? ""
+    : "";
+  const externalId = mapping.externalIdPath?.trim()
+    ? asString(getByPath(payload, mapping.externalIdPath)) ?? ""
+    : "";
+
+  const normalizedPhone = assertValidWhatsAppPhone(rawPhone);
+
+  return {
+    phone: normalizedPhone,
+    name,
+    fullName,
+    email,
+    externalId,
+    source: "custom_webhook"
+  };
 }

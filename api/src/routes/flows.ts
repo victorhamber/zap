@@ -23,6 +23,69 @@ export async function flowRoutes(app: FastifyInstance) {
     return flow;
   });
 
+  /** Sample + paths achatados do webhook personalizado (para mapear name/phone/email). */
+  app.get("/api/flows/:id/custom-webhook", async (req, reply) => {
+    if (!prisma) return reply.status(503).send({ error: "Banco indisponível" });
+    const id = (req.params as { id: string }).id;
+    const flow = await prisma.flow.findUnique({ where: { id } });
+    if (!flow) return reply.status(404).send({ error: "Não encontrado" });
+
+    const { flattenJsonPaths, suggestWebhookFieldPath } = await import(
+      "../utils/flattenJsonPaths.js"
+    );
+    const { getCustomWebhookTriggerFromGraph, getCustomWebhookConfigFromGraph } = await import(
+      "../engine/executor.js"
+    );
+
+    let mapping = {
+      phonePath: "",
+      namePath: "",
+      emailPath: "",
+      externalIdPath: ""
+    };
+    let secret = "";
+    try {
+      const graph = parseGraph(flow.graphJson);
+      if (getCustomWebhookTriggerFromGraph(graph)) {
+        const cfg = getCustomWebhookConfigFromGraph(graph);
+        mapping = {
+          phonePath: cfg.mapping.phonePath ?? "",
+          namePath: cfg.mapping.namePath ?? "",
+          emailPath: cfg.mapping.emailPath ?? "",
+          externalIdPath: cfg.mapping.externalIdPath ?? ""
+        };
+        secret = cfg.secret ?? "";
+      }
+    } catch {
+      /* grafo inválido */
+    }
+
+    const sample = flow.webhookSample ?? null;
+    const paths = sample != null ? flattenJsonPaths(sample) : [];
+    const suggestions = {
+      phonePath: suggestWebhookFieldPath(paths, "phone"),
+      namePath: suggestWebhookFieldPath(paths, "name"),
+      emailPath: suggestWebhookFieldPath(paths, "email"),
+      externalIdPath: suggestWebhookFieldPath(paths, "externalId")
+    };
+
+    const origin = (
+      process.env.APP_PUBLIC_URL ??
+      `${req.protocol}://${req.hostname}`
+    ).replace(/\/$/, "");
+
+    return {
+      ok: true,
+      url: `${origin}/api/webhooks/custom/${id}`,
+      secret,
+      mapping,
+      suggestions,
+      sample,
+      sampleAt: flow.webhookSampleAt,
+      paths
+    };
+  });
+
   app.post("/api/flows", async (req) => {
     if (!prisma) throw new Error("Banco indisponível");
     const body = req.body as { name?: string; graphJson?: FlowGraph; enabled?: boolean };

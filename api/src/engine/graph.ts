@@ -15,6 +15,7 @@ export function findTriggerNode(graph: FlowGraph, triggerType: NodeType): FlowNo
 const FLOW_TRIGGER_TYPES: NodeType[] = [
   "trigger_hotmart",
   "trigger_hotmart_pending",
+  "trigger_custom_webhook",
   "trigger_broadcast",
   "trigger_tag",
   "trigger_inbound",

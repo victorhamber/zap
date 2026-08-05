@@ -152,14 +152,17 @@ model WppInstance {
 }
 
 model Flow {
-  id            String    @id @default(cuid())
-  name          String
-  enabled       Boolean   @default(false)
-  graphJson     Json
-  schemaVersion Int       @default(1)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  runs          FlowRun[]
+  id               String    @id @default(cuid())
+  name             String
+  enabled          Boolean   @default(false)
+  graphJson        Json
+  schemaVersion    Int       @default(1)
+  /** Último payload recebido no webhook personalizado (para mapear campos na UI). */
+  webhookSample    Json?
+  webhookSampleAt  DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  runs             FlowRun[]
 }
 
 model FlowRun {
