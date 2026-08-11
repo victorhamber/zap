@@ -32,6 +32,7 @@ export type AiSettingsDto = {
   learnEnabled: boolean;
   autoReplyEnabled: boolean;
   learnTagIds: string[];
+  replyTagIds: string[];
   learnText: boolean;
   learnImage: boolean;
   learnAudio: boolean;
@@ -73,6 +74,11 @@ function toDto(row: NonNullable<Awaited<ReturnType<typeof loadSettingsRow>>>, se
     learnEnabled: row.learnEnabled,
     autoReplyEnabled: row.autoReplyEnabled,
     learnTagIds: row.learnTagIds,
+    // Compat: se replyTagIds ainda vazio no banco, espelha learn (comportamento antigo).
+    replyTagIds:
+      Array.isArray(row.replyTagIds) && row.replyTagIds.length > 0
+        ? row.replyTagIds
+        : row.learnTagIds,
     learnText: row.learnText,
     learnImage: row.learnImage,
     learnAudio: row.learnAudio,
@@ -116,6 +122,7 @@ export async function getAiSettings(session?: string): Promise<AiSettingsDto> {
         learnEnabled: false,
         autoReplyEnabled: false,
         learnTagIds: [],
+        replyTagIds: [],
         learnText: true,
         learnImage: false,
         learnAudio: false,
@@ -182,7 +189,19 @@ export async function saveAiSettings(
     const valid = new Set(tags.map((t) => t.id));
     const invalid = body.learnTagIds.filter((id) => !valid.has(id));
     if (invalid.length > 0) {
-      throw new Error(`Tags inválidas: ${invalid.join(", ")}`);
+      throw new Error(`Tags de aprendizado inválidas: ${invalid.join(", ")}`);
+    }
+  }
+
+  if (body.replyTagIds?.length) {
+    const tags = await prisma.tag.findMany({
+      where: { id: { in: body.replyTagIds } },
+      select: { id: true }
+    });
+    const valid = new Set(tags.map((t) => t.id));
+    const invalid = body.replyTagIds.filter((id) => !valid.has(id));
+    if (invalid.length > 0) {
+      throw new Error(`Tags de auto-resposta inválidas: ${invalid.join(", ")}`);
     }
   }
 
@@ -208,6 +227,11 @@ export async function saveAiSettings(
     learnEnabled: body.learnEnabled ?? existing?.learnEnabled ?? false,
     autoReplyEnabled: body.autoReplyEnabled ?? existing?.autoReplyEnabled ?? false,
     learnTagIds: body.learnTagIds ?? existing?.learnTagIds ?? [],
+    replyTagIds:
+      body.replyTagIds ??
+      (existing && Array.isArray(existing.replyTagIds) && existing.replyTagIds.length > 0
+        ? existing.replyTagIds
+        : existing?.learnTagIds ?? []),
     learnText: body.learnText ?? existing?.learnText ?? true,
     learnImage: body.learnImage ?? existing?.learnImage ?? false,
     learnAudio: body.learnAudio ?? existing?.learnAudio ?? false,
@@ -237,6 +261,10 @@ export async function saveAiSettings(
 
   if (data.learnEnabled && data.learnTagIds.length === 0) {
     throw new Error("Selecione ao menos uma tag para o aprendizado");
+  }
+
+  if (data.autoReplyEnabled && data.replyTagIds.length === 0) {
+    throw new Error("Selecione ao menos uma tag para a auto-resposta");
   }
 
   if (enabled && !openaiApiKeyEnc) {

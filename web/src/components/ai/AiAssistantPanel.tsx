@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { api, downloadApiFile } from "../../api/client";
 
 type Tag = { id: string; name: string; color: string };
@@ -23,6 +24,7 @@ type AiSettings = {
   learnEnabled: boolean;
   autoReplyEnabled: boolean;
   learnTagIds: string[];
+  replyTagIds: string[];
   learnText: boolean;
   learnImage: boolean;
   learnAudio: boolean;
@@ -83,6 +85,7 @@ export function AiAssistantPanel() {
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [showTagModal, setShowTagModal] = useState(false);
   const [pendingLearn, setPendingLearn] = useState(false);
+  const [pendingReply, setPendingReply] = useState(false);
   const [knowledge, setKnowledge] = useState<KnowledgeItem[]>([]);
   const [knowledgeTotal, setKnowledgeTotal] = useState(0);
   const [stats, setStats] = useState<AiStats | null>(null);
@@ -451,6 +454,7 @@ export function AiAssistantPanel() {
     if (enabled && !requireApiKey("ativar o aprendizado")) return;
     if (enabled && (!settings?.learnTagIds.length)) {
       setPendingLearn(true);
+      setPendingReply(false);
       setShowTagModal(true);
       return;
     }
@@ -459,6 +463,12 @@ export function AiAssistantPanel() {
 
   function toggleAutoReply(enabled: boolean) {
     if (enabled && !requireApiKey("ativar a auto-resposta")) return;
+    if (enabled && (!settings?.replyTagIds?.length)) {
+      setPendingReply(true);
+      setPendingLearn(false);
+      setShowTagModal(true);
+      return;
+    }
     void save({ autoReplyEnabled: enabled });
   }
 
@@ -468,14 +478,28 @@ export function AiAssistantPanel() {
     return false;
   }
 
-  function confirmTags(selected: string[]) {
-    if (selected.length === 0) {
-      setMessage("Selecione ao menos uma tag.");
+  function confirmTags(selection: { learnTagIds: string[]; replyTagIds: string[] }) {
+    if (selection.learnTagIds.length === 0 && selection.replyTagIds.length === 0) {
+      setMessage("Marque ao menos uma tag em Aprendizado e/ou Auto-resposta.");
+      return;
+    }
+    if (pendingLearn && selection.learnTagIds.length === 0) {
+      setMessage("Para ativar o aprendizado, marque ao menos uma tag em Aprendizado.");
+      return;
+    }
+    if (pendingReply && selection.replyTagIds.length === 0) {
+      setMessage("Para ativar a auto-resposta, marque ao menos uma tag em Auto-resposta.");
       return;
     }
     setShowTagModal(false);
-    void save({ learnTagIds: selected, learnEnabled: pendingLearn || settings?.learnEnabled });
+    void save({
+      learnTagIds: selection.learnTagIds,
+      replyTagIds: selection.replyTagIds,
+      learnEnabled: pendingLearn || settings?.learnEnabled,
+      autoReplyEnabled: pendingReply || settings?.autoReplyEnabled
+    });
     setPendingLearn(false);
+    setPendingReply(false);
   }
 
   if (!settings) {
@@ -660,35 +684,75 @@ export function AiAssistantPanel() {
 
       <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-5 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="font-medium text-white">Aprendizado por tags</h3>
-          {!settings.learnEnabled && (
-            <span className="text-xs text-zinc-500">Ative &quot;Aprendizado&quot; acima para coletar</span>
-          )}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {settings.learnTagIds.map((id) => {
-            const tag = tags.find((t) => t.id === id);
-            return (
-              <span
-                key={id}
-                className="text-xs px-2 py-1 rounded-full border border-zinc-700 text-zinc-300"
-                style={{ borderColor: tag?.color }}
-              >
-                {tag?.name ?? id}
-              </span>
-            );
-          })}
+          <h3 className="font-medium text-white">Tags de aprendizado e auto-resposta</h3>
           <button
             type="button"
             className="text-xs text-emerald-400 hover:underline"
             onClick={() => {
               setPendingLearn(false);
+              setPendingReply(false);
               setShowTagModal(true);
             }}
           >
             Editar tags
           </button>
         </div>
+        <p className="text-xs text-zinc-500 leading-relaxed">
+          Cada tag pode liberar só aprendizado, só auto-resposta, ou os dois. Contatos sem a tag
+          correspondente não entram naquele modo.
+        </p>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 p-3 space-y-2">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">Aprendizado</p>
+            <div className="flex flex-wrap gap-2 min-h-[28px]">
+              {(settings.learnTagIds ?? []).length === 0 ? (
+                <span className="text-xs text-zinc-600">Nenhuma tag</span>
+              ) : (
+                settings.learnTagIds.map((id) => {
+                  const tag = tags.find((t) => t.id === id);
+                  return (
+                    <span
+                      key={id}
+                      className="text-xs px-2 py-1 rounded-full border border-zinc-700 text-zinc-300"
+                      style={{ borderColor: tag?.color }}
+                    >
+                      {tag?.name ?? id}
+                    </span>
+                  );
+                })
+              )}
+            </div>
+            {!settings.learnEnabled && (
+              <p className="text-[11px] text-zinc-600">Ative &quot;Aprendizado&quot; acima para coletar</p>
+            )}
+          </div>
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 p-3 space-y-2">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">Auto-resposta</p>
+            <div className="flex flex-wrap gap-2 min-h-[28px]">
+              {(settings.replyTagIds ?? []).length === 0 ? (
+                <span className="text-xs text-zinc-600">Nenhuma tag</span>
+              ) : (
+                (settings.replyTagIds ?? []).map((id) => {
+                  const tag = tags.find((t) => t.id === id);
+                  return (
+                    <span
+                      key={id}
+                      className="text-xs px-2 py-1 rounded-full border border-zinc-700 text-zinc-300"
+                      style={{ borderColor: tag?.color }}
+                    >
+                      {tag?.name ?? id}
+                    </span>
+                  );
+                })
+              )}
+            </div>
+            {!settings.autoReplyEnabled && (
+              <p className="text-[11px] text-zinc-600">Ative &quot;Auto-resposta&quot; acima para responder</p>
+            )}
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 gap-2 text-sm text-zinc-400">
           <label className="flex gap-2">
             <input type="checkbox" checked={settings.learnText} onChange={(e) => void save({ learnText: e.target.checked })} />
@@ -1133,8 +1197,13 @@ export function AiAssistantPanel() {
       {showTagModal && (
         <TagSelectModal
           tags={tags}
-          selected={settings.learnTagIds}
-          onCancel={() => setShowTagModal(false)}
+          learnSelected={settings.learnTagIds}
+          replySelected={settings.replyTagIds ?? []}
+          onCancel={() => {
+            setShowTagModal(false);
+            setPendingLearn(false);
+            setPendingReply(false);
+          }}
           onConfirm={confirmTags}
         />
       )}
@@ -1168,41 +1237,85 @@ function StatCard(props: {
 
 function TagSelectModal(props: {
   tags: Tag[];
-  selected: string[];
+  learnSelected: string[];
+  replySelected: string[];
   onCancel: () => void;
-  onConfirm: (ids: string[]) => void;
+  onConfirm: (selection: { learnTagIds: string[]; replyTagIds: string[] }) => void;
 }) {
-  const [picked, setPicked] = useState<string[]>(props.selected);
+  const [learnPicked, setLearnPicked] = useState<string[]>(props.learnSelected);
+  const [replyPicked, setReplyPicked] = useState<string[]>(props.replySelected);
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="w-full max-w-md rounded-xl border border-zinc-700 bg-zinc-950 p-5 space-y-4">
-        <h3 className="text-white font-medium">Selecione tags para aprendizado</h3>
-        <p className="text-sm text-zinc-400">Mínimo 1 tag. Só contatos com essas tags entram no aprendizado.</p>
-        <div className="max-h-60 overflow-y-auto space-y-2">
-          {props.tags.map((t) => (
-            <label key={t.id} className="flex items-center gap-2 text-sm text-zinc-300">
-              <input
-                type="checkbox"
-                checked={picked.includes(t.id)}
-                onChange={(e) => {
-                  setPicked((prev) =>
-                    e.target.checked ? [...prev, t.id] : prev.filter((id) => id !== t.id)
-                  );
-                }}
-              />
-              <span style={{ color: t.color }}>{t.name}</span>
-            </label>
-          ))}
+  function toggle(list: string[], id: string, on: boolean): string[] {
+    return on ? [...list, id] : list.filter((x) => x !== id);
+  }
+
+  const modal = (
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4"
+      role="dialog"
+      aria-modal="true"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) props.onCancel();
+      }}
+    >
+      <div className="w-full max-w-lg max-h-[min(90vh,640px)] overflow-hidden flex flex-col rounded-xl border border-zinc-700 bg-zinc-950 shadow-2xl">
+        <div className="p-5 pb-3 space-y-1 shrink-0">
+          <h3 className="text-white font-medium">Tags por modo</h3>
+          <p className="text-sm text-zinc-400">
+            Marque <strong className="text-zinc-300">Aprendizado</strong>,{" "}
+            <strong className="text-zinc-300">Auto-resposta</strong> ou os dois. Pode deixar uma tag
+            só em um dos lados.
+          </p>
         </div>
-        <div className="flex justify-end gap-2">
+        <div className="px-5 pb-2 shrink-0 grid grid-cols-[1fr_72px_72px] gap-2 text-[11px] uppercase tracking-wide text-zinc-500">
+          <span>Tag</span>
+          <span className="text-center">Aprender</span>
+          <span className="text-center">Responder</span>
+        </div>
+        <div className="px-5 overflow-y-auto flex-1 min-h-0 space-y-1 pb-3">
+          {props.tags.length === 0 ? (
+            <p className="text-sm text-zinc-600 py-4">Nenhuma tag cadastrada no CRM.</p>
+          ) : (
+            props.tags.map((t) => (
+              <div
+                key={t.id}
+                className="grid grid-cols-[1fr_72px_72px] gap-2 items-center rounded-lg border border-zinc-800/80 bg-zinc-900/40 px-2 py-2"
+              >
+                <span className="text-sm text-zinc-200 truncate" style={{ color: t.color }}>
+                  {t.name}
+                </span>
+                <label className="flex justify-center">
+                  <input
+                    type="checkbox"
+                    checked={learnPicked.includes(t.id)}
+                    onChange={(e) =>
+                      setLearnPicked((prev) => toggle(prev, t.id, e.target.checked))
+                    }
+                  />
+                </label>
+                <label className="flex justify-center">
+                  <input
+                    type="checkbox"
+                    checked={replyPicked.includes(t.id)}
+                    onChange={(e) =>
+                      setReplyPicked((prev) => toggle(prev, t.id, e.target.checked))
+                    }
+                  />
+                </label>
+              </div>
+            ))
+          )}
+        </div>
+        <div className="flex justify-end gap-2 p-5 pt-3 border-t border-zinc-800 shrink-0">
           <button type="button" className="px-3 py-2 text-sm text-zinc-400" onClick={props.onCancel}>
             Cancelar
           </button>
           <button
             type="button"
             className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm"
-            onClick={() => props.onConfirm(picked)}
+            onClick={() =>
+              props.onConfirm({ learnTagIds: learnPicked, replyTagIds: replyPicked })
+            }
           >
             Confirmar
           </button>
@@ -1210,4 +1323,7 @@ function TagSelectModal(props: {
       </div>
     </div>
   );
+
+  // Portal no body: evita fixed preso a um pai com transform/overflow (popup “lá embaixo”).
+  return createPortal(modal, document.body);
 }

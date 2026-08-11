@@ -234,38 +234,39 @@ async function runEnqueue(msg: SavedInboxMessage): Promise<void> {
   if (isGroupChatId(msg.chatId)) return;
 
   const phone = phoneFromChatId(msg.chatId);
-  // Lista vazia = não filtra por tag (antes bloqueava 100% da IA).
-  if (settings.learnTagIds.length > 0) {
-    const hasTags = await contactHasLearnTags(phone, settings.learnTagIds);
-    if (!hasTags) return;
-  }
-
   const modality = detectModality(msg.type);
   const learnDelayMs = modality === "text" ? 0 : MEDIA_LEARN_DELAY_MS;
 
+  // Aprendizado: filtro próprio por learnTagIds
   if (settings.learnEnabled && modalityAllowed(modality, settings)) {
-    if (!msg.fromMe) {
-      await enqueueAiLearnJob(
-        {
-          session: msg.session,
-          chatId: msg.chatId,
-          inboxMessageId: msg.id,
-          modality,
-          kind: "question"
-        },
-        learnDelayMs
-      );
-    } else if (isHumanAnswerSource(msg.source)) {
-      await enqueueAiLearnJob(
-        {
-          session: msg.session,
-          chatId: msg.chatId,
-          inboxMessageId: msg.id,
-          modality,
-          kind: "answer"
-        },
-        learnDelayMs
-      );
+    const learnOk =
+      settings.learnTagIds.length === 0
+        ? true
+        : await contactHasLearnTags(phone, settings.learnTagIds);
+    if (learnOk) {
+      if (!msg.fromMe) {
+        await enqueueAiLearnJob(
+          {
+            session: msg.session,
+            chatId: msg.chatId,
+            inboxMessageId: msg.id,
+            modality,
+            kind: "question"
+          },
+          learnDelayMs
+        );
+      } else if (isHumanAnswerSource(msg.source)) {
+        await enqueueAiLearnJob(
+          {
+            session: msg.session,
+            chatId: msg.chatId,
+            inboxMessageId: msg.id,
+            modality,
+            kind: "answer"
+          },
+          learnDelayMs
+        );
+      }
     }
   }
 
@@ -281,6 +282,12 @@ async function runEnqueue(msg: SavedInboxMessage): Promise<void> {
   }
 
   if (!settings.autoReplyEnabled || msg.fromMe) return;
+
+  // Auto-resposta: filtro próprio por replyTagIds (independente do aprendizado)
+  if (settings.replyTagIds.length > 0) {
+    const replyOk = await contactHasLearnTags(phone, settings.replyTagIds);
+    if (!replyOk) return;
+  }
 
   const mode = await resolveChatModeForInbound(
     msg.session,

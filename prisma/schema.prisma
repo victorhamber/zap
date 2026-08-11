@@ -60,6 +60,8 @@ model InstanceAiSettings {
   learnEnabled     Boolean  @default(false)
   autoReplyEnabled Boolean  @default(false)
   learnTagIds      String[]
+  /** Tags que liberam auto-resposta (independente do aprendizado). */
+  replyTagIds      String[]  @default([])
   learnText        Boolean  @default(true)
   learnImage       Boolean  @default(false)
   learnAudio       Boolean  @default(false)
