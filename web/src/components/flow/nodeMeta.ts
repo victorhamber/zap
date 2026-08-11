@@ -2,6 +2,7 @@ export const NODE_LABELS: Record<string, string> = {
   trigger_hotmart: "Hotmart",
   trigger_hotmart_pending: "Aguardando pagamento",
   trigger_custom_webhook: "Webhook personalizado",
+  trigger_wa_link: "Link WhatsApp",
   trigger_tag: "Gatilho tag",
   trigger_broadcast: "Broadcast",
   trigger_inbound: "Msg recebida",
@@ -36,6 +37,7 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
       { type: "trigger_hotmart", label: "Hotmart (compra aprovada)" },
       { type: "trigger_hotmart_pending", label: "Hotmart (aguardando pagamento)" },
       { type: "trigger_custom_webhook", label: "Webhook personalizado" },
+      { type: "trigger_wa_link", label: "Link WhatsApp (mensagem pronta)" },
       { type: "trigger_tag", label: "Tag do contato" },
       { type: "trigger_broadcast", label: "Broadcast (todos)" },
       { type: "trigger_inbound", label: "Mensagem recebida" },
@@ -91,6 +93,15 @@ export function customWebhookUrl(flowId: string): string {
   return `${origin}/api/webhooks/custom/${flowId}`;
 }
 
+/** Link wa.me com mensagem pré-preenchida para o número conectado. */
+export function buildWaMeLink(ownerDigits: string, message: string): string {
+  const digits = ownerDigits.replace(/\D/g, "");
+  if (!digits) return "";
+  const text = message.trim();
+  const q = text ? `?text=${encodeURIComponent(text)}` : "";
+  return `https://wa.me/${digits}${q}`;
+}
+
 export function defaultNodeData(type: string): Record<string, unknown> {
   switch (type) {
     case "trigger_hotmart":
@@ -114,6 +125,11 @@ export function defaultNodeData(type: string): Record<string, unknown> {
           emailPath: "",
           externalIdPath: ""
         }
+      };
+    case "trigger_wa_link":
+      return {
+        message: "Olá! Vim pelo Instagram e quero saber mais.",
+        tags: [] as string[]
       };
     case "condition_contact_tag":
       return { matchMode: "any", tagNames: [] as string[] };

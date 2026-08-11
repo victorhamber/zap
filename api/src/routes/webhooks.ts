@@ -8,14 +8,16 @@ import {
   getHotmartTriggerFromGraph,
   getCustomWebhookConfigFromGraph,
   getCustomWebhookTriggerFromGraph,
-  matchInboundFlows
+  matchInboundFlows,
+  matchWaLinkTrigger,
+  normalizeWaLinkMessage
 } from "../engine/executor.js";
 import { queueFlowRunStart } from "../services/flowDispatch.js";
 import { hotmartEventName, matchHotmartTrigger } from "../utils/hotmartEvents.js";
 import { parseGraph } from "../engine/graph.js";
 import { asString } from "../utils/jsonPathLite.js";
 import { normalizePhone } from "../utils/phone.js";
-import { getContactTagNames } from "../services/contacts.js";
+import { addContactTagsByNames, getContactTagNames } from "../services/contacts.js";
 import { downloadInboundMedia, isInboundMediaType } from "../services/wppMedia.js";
 import {
   parseWppWebhookMessage,
@@ -55,10 +57,43 @@ async function triggerInboundFlows(params: {
 
   const flows = await prisma.flow.findMany({ where: { enabled: true } });
   const started: string[] = [];
+  const name = params.contactName?.trim() || "Contato";
 
   for (const flow of flows) {
     try {
       const graph = parseGraph(flow.graphJson);
+
+      // 1) Link WhatsApp (mensagem pronta + tags de origem)
+      const waLink = matchWaLinkTrigger(graph, params.text);
+      if (waLink.matched) {
+        const linkTags = (waLink.data.tags ?? []).map((t) => t.trim()).filter(Boolean);
+        if (linkTags.length > 0) {
+          await addContactTagsByNames(phone, linkTags, name).catch((err) => {
+            params.log?.warn({ err, phone, flowId: flow.id }, "wa_link tag apply failed");
+          });
+        }
+        const msgKey = normalizeWaLinkMessage(waLink.data.message)
+          .replace(/[^a-z0-9]+/g, "_")
+          .slice(0, 60) || "msg";
+        const result = await queueFlowRunStart({
+          flowId: flow.id,
+          triggerType: "trigger_wa_link",
+          contactPhone: phone,
+          variables: {
+            phone,
+            name,
+            message: params.text,
+            linkMessage: waLink.data.message,
+            tags: linkTags,
+            source: "wa_link"
+          },
+          externalId: `walink_${phone}_${flow.id}_${msgKey}`
+        });
+        if (result && "runId" in result) started.push(result.runId as string);
+        continue;
+      }
+
+      // 2) Mensagem recebida (palavra-chave / tags exigidas)
       if (!matchInboundFlows(graph, params.text, tagNames)) continue;
       const result = await queueFlowRunStart({
         flowId: flow.id,
@@ -66,7 +101,7 @@ async function triggerInboundFlows(params: {
         contactPhone: phone,
         variables: {
           phone,
-          name: params.contactName?.trim() || "Contato",
+          name,
           message: params.text,
           purchaseId: `inbound_${Date.now()}_${flow.id}`
         },

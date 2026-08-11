@@ -2,6 +2,7 @@ export type NodeType =
   | "trigger_hotmart"
   | "trigger_hotmart_pending"
   | "trigger_custom_webhook"
+  | "trigger_wa_link"
   | "trigger_tag"
   | "trigger_broadcast"
   | "trigger_inbound"
@@ -139,6 +140,17 @@ export type TriggerCustomWebhookData = {
 export type TriggerInboundData = {
   keyword?: string;
   /** Nomes das tags do contato (qualquer uma dispara o fluxo) */
+  tags?: string[];
+};
+
+/**
+ * Link wa.me com mensagem pronta (redes sociais / campanhas).
+ * Quando o contato envia essa mensagem, aplica as tags e dispara o fluxo.
+ */
+export type TriggerWaLinkData = {
+  /** Texto pré-preenchido no WhatsApp (obrigatório para gerar o link). */
+  message: string;
+  /** Tags aplicadas ao contato ao chegar por este link (ex.: Instagram, Stories). */
   tags?: string[];
 };
 

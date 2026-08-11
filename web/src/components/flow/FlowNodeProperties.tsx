@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Node } from "@xyflow/react";
 import { api } from "../../api/client";
-import { hotmartWebhookUrl, customWebhookUrl, NODE_LABELS } from "./nodeMeta";
+import { hotmartWebhookUrl, customWebhookUrl, buildWaMeLink, NODE_LABELS } from "./nodeMeta";
 import { TemplateVariablesHelp } from "./TemplateVariablesHelp";
 
 type Props = {
@@ -78,6 +78,8 @@ export function FlowNodeProperties({
   const [dispatchStatus, setDispatchStatus] = useState("");
   const [webhookInfo, setWebhookInfo] = useState<CustomWebhookInfo | null>(null);
   const [loadingSample, setLoadingSample] = useState(false);
+  const [ownerDigits, setOwnerDigits] = useState("");
+  const [copiedWaLink, setCopiedWaLink] = useState(false);
   const webhookUrl = flowId
     ? nodeType === "trigger_custom_webhook"
       ? customWebhookUrl(flowId)
@@ -113,13 +115,35 @@ export function FlowNodeProperties({
     if (
       nodeType !== "tag_action" &&
       nodeType !== "trigger_tag" &&
-      nodeType !== "condition_contact_tag"
+      nodeType !== "condition_contact_tag" &&
+      nodeType !== "trigger_wa_link"
     ) {
       return;
     }
     api<{ tags: TagRecord[] }>("/api/tags")
       .then((res) => setAllTags(res.tags ?? []))
       .catch(() => setAllTags([]));
+  }, [nodeType]);
+
+  useEffect(() => {
+    if (nodeType !== "trigger_wa_link") return;
+    let cancelled = false;
+    api<{
+      ok?: boolean;
+      ownerPhone?: string | null;
+      profile?: { phone?: string | null } | null;
+    }>("/api/inbox/session-profile")
+      .then((r) => {
+        if (cancelled) return;
+        const digits = String(r.ownerPhone ?? r.profile?.phone ?? "").replace(/\D/g, "");
+        setOwnerDigits(digits);
+      })
+      .catch(() => {
+        if (!cancelled) setOwnerDigits("");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [nodeType]);
 
   useEffect(() => {
@@ -566,6 +590,124 @@ export function FlowNodeProperties({
               O fluxo só dispara se o contato tiver uma dessas tags (além da palavra-chave, se
               houver).
             </p>
+          </>
+        )}
+
+        {nodeType === "trigger_wa_link" && (
+          <>
+            <p className="text-xs text-zinc-500">
+              Crie um link <code className="text-zinc-400">wa.me</code> com mensagem pronta. Use em
+              Instagram, bio, anúncios etc. Quando a pessoa enviar essa mensagem, o Zap aplica as tags
+              e dispara este fluxo.
+            </p>
+
+            <label className="text-xs text-zinc-500">Mensagem do link *</label>
+            <textarea
+              value={String(config.message ?? "")}
+              onChange={(e) => onUpdate({ message: e.target.value })}
+              rows={3}
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white resize-y"
+              placeholder="Ex.: Olá! Vim pelo Instagram e quero o teste grátis."
+            />
+
+            <label className="text-xs text-zinc-500">Tags de origem (aplicadas ao chegar)</label>
+            {triggerTags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {triggerTags.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => toggleTriggerTag(name)}
+                    className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-300 hover:bg-emerald-500/20"
+                  >
+                    {name} ×
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="max-h-36 overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-900/40 p-2 space-y-1">
+              {allTags.length === 0 ? (
+                <p className="text-xs text-zinc-600 px-1 py-2">Nenhuma tag ainda — crie abaixo.</p>
+              ) : (
+                allTags.map((tag) => (
+                  <label
+                    key={tag.id}
+                    className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-zinc-800/60 cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={triggerTags.includes(tag.name)}
+                      onChange={() => toggleTriggerTag(tag.name)}
+                      className="rounded"
+                    />
+                    <span
+                      className="h-2.5 w-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: tag.color }}
+                    />
+                    <span className="text-sm text-zinc-200">{tag.name}</span>
+                  </label>
+                ))
+              )}
+            </div>
+            <div className="flex gap-2">
+              <input
+                value={newTagName}
+                onChange={(e) => setNewTagName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void createAndSelectTag(true);
+                  }
+                }}
+                placeholder="Nova tag (ex.: Instagram)"
+                className="flex-1 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
+              />
+              <button
+                type="button"
+                disabled={!newTagName.trim() || creatingTag}
+                onClick={() => void createAndSelectTag(true)}
+                className="rounded-xl border border-zinc-700 px-3 text-[11px] text-zinc-300 hover:bg-zinc-800 disabled:opacity-40"
+              >
+                {creatingTag ? "…" : "Criar"}
+              </button>
+            </div>
+
+            <div className="rounded-xl border border-sky-500/30 bg-sky-500/5 p-3 space-y-2">
+              <p className="text-xs font-medium text-sky-300">Link gerado</p>
+              {!ownerDigits ? (
+                <p className="text-[11px] text-amber-200/90">
+                  Número do WhatsApp conectado não encontrado. Conecte a instância em Configurações.
+                </p>
+              ) : !String(config.message ?? "").trim() ? (
+                <p className="text-[11px] text-zinc-500">Escreva a mensagem para gerar o link.</p>
+              ) : (
+                <>
+                  <code className="block break-all text-[11px] text-sky-400 leading-relaxed">
+                    {buildWaMeLink(ownerDigits, String(config.message ?? ""))}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const url = buildWaMeLink(ownerDigits, String(config.message ?? ""));
+                      if (!url) return;
+                      try {
+                        await navigator.clipboard.writeText(url);
+                        setCopiedWaLink(true);
+                        window.setTimeout(() => setCopiedWaLink(false), 2000);
+                      } catch {
+                        window.prompt("Copie o link:", url);
+                      }
+                    }}
+                    className="rounded-lg border border-sky-500/40 px-2.5 py-1 text-[11px] text-sky-300 hover:bg-sky-500/10"
+                  >
+                    {copiedWaLink ? "Copiado!" : "Copiar link"}
+                  </button>
+                </>
+              )}
+              <p className="text-[11px] text-zinc-600">
+                Salve e ative o fluxo. A pessoa clica no link → envia a mensagem → tags + fluxo disparam.
+              </p>
+            </div>
           </>
         )}
 

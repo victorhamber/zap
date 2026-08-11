@@ -38,7 +38,8 @@ import type {
   TagActionData,
   TriggerCustomWebhookData,
   TriggerHotmartData,
-  TriggerInboundData
+  TriggerInboundData,
+  TriggerWaLinkData
 } from "../types/flow.js";
 
 function delayToMs(value: number, unit: DelayUnit): number {
@@ -125,6 +126,7 @@ export function resolveFlowTriggerType(graph: FlowGraph): string {
   }
   if (graph.nodes.some((n) => n.type === "trigger_hotmart")) return "trigger_hotmart";
   if (graph.nodes.some((n) => n.type === "trigger_custom_webhook")) return "trigger_custom_webhook";
+  if (graph.nodes.some((n) => n.type === "trigger_wa_link")) return "trigger_wa_link";
   if (graph.nodes.some((n) => n.type === "trigger_broadcast")) return "trigger_broadcast";
   if (graph.nodes.some((n) => n.type === "trigger_tag")) return "trigger_tag";
   if (graph.nodes.some((n) => n.type === "trigger_inbound")) return "trigger_inbound";
@@ -875,6 +877,47 @@ export function matchInboundFlows(
 
   if (!data.keyword?.trim()) return true;
   return messageText.toLowerCase().includes(data.keyword.toLowerCase());
+}
+
+/** Normaliza texto da mensagem do link wa.me para comparar com o inbound. */
+export function normalizeWaLinkMessage(text: string): string {
+  return text
+    .normalize("NFC")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+/**
+ * Gatilho "Link WhatsApp": a mensagem inbound precisa bater com a mensagem
+ * configurada no nó (texto do ?text= do wa.me).
+ */
+export function matchWaLinkTrigger(
+  graph: FlowGraph,
+  messageText: string
+): { matched: true; data: TriggerWaLinkData } | { matched: false } {
+  const trigger = graph.nodes.find((n) => n.type === "trigger_wa_link");
+  if (!trigger) return { matched: false };
+  const data = trigger.data as unknown as TriggerWaLinkData;
+  const expected = normalizeWaLinkMessage(String(data.message ?? ""));
+  if (!expected) return { matched: false };
+
+  const incoming = normalizeWaLinkMessage(messageText);
+  if (!incoming) return { matched: false };
+
+  // Igualdade exata (após normalizar) ou inbound começa com a mensagem do link.
+  if (incoming === expected || incoming.startsWith(expected)) {
+    return { matched: true, data };
+  }
+  return { matched: false };
+}
+
+export function buildWaMeLink(ownerDigits: string, message: string): string {
+  const digits = ownerDigits.replace(/\D/g, "");
+  if (!digits) return "";
+  const text = message.trim();
+  const q = text ? `?text=${encodeURIComponent(text)}` : "";
+  return `https://wa.me/${digits}${q}`;
 }
 
 export function getHotmartTriggerFromGraph(graph: FlowGraph) {

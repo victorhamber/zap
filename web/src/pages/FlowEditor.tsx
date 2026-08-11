@@ -74,6 +74,13 @@ function summaryFor(type: string, data: Record<string, unknown>): string {
     if (mapping.phonePath && mapping.namePath) return "Mapeado · name/phone";
     return "Aguardando mapeamento";
   }
+  if (type === "trigger_wa_link") {
+    const msg = String(data.message ?? "").trim();
+    const tags = (data.tags as string[] | undefined) ?? [];
+    if (!msg) return "Configure a mensagem";
+    const preview = msg.length > 36 ? `${msg.slice(0, 36)}…` : msg;
+    return tags.length ? `${preview} · ${tags.length} tag(s)` : preview;
+  }
   if (type === "tag_action") {
     const mode = data.mode === "remove" ? "Remover" : "Adicionar";
     const names = (data.tagNames as string[] | undefined) ?? [];
