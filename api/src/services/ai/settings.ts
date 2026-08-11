@@ -74,11 +74,7 @@ function toDto(row: NonNullable<Awaited<ReturnType<typeof loadSettingsRow>>>, se
     learnEnabled: row.learnEnabled,
     autoReplyEnabled: row.autoReplyEnabled,
     learnTagIds: row.learnTagIds,
-    // Compat: se replyTagIds ainda vazio no banco, espelha learn (comportamento antigo).
-    replyTagIds:
-      Array.isArray(row.replyTagIds) && row.replyTagIds.length > 0
-        ? row.replyTagIds
-        : row.learnTagIds,
+    replyTagIds: Array.isArray(row.replyTagIds) ? row.replyTagIds : [],
     learnText: row.learnText,
     learnImage: row.learnImage,
     learnAudio: row.learnAudio,
@@ -227,11 +223,8 @@ export async function saveAiSettings(
     learnEnabled: body.learnEnabled ?? existing?.learnEnabled ?? false,
     autoReplyEnabled: body.autoReplyEnabled ?? existing?.autoReplyEnabled ?? false,
     learnTagIds: body.learnTagIds ?? existing?.learnTagIds ?? [],
-    replyTagIds:
-      body.replyTagIds ??
-      (existing && Array.isArray(existing.replyTagIds) && existing.replyTagIds.length > 0
-        ? existing.replyTagIds
-        : existing?.learnTagIds ?? []),
+    // [] é valor válido (sem tags de auto-resposta). Não espelhar learnTagIds.
+    replyTagIds: body.replyTagIds !== undefined ? body.replyTagIds : (existing?.replyTagIds ?? []),
     learnText: body.learnText ?? existing?.learnText ?? true,
     learnImage: body.learnImage ?? existing?.learnImage ?? false,
     learnAudio: body.learnAudio ?? existing?.learnAudio ?? false,

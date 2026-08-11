@@ -479,10 +479,6 @@ export function AiAssistantPanel() {
   }
 
   function confirmTags(selection: { learnTagIds: string[]; replyTagIds: string[] }) {
-    if (selection.learnTagIds.length === 0 && selection.replyTagIds.length === 0) {
-      setMessage("Marque ao menos uma tag em Aprendizado e/ou Auto-resposta.");
-      return;
-    }
     if (pendingLearn && selection.learnTagIds.length === 0) {
       setMessage("Para ativar o aprendizado, marque ao menos uma tag em Aprendizado.");
       return;
@@ -491,12 +487,25 @@ export function AiAssistantPanel() {
       setMessage("Para ativar a auto-resposta, marque ao menos uma tag em Auto-resposta.");
       return;
     }
+
+    const learnOn = Boolean(pendingLearn || settings?.learnEnabled);
+    const replyOn = Boolean(pendingReply || settings?.autoReplyEnabled);
+
+    if (learnOn && selection.learnTagIds.length === 0) {
+      setMessage("Desative o Aprendizado antes de remover todas as tags de aprendizado.");
+      return;
+    }
+    if (replyOn && selection.replyTagIds.length === 0) {
+      setMessage("Desative a Auto-resposta antes de remover todas as tags de auto-resposta.");
+      return;
+    }
+
     setShowTagModal(false);
     void save({
       learnTagIds: selection.learnTagIds,
       replyTagIds: selection.replyTagIds,
-      learnEnabled: pendingLearn || settings?.learnEnabled,
-      autoReplyEnabled: pendingReply || settings?.autoReplyEnabled
+      learnEnabled: learnOn,
+      autoReplyEnabled: replyOn
     });
     setPendingLearn(false);
     setPendingReply(false);
