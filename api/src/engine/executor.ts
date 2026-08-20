@@ -25,6 +25,7 @@ import type {
   ConditionContactTagData,
   ConditionContactRepliedData,
   ConditionOfferCodeData,
+  ConditionWeekdayData,
   CustomWebhookMapping,
   DelayNodeData,
   DelayUnit,
@@ -46,6 +47,7 @@ import type {
 import { humanGapMs, reserveStaggeredStartDelay } from "../services/flowStagger.js";
 import { defaultWhatsAppSession } from "../env.js";
 import { sendTransactionalEmail } from "../services/email/resend.js";
+import { getSaoPauloClock } from "../services/groupsFlowSchedule.js";
 
 function delayToMs(value: number, unit: DelayUnit): number {
   const v = Math.max(0, value);
@@ -126,6 +128,7 @@ async function persistFlowOutboundMessage(params: {
 
 export function resolveFlowTriggerType(graph: FlowGraph): string {
   if (graph.nodes.some((n) => n.type === "trigger_manual")) return "trigger_manual";
+  if (graph.nodes.some((n) => n.type === "trigger_groups")) return "trigger_groups";
   if (graph.nodes.some((n) => n.type === "trigger_hotmart_pending")) {
     return "trigger_hotmart_pending";
   }
@@ -136,6 +139,21 @@ export function resolveFlowTriggerType(graph: FlowGraph): string {
   if (graph.nodes.some((n) => n.type === "trigger_tag")) return "trigger_tag";
   if (graph.nodes.some((n) => n.type === "trigger_inbound")) return "trigger_inbound";
   return "trigger_manual";
+}
+
+function resolveSendTarget(vars: Record<string, unknown>): { phone: string; isGroup: boolean } {
+  const raw = String(vars.phone ?? "").trim();
+  const isGroup =
+    vars.isGroup === true || raw.includes("@g.us") || raw.includes("@newsletter");
+  if (isGroup) {
+    if (!raw) throw new Error("Grupo vazio no fluxo.");
+    const jid = raw.includes("@") ? raw : `${raw.replace(/\D/g, "")}@g.us`;
+    return { phone: jid, isGroup: true };
+  }
+  return {
+    phone: assertValidWhatsAppPhone(raw, String(vars.countryIso ?? "BR")),
+    isGroup: false
+  };
 }
 
 function resolveHotmartOfferCode(payload: unknown, mapping: HotmartMapping): string {
@@ -286,10 +304,35 @@ async function executeNode(
   const node = getNode(graph, nodeId);
   if (!node) throw new Error(`Nó não encontrado: ${nodeId}`);
 
-  const phone = assertValidWhatsAppPhone(
-    String(vars.phone ?? ""),
-    String(vars.countryIso ?? "BR")
-  );
+  const { phone, isGroup } = resolveSendTarget(vars);
+
+  if (node.type === "condition_weekday") {
+    const data = node.data as unknown as ConditionWeekdayData;
+    void data;
+    const clock = getSaoPauloClock();
+    const handle = String(clock.weekday);
+    const labels = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+    const label = labels[clock.weekday] ?? handle;
+
+    await logStep(flowRunId, nodeId, node.type, "ok", `Hoje é ${label}`, {
+      weekday: clock.weekday,
+      dayKey: clock.dayKey
+    });
+
+    const nextId = getNextNodeIdByHandle(graph, nodeId, handle);
+    if (!nextId) {
+      await finishRun(flowRunId, "completed");
+      return;
+    }
+    if (prisma) {
+      await prisma.flowRun.update({
+        where: { id: flowRunId },
+        data: { currentNodeId: nextId, status: "running" }
+      });
+    }
+    await executeNode(graph, flowRunId, nextId, vars, depth);
+    return;
+  }
 
   if (node.type === "condition_offer_code") {
     const data = node.data as unknown as ConditionOfferCodeData;
@@ -632,86 +675,100 @@ async function executeNode(
     }
     try {
       // Retries (1+3) e variantes BR ficam em wpp.sendText — sem empilhar retry aqui.
-      const waMessageId = await wpp.sendText(phone, text);
-      try {
-        await persistFlowOutboundMessage({
-          phone,
-          body: text,
-          type: "chat",
-          waMessageId
-        });
-      } catch {
-        /* webhook ou gravação paralela — envio já foi feito */
+      const waMessageId = await wpp.sendText(phone, text, isGroup ? { isGroup: true } : undefined);
+      if (!isGroup) {
+        try {
+          await persistFlowOutboundMessage({
+            phone,
+            body: text,
+            type: "chat",
+            waMessageId
+          });
+        } catch {
+          /* webhook ou gravação paralela — envio já foi feito */
+        }
       }
     } catch (err) {
       await logSendFailure(node.type, err);
     }
-    await logStep(flowRunId, nodeId, node.type, "ok", "Mensagem enviada");
+    await logStep(
+      flowRunId,
+      nodeId,
+      node.type,
+      "ok",
+      isGroup ? `Mensagem enviada ao grupo ${String(vars.groupName ?? phone)}` : "Mensagem enviada"
+    );
   } else if (node.type === "send_image") {
     const data = node.data as unknown as SendMediaNodeData;
     const caption = data.caption ? render(data.caption, vars) : undefined;
     try {
       let waMessageId: string | null = null;
       await sendMediaWithRetries(async () => {
-        waMessageId = await wpp.sendImage(phone, data.url, caption);
+        waMessageId = await wpp.sendImage(phone, data.url, caption, isGroup ? { isGroup: true } : undefined);
       });
-      try {
-        await persistFlowOutboundMessage({
-          phone,
-          body: caption?.trim() || "📷 Imagem",
-          type: "image",
-          mediaUrl: toPublicMediaUrl(data.url) ?? data.url,
-          waMessageId
-        });
-      } catch {
-        /* gravação paralela com webhook */
+      if (!isGroup) {
+        try {
+          await persistFlowOutboundMessage({
+            phone,
+            body: caption?.trim() || "📷 Imagem",
+            type: "image",
+            mediaUrl: toPublicMediaUrl(data.url) ?? data.url,
+            waMessageId
+          });
+        } catch {
+          /* gravação paralela com webhook */
+        }
       }
     } catch (err) {
       await logSendFailure(node.type, err);
     }
-    await logStep(flowRunId, nodeId, node.type, "ok", "Imagem enviada");
+    await logStep(flowRunId, nodeId, node.type, "ok", isGroup ? "Imagem enviada ao grupo" : "Imagem enviada");
   } else if (node.type === "send_video") {
     const data = node.data as unknown as SendMediaNodeData;
     const caption = data.caption ? render(data.caption, vars) : undefined;
     try {
       let waMessageId: string | null = null;
       await sendMediaWithRetries(async () => {
-        waMessageId = await wpp.sendVideo(phone, data.url, caption);
+        waMessageId = await wpp.sendVideo(phone, data.url, caption, isGroup ? { isGroup: true } : undefined);
       });
-      try {
-        await persistFlowOutboundMessage({
-          phone,
-          body: caption?.trim() || "🎬 Vídeo",
-          type: "video",
-          mediaUrl: toPublicMediaUrl(data.url) ?? data.url,
-          waMessageId
-        });
-      } catch {
-        /* gravação paralela com webhook */
+      if (!isGroup) {
+        try {
+          await persistFlowOutboundMessage({
+            phone,
+            body: caption?.trim() || "🎬 Vídeo",
+            type: "video",
+            mediaUrl: toPublicMediaUrl(data.url) ?? data.url,
+            waMessageId
+          });
+        } catch {
+          /* gravação paralela com webhook */
+        }
       }
     } catch (err) {
       await logSendFailure(node.type, err);
     }
-    await logStep(flowRunId, nodeId, node.type, "ok", "Vídeo enviado");
+    await logStep(flowRunId, nodeId, node.type, "ok", isGroup ? "Vídeo enviado ao grupo" : "Vídeo enviado");
   } else if (node.type === "send_audio") {
     const data = node.data as unknown as SendMediaNodeData;
     try {
-      const waMessageId = await wpp.sendAudio(phone, data.url);
-      try {
-        await persistFlowOutboundMessage({
-          phone,
-          body: "🎤 Áudio",
-          type: "audio",
-          mediaUrl: toPublicMediaUrl(data.url) ?? data.url,
-          waMessageId
-        });
-      } catch {
-        /* gravação paralela com webhook */
+      const waMessageId = await wpp.sendAudio(phone, data.url, isGroup ? { isGroup: true } : undefined);
+      if (!isGroup) {
+        try {
+          await persistFlowOutboundMessage({
+            phone,
+            body: "🎤 Áudio",
+            type: "audio",
+            mediaUrl: toPublicMediaUrl(data.url) ?? data.url,
+            waMessageId
+          });
+        } catch {
+          /* gravação paralela com webhook */
+        }
       }
     } catch (err) {
       await logSendFailure(node.type, err);
     }
-    await logStep(flowRunId, nodeId, node.type, "ok", "Áudio enviado");
+    await logStep(flowRunId, nodeId, node.type, "ok", isGroup ? "Áudio enviado ao grupo" : "Áudio enviado");
   } else if (node.type === "send_groups") {
     const data = node.data as unknown as SendGroupsNodeData;
     const groupIds = (data.groupIds ?? [])

@@ -185,6 +185,21 @@ export async function flowRoutes(app: FastifyInstance) {
     }
   });
 
+  /** Dispara o gatilho de grupos agora (um run por grupo). */
+  app.post("/api/flows/:id/dispatch-groups", async (req, reply) => {
+    if (!prisma) return reply.status(503).send({ error: "Banco indisponível" });
+    const id = (req.params as { id: string }).id;
+
+    try {
+      const { dispatchGroupsFlow } = await import("../services/groupsFlowTrigger.js");
+      const result = await dispatchGroupsFlow(id, { reason: "manual" });
+      return { ok: true, ...result };
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return reply.status(400).send({ error: message });
+    }
+  });
+
   /** Dispara o fluxo para contatos que já têm as tags do gatilho (não só quando a tag é adicionada). */
   app.post("/api/flows/:id/dispatch-tag-existing", async (req, reply) => {
     if (!prisma) return reply.status(503).send({ error: "Banco indisponível" });

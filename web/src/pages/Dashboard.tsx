@@ -43,6 +43,7 @@ const TRIGGER_LABELS: Record<string, string> = {
   trigger_tag: "Tag",
   trigger_inbound: "Mensagem",
   trigger_broadcast: "Broadcast",
+  trigger_groups: "Grupos",
   trigger_manual: "Manual"
 };
 

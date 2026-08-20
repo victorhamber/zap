@@ -92,10 +92,12 @@ async function main() {
 
   startFlowStartWorker();
   startFlowScheduler();
+  const { startGroupsFlowScheduler } = await import("./services/groupsFlowSchedule.js");
+  startGroupsFlowScheduler();
   console.log(
     `[worker] IA: concurrency=${env.AI_WORKER_CONCURRENCY}, max ${env.AI_OPENAI_RPM_LIMIT} req/min, stagger backfill=${env.AI_LEARN_STAGGER_MS}ms`
   );
-  console.log("[worker] Zap worker ativo: zap-flow-jobs + zap-flow-starts + zap-ai-jobs");
+  console.log("[worker] Zap worker ativo: zap-flow-jobs + zap-flow-starts + zap-ai-jobs + groups-schedule");
 
   // Redeploy manda SIGTERM. Sem fechar os workers, um job de fluxo morre no
   // meio do envio e a execução fica travada em "running" para sempre.

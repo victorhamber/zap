@@ -7,9 +7,11 @@ export const NODE_LABELS: Record<string, string> = {
   trigger_broadcast: "Broadcast",
   trigger_inbound: "Msg recebida",
   trigger_manual: "Manual",
+  trigger_groups: "Grupos",
   condition_offer_code: "Código da oferta",
   condition_contact_tag: "Contato tem tag?",
   condition_contact_replied: "Contato respondeu?",
+  condition_weekday: "Dia da semana",
   split_round_robin: "Dividir rotativo",
   tag_action: "Tag",
   start_flow: "Iniciar fluxo",
@@ -19,7 +21,7 @@ export const NODE_LABELS: Record<string, string> = {
   send_image: "Imagem",
   send_video: "Vídeo",
   send_audio: "Áudio",
-  send_groups: "Grupos",
+  send_groups: "Grupos (envio)",
   send_email: "E-mail"
 };
 
@@ -42,6 +44,7 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
       { type: "trigger_wa_link", label: "Link WhatsApp (mensagem pronta)" },
       { type: "trigger_tag", label: "Tag do contato" },
       { type: "trigger_broadcast", label: "Broadcast (todos)" },
+      { type: "trigger_groups", label: "Grupos (agenda / dispara)" },
       { type: "trigger_inbound", label: "Mensagem recebida" },
       { type: "trigger_manual", label: "Teste manual" }
     ]
@@ -54,7 +57,7 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
       { type: "send_image", label: "Enviar imagem" },
       { type: "send_video", label: "Enviar vídeo" },
       { type: "send_audio", label: "Enviar áudio" },
-      { type: "send_groups", label: "Enviar para grupos" },
+      { type: "send_groups", label: "Enviar para grupos (avulso)" },
       { type: "send_email", label: "Enviar e-mail" }
     ]
   },
@@ -65,6 +68,7 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
       { type: "condition_offer_code", label: "Código da oferta" },
       { type: "condition_contact_tag", label: "Contato tem tag?" },
       { type: "condition_contact_replied", label: "Contato respondeu?" },
+      { type: "condition_weekday", label: "Dia da semana" },
       { type: "split_round_robin", label: "Dividir rotativo (A/B/C)" },
       { type: "start_flow", label: "Iniciar outro fluxo" },
       { type: "delay", label: "Aguardar tempo" },
@@ -145,6 +149,16 @@ export function defaultNodeData(type: string): Record<string, unknown> {
       return { tags: [] as string[] };
     case "trigger_broadcast":
       return {};
+    case "trigger_groups":
+      return {
+        groupIds: [] as string[],
+        groupLabels: {},
+        weekdays: [1, 2, 3, 4, 5],
+        time: "09:00",
+        scheduleEnabled: true
+      };
+    case "condition_weekday":
+      return { timezone: "America/Sao_Paulo" };
     case "trigger_inbound":
       return { keyword: "", tags: [] as string[] };
     case "condition_offer_code":

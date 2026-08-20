@@ -158,7 +158,7 @@ export function FlowNodeProperties({
   }, [nodeType]);
 
   useEffect(() => {
-    if (nodeType !== "send_groups") return;
+    if (nodeType !== "send_groups" && nodeType !== "trigger_groups") return;
     setGroupsLoading(true);
     api<{ groups: Array<{ id: string; name: string }> }>("/api/wpp/groups")
       .then((res) => setWaGroups(res.groups ?? []))
@@ -1430,6 +1430,165 @@ export function FlowNodeProperties({
           <p className="text-xs text-zinc-500">
             Use o botão &quot;Testar&quot; na barra superior com um telefone.
           </p>
+        )}
+
+        {nodeType === "trigger_groups" && (
+          <>
+            <p className="text-xs text-zinc-500 leading-relaxed">
+              Define os <strong className="text-zinc-400">grupos de destino</strong>. As mensagens
+              seguintes (Enviar texto, imagem, etc.) vão para esses grupos. Use a agenda para
+              programar a semana inteira.
+            </p>
+
+            <label className="flex items-center gap-2 text-xs text-zinc-300">
+              <input
+                type="checkbox"
+                checked={config.scheduleEnabled !== false}
+                onChange={(e) => onUpdate({ scheduleEnabled: e.target.checked })}
+              />
+              Agenda automática (dias + horário)
+            </label>
+
+            {config.scheduleEnabled !== false && (
+              <>
+                <label className="text-xs text-zinc-500">Dias da semana</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {(
+                    [
+                      [1, "Seg"],
+                      [2, "Ter"],
+                      [3, "Qua"],
+                      [4, "Qui"],
+                      [5, "Sex"],
+                      [6, "Sáb"],
+                      [0, "Dom"]
+                    ] as const
+                  ).map(([day, label]) => {
+                    const selected = ((config.weekdays as number[] | undefined) ?? []).includes(day);
+                    return (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() => {
+                          const prev = ((config.weekdays as number[] | undefined) ?? []).slice();
+                          onUpdate({
+                            weekdays: selected
+                              ? prev.filter((d) => d !== day)
+                              : [...prev, day].sort((a, b) => a - b)
+                          });
+                        }}
+                        className={`rounded-lg px-2.5 py-1.5 text-xs font-medium ${
+                          selected
+                            ? "bg-sky-500/20 text-sky-200 ring-1 ring-sky-500/40"
+                            : "bg-zinc-900 text-zinc-500 ring-1 ring-zinc-700 hover:text-zinc-300"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <label className="text-xs text-zinc-500">Horário (Brasília)</label>
+                <input
+                  type="time"
+                  value={String(config.time ?? "09:00").slice(0, 5)}
+                  onChange={(e) => onUpdate({ time: e.target.value || "09:00" })}
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-white"
+                />
+                <p className="text-[11px] text-zinc-600">
+                  O worker dispara neste horário nos dias marcados (fuso America/Sao_Paulo).
+                </p>
+              </>
+            )}
+
+            <label className="text-xs text-zinc-500">Grupos</label>
+            <input
+              value={groupSearch}
+              onChange={(e) => setGroupSearch(e.target.value)}
+              placeholder="Buscar grupo…"
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-white"
+            />
+            {groupsLoading ? (
+              <p className="text-xs text-zinc-500">Carregando grupos…</p>
+            ) : (
+              <div className="max-h-52 space-y-1 overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-950/50 p-2">
+                {waGroups
+                  .filter((g) => {
+                    const q = groupSearch.trim().toLowerCase();
+                    if (!q) return true;
+                    return g.name.toLowerCase().includes(q) || g.id.toLowerCase().includes(q);
+                  })
+                  .map((g) => {
+                    const selected = ((config.groupIds as string[] | undefined) ?? []).includes(g.id);
+                    return (
+                      <label
+                        key={g.id}
+                        className={`flex cursor-pointer items-start gap-2 rounded-lg px-2 py-1.5 text-xs ${
+                          selected ? "bg-sky-500/10 text-sky-200" : "text-zinc-400 hover:bg-zinc-900"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          onChange={() => {
+                            const prev = ((config.groupIds as string[] | undefined) ?? []).slice();
+                            const labels = {
+                              ...((config.groupLabels as Record<string, string> | undefined) ?? {})
+                            };
+                            if (selected) {
+                              onUpdate({
+                                groupIds: prev.filter((id) => id !== g.id),
+                                groupLabels: Object.fromEntries(
+                                  Object.entries(labels).filter(([id]) => id !== g.id)
+                                )
+                              });
+                            } else {
+                              labels[g.id] = g.name;
+                              onUpdate({ groupIds: [...prev, g.id], groupLabels: labels });
+                            }
+                          }}
+                          className="mt-0.5"
+                        />
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium">{g.name}</span>
+                          <span className="block truncate font-mono text-[10px] text-zinc-600">
+                            {g.id}
+                          </span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                {!waGroups.length && (
+                  <p className="px-1 py-2 text-[11px] text-zinc-600">
+                    Nenhum grupo encontrado na instância ativa.
+                  </p>
+                )}
+              </div>
+            )}
+            <p className="text-[11px] text-zinc-600">
+              {((config.groupIds as string[] | undefined) ?? []).length} grupo(s) · depois use
+              &quot;Disparar grupos&quot; na barra ou a agenda automática
+            </p>
+          </>
+        )}
+
+        {nodeType === "condition_weekday" && (
+          <div className="space-y-2 text-xs text-zinc-500 leading-relaxed">
+            <p>
+              Roteia a execução conforme o <strong className="text-zinc-400">dia de hoje</strong>{" "}
+              (horário de Brasília). Ligue cada bolinha do bloco a uma sequência diferente — por
+              exemplo, mensagem de segunda, mensagem de terça, etc.
+            </p>
+            <ul className="list-disc space-y-1 pl-4 text-zinc-600">
+              <li>Saída 1 → Segunda</li>
+              <li>Saída 2 → Terça</li>
+              <li>Saída 3 → Quarta</li>
+              <li>Saída 4 → Quinta</li>
+              <li>Saída 5 → Sexta</li>
+              <li>Saída 6 → Sábado</li>
+              <li>Saída 7 → Domingo</li>
+            </ul>
+          </div>
         )}
       </div>
     </div>

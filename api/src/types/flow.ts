@@ -7,9 +7,11 @@ export type NodeType =
   | "trigger_broadcast"
   | "trigger_inbound"
   | "trigger_manual"
+  | "trigger_groups"
   | "condition_offer_code"
   | "condition_contact_tag"
   | "condition_contact_replied"
+  | "condition_weekday"
   | "split_round_robin"
   | "tag_action"
   | "start_flow"
@@ -86,6 +88,30 @@ export type ConditionContactRepliedData = {
   sinceFlowStart?: boolean;
   /** Janela extra em dias (0 = sem limite além de sinceFlowStart) */
   withinDays?: number;
+};
+
+/**
+ * Gatilho de grupos: define os destinos; mensagens seguintes (send_*) vão para o grupo.
+ * Agenda opcional por dias da semana + horário (America/Sao_Paulo).
+ */
+export type TriggerGroupsData = {
+  groupIds: string[];
+  groupLabels?: Record<string, string>;
+  /**
+   * Dias da semana (Date.getDay): 0=domingo … 6=sábado.
+   * Vazio = não agenda automático (só disparo manual).
+   */
+  weekdays?: number[];
+  /** Horário local HH:mm (padrão 09:00). */
+  time?: string;
+  /** Se true (padrão quando há weekdays), o worker dispara no horário. */
+  scheduleEnabled?: boolean;
+};
+
+/** Roteia por dia da semana (handles: "0"…"6" = dom…sáb). */
+export type ConditionWeekdayData = {
+  /** Timezone IANA — padrão America/Sao_Paulo. */
+  timezone?: string;
 };
 
 /** Divide o fluxo em N ramos iguais — cada execução segue o próximo ramo (round robin). */

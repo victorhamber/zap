@@ -88,33 +88,33 @@ export function EmailBuilder({ html, onChange }: Props) {
   }, [html, editor]);
 
   if (!editor) return null;
+  const ed = editor;
 
   function insertVar(key: string) {
-    editor?.chain().focus().insertContent(mustacheSnippet(key)).run();
+    ed.chain().focus().insertContent(mustacheSnippet(key)).run();
   }
 
   function applyTemplate(tplHtml: string) {
-    editor?.commands.setContent(tplHtml);
+    ed.commands.setContent(tplHtml);
     onChange(tplHtml);
   }
 
   function addLink() {
-    const prev = editor.getAttributes("link").href as string | undefined;
+    const prev = ed.getAttributes("link").href as string | undefined;
     const url = window.prompt("URL do link", prev || "https://");
     if (url === null) return;
     if (!url.trim()) {
-      editor.chain().focus().extendMarkRange("link").unsetLink().run();
+      ed.chain().focus().extendMarkRange("link").unsetLink().run();
       return;
     }
-    editor.chain().focus().extendMarkRange("link").setLink({ href: url.trim() }).run();
+    ed.chain().focus().extendMarkRange("link").setLink({ href: url.trim() }).run();
   }
 
   function addCta() {
     const url = window.prompt("URL do botão", "https://");
     if (!url?.trim()) return;
     const label = window.prompt("Texto do botão", "Quero acessar") || "Quero acessar";
-    editor
-      .chain()
+    ed.chain()
       .focus()
       .insertContent(
         `<p style="margin:24px 0;text-align:center"><a href="${url.trim()}" style="display:inline-block;background:#10b981;color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600">${label}</a></p>`
@@ -125,7 +125,7 @@ export function EmailBuilder({ html, onChange }: Props) {
   function addImage() {
     const url = window.prompt("URL da imagem", "https://");
     if (!url?.trim()) return;
-    editor.chain().focus().setImage({ src: url.trim() }).run();
+    ed.chain().focus().setImage({ src: url.trim() }).run();
   }
 
   return (

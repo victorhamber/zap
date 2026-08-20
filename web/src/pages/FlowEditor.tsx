@@ -42,6 +42,17 @@ type ContextMenuState =
 
 function summaryFor(type: string, data: Record<string, unknown>): string {
   if (type === "send_text") return String(data.text ?? "").slice(0, 40);
+  if (type === "trigger_groups") {
+    const ids = (data.groupIds as string[] | undefined) ?? [];
+    const days = (data.weekdays as number[] | undefined) ?? [];
+    const time = String(data.time ?? "09:00");
+    const sched = data.scheduleEnabled !== false && days.length > 0;
+    if (!ids.length) return "Selecione grupos";
+    return sched
+      ? `${ids.length} grupo(s) · ${days.length} dia(s) · ${time}`
+      : `${ids.length} grupo(s) · só manual`;
+  }
+  if (type === "condition_weekday") return "Seg → Dom (7 saídas)";
   if (type === "send_groups") {
     const ids = (data.groupIds as string[] | undefined) ?? [];
     const media = String(data.mediaType ?? "text");
@@ -334,6 +345,10 @@ export function FlowEditor() {
     return nodes.some((n) => n.data.nodeType === "trigger_broadcast");
   }
 
+  function hasGroupsTrigger(): boolean {
+    return nodes.some((n) => n.data.nodeType === "trigger_groups");
+  }
+
   async function dispatchBroadcast(): Promise<string | null> {
     if (!id) return null;
     const r = await api<{
@@ -348,6 +363,22 @@ export function FlowEditor() {
     });
     if (!r.ok) return r.error ?? "Falha ao disparar";
     return `${r.scheduled ?? 0} de ${r.total ?? 0} contato(s) na fila · ${r.skipped ?? 0} ignorado(s)`;
+  }
+
+  async function dispatchGroups(): Promise<string | null> {
+    if (!id) return null;
+    const r = await api<{
+      ok: boolean;
+      scheduled?: number;
+      skipped?: number;
+      total?: number;
+      error?: string;
+    }>(`/api/flows/${id}/dispatch-groups`, {
+      method: "POST",
+      body: JSON.stringify({})
+    });
+    if (!r.ok) return r.error ?? "Falha ao disparar grupos";
+    return `${r.scheduled ?? 0} de ${r.total ?? 0} grupo(s) na fila · ${r.skipped ?? 0} ignorado(s)`;
   }
 
   async function save() {
@@ -389,6 +420,19 @@ export function FlowEditor() {
       }
     }
 
+    if (enabled && !wasEnabled && hasGroupsTrigger()) {
+      if (
+        window.confirm(
+          "Publicado! Deseja disparar este fluxo agora para os grupos do gatilho?\n\n(A agenda por dia da semana continua valendo nos próximos horários.)"
+        )
+      ) {
+        setStatus("Agendando grupos…");
+        const dispatchStatus = await dispatchGroups();
+        setStatus(dispatchStatus ? `Salvo · ${dispatchStatus}` : "Salvo.");
+        return;
+      }
+    }
+
     setStatus("Salvo.");
   }
 
@@ -407,6 +451,23 @@ export function FlowEditor() {
     setStatus("Agendando broadcast…");
     const result = await dispatchBroadcast();
     setStatus(result ?? "Broadcast agendado.");
+  }
+
+  async function runGroups() {
+    if (!id || !enabled) {
+      setStatus("Publique o fluxo antes de disparar para os grupos.");
+      return;
+    }
+    if (
+      !window.confirm(
+        "Disparar agora para os grupos selecionados no gatilho? Os envios serão espaçados automaticamente."
+      )
+    ) {
+      return;
+    }
+    setStatus("Agendando grupos…");
+    const result = await dispatchGroups();
+    setStatus(result ?? "Grupos agendados.");
   }
 
   async function testFlow() {
@@ -487,6 +548,17 @@ export function FlowEditor() {
             title={enabled ? "Disparar para todos os contatos" : "Publique o fluxo primeiro"}
           >
             Broadcast
+          </button>
+        )}
+        {hasGroupsTrigger() && (
+          <button
+            type="button"
+            onClick={() => void runGroups()}
+            disabled={!enabled}
+            className="shrink-0 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-1.5 text-sm text-sky-200 hover:bg-sky-500/20 disabled:opacity-40"
+            title={enabled ? "Disparar agora para os grupos do gatilho" : "Publique o fluxo primeiro"}
+          >
+            Disparar grupos
           </button>
         )}
         <input

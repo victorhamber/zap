@@ -195,6 +195,63 @@ export function FlowNodeComponent({ data, selected }: NodeProps) {
     );
   }
 
+  if (type === "condition_weekday") {
+    const daySlots = [
+      { handleId: "1", title: "Segunda" },
+      { handleId: "2", title: "Terça" },
+      { handleId: "3", title: "Quarta" },
+      { handleId: "4", title: "Quinta" },
+      { handleId: "5", title: "Sexta" },
+      { handleId: "6", title: "Sábado" },
+      { handleId: "0", title: "Domingo" }
+    ];
+
+    return (
+      <div
+        className={`flow-offer-node relative w-[260px] overflow-visible rounded-xl border text-sm shadow-lg ${
+          selected ? "border-emerald-400 bg-zinc-900" : "border-zinc-700 bg-zinc-950"
+        }`}
+      >
+        <Handle
+          type="target"
+          position={Position.Left}
+          className="!bg-emerald-400"
+          style={{ top: OFFER_HEADER_H / 2 }}
+        />
+        <div
+          className="border-b border-zinc-700/40 px-3 py-3"
+          style={{ height: OFFER_HEADER_H }}
+        >
+          <div className="text-xs font-medium text-zinc-400">{label}</div>
+          <div className="mt-1.5 text-[10px] leading-snug text-zinc-600">
+            Uma saída por dia (horário de Brasília)
+          </div>
+        </div>
+        {daySlots.map((slot, index) => (
+          <OfferOutputRow
+            key={slot.handleId}
+            outputNumber={index + 1}
+            title={slot.title}
+            variant="offer"
+          />
+        ))}
+        {daySlots.map((slot, index) => (
+          <Handle
+            key={`handle-${slot.handleId}`}
+            type="source"
+            position={Position.Right}
+            id={slot.handleId}
+            className="flow-offer-handle !h-3.5 !w-3.5 !border-2 !border-zinc-950 !bg-emerald-400"
+            style={{
+              top: handleTopForRow(index),
+              right: -7
+            }}
+          />
+        ))}
+      </div>
+    );
+  }
+
   if (type === "condition_contact_tag" || type === "condition_contact_replied") {
     const isReply = type === "condition_contact_replied";
     const slots = isReply
@@ -377,6 +434,20 @@ export function FlowNodeComponent({ data, selected }: NodeProps) {
         <div className="text-xs text-amber-400/90">{label}</div>
         <div className="font-medium truncate">{String(data.summary ?? "Todos os contatos")}</div>
         <Handle type="source" position={Position.Right} className="!bg-amber-400" />
+      </div>
+    );
+  }
+
+  if (type === "trigger_groups") {
+    return (
+      <div
+        className={`min-w-[180px] rounded-xl border px-3 py-2 text-sm shadow-lg ${
+          selected ? "border-sky-400 bg-zinc-900" : "border-sky-500/40 bg-zinc-950"
+        }`}
+      >
+        <div className="text-xs text-sky-400/90">{label}</div>
+        <div className="font-medium truncate">{String(data.summary ?? "Selecione grupos")}</div>
+        <Handle type="source" position={Position.Right} className="!bg-sky-400" />
       </div>
     );
   }
