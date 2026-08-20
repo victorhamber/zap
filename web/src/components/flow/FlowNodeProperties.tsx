@@ -1505,8 +1505,8 @@ export function FlowNodeProperties({
               </div>
             )}
             <p className="text-[11px] text-zinc-600">
-              {((config.groupIds as string[] | undefined) ?? []).length} grupo(s) · use &quot;Disparar
-              grupos&quot; na barra para iniciar o fluxo
+              {((config.groupIds as string[] | undefined) ?? []).length} grupo(s) · ao{" "}
+              <strong className="text-zinc-400">Publicar</strong> o fluxo inicia sozinho
             </p>
           </>
         )}

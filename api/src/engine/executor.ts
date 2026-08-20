@@ -982,10 +982,46 @@ async function executeNode(
 
 async function finishRun(flowRunId: string, status: string) {
   if (!prisma) return;
+  const run = await prisma.flowRun.findUnique({
+    where: { id: flowRunId },
+    include: { flow: true }
+  });
+  if (!run) return;
+
   await prisma.flowRun.update({
     where: { id: flowRunId },
     data: { status, currentNodeId: null }
   });
+
+  // Ciclo semanal de grupos: ao terminar, reinicia se o fluxo continuar publicado.
+  if (
+    status === "completed" &&
+    run.triggerType === "trigger_groups" &&
+    run.flow.enabled
+  ) {
+    try {
+      const {
+        groupsFlowHasScheduleNodes,
+        ensureGroupsFlowRunning
+      } = await import("../services/groupsFlowTrigger.js");
+      if (groupsFlowHasScheduleNodes(run.flow.graphJson)) {
+        // Evita reinício no mesmo tick se ainda houver runs irmãos ativos.
+        setTimeout(() => {
+          void ensureGroupsFlowRunning(run.flowId, "auto_cycle").catch((err) =>
+            console.warn(
+              `[groups-trigger] reinício após ciclo falhou flow=${run.flowId}:`,
+              err instanceof Error ? err.message : err
+            )
+          );
+        }, 2_000);
+      }
+    } catch (err) {
+      console.warn(
+        "[groups-trigger] falha ao agendar reinício:",
+        err instanceof Error ? err.message : err
+      );
+    }
+  }
 }
 
 export async function continueFlowRun(flowRunId: string, startNodeId: string) {

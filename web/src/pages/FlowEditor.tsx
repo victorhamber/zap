@@ -373,13 +373,18 @@ export function FlowEditor() {
       scheduled?: number;
       skipped?: number;
       total?: number;
+      cancelled?: number;
+      alreadyActive?: boolean;
       error?: string;
     }>(`/api/flows/${id}/dispatch-groups`, {
       method: "POST",
-      body: JSON.stringify({})
+      body: JSON.stringify({ restart: true })
     });
     if (!r.ok) return r.error ?? "Falha ao disparar grupos";
-    return `${r.scheduled ?? 0} de ${r.total ?? 0} grupo(s) na fila · ${r.skipped ?? 0} ignorado(s)`;
+    if (r.alreadyActive) return "Fluxo de grupos já estava em execução";
+    const cancelled =
+      typeof r.cancelled === "number" && r.cancelled > 0 ? ` · ${r.cancelled} reiniciado(s)` : "";
+    return `${r.scheduled ?? 0} de ${r.total ?? 0} grupo(s) na fila${cancelled}`;
   }
 
   async function save() {
@@ -401,7 +406,16 @@ export function FlowEditor() {
         ...(e.sourceHandle ? { sourceHandle: e.sourceHandle } : {})
       }))
     };
-    await api(`/api/flows/${id}`, {
+    const saved = await api<{
+      id?: string;
+      groupsAutoStart?: {
+        started?: boolean;
+        scheduled?: number;
+        skipped?: number;
+        total?: number;
+        reason?: string;
+      };
+    }>(`/api/flows/${id}`, {
       method: "PUT",
       body: JSON.stringify({ name, enabled, graphJson })
     });
@@ -422,16 +436,21 @@ export function FlowEditor() {
     }
 
     if (enabled && !wasEnabled && hasGroupsTrigger()) {
-      if (
-        window.confirm(
-          "Publicado! Deseja disparar este fluxo agora para os grupos do gatilho?\n\nOs nós \"Aguardar dia\" controlam Segunda, Terça, etc."
-        )
-      ) {
-        setStatus("Agendando grupos…");
-        const dispatchStatus = await dispatchGroups();
-        setStatus(dispatchStatus ? `Salvo · ${dispatchStatus}` : "Salvo.");
+      const auto = saved.groupsAutoStart;
+      if (auto?.started) {
+        setStatus(
+          `Publicado · fluxo iniciado automaticamente (${auto.scheduled ?? 0}/${auto.total ?? 0} grupo(s))`
+        );
         return;
       }
+      if (auto?.reason === "already_active") {
+        setStatus("Publicado · fluxo de grupos já estava em execução.");
+        return;
+      }
+      setStatus("Publicado · tentando iniciar grupos…");
+      const dispatchStatus = await dispatchGroups();
+      setStatus(dispatchStatus ? `Publicado · ${dispatchStatus}` : "Publicado.");
+      return;
     }
 
     setStatus("Salvo.");
@@ -456,19 +475,19 @@ export function FlowEditor() {
 
   async function runGroups() {
     if (!id || !enabled) {
-      setStatus("Publique o fluxo antes de disparar para os grupos.");
+      setStatus("Publique o fluxo antes de reiniciar os grupos.");
       return;
     }
     if (
       !window.confirm(
-        "Disparar agora para os grupos selecionados no gatilho? Os envios serão espaçados automaticamente."
+        "Reiniciar o fluxo de grupos agora? Execuções em andamento serão canceladas e o ciclo começa de novo."
       )
     ) {
       return;
     }
-    setStatus("Agendando grupos…");
+    setStatus("Reiniciando grupos…");
     const result = await dispatchGroups();
-    setStatus(result ?? "Grupos agendados.");
+    setStatus(result ?? "Grupos reiniciados.");
   }
 
   async function testFlow() {
@@ -557,9 +576,13 @@ export function FlowEditor() {
             onClick={() => void runGroups()}
             disabled={!enabled}
             className="shrink-0 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-1.5 text-sm text-sky-200 hover:bg-sky-500/20 disabled:opacity-40"
-            title={enabled ? "Disparar agora para os grupos do gatilho" : "Publique o fluxo primeiro"}
+            title={
+              enabled
+                ? "Reiniciar manualmente (já inicia ao publicar)"
+                : "Publique o fluxo primeiro"
+            }
           >
-            Disparar grupos
+            Reiniciar grupos
           </button>
         )}
         <input
