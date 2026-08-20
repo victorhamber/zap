@@ -29,6 +29,11 @@ model AppSettings {
   inboxCaptureSince    DateTime?
   inboxOwnerPhone      String?
   inboxSessionState    Json      @default("{}")
+  /** Resend API key criptografada (AES). */
+  resendApiKeyEnc      String?
+  /** Remetente verificado no Resend (ex.: ola@seudominio.com). */
+  emailFrom            String?
+  emailFromName        String?
   updatedAt            DateTime  @updatedAt
 }
 

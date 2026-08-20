@@ -42,6 +42,15 @@ type ContextMenuState =
 
 function summaryFor(type: string, data: Record<string, unknown>): string {
   if (type === "send_text") return String(data.text ?? "").slice(0, 40);
+  if (type === "send_groups") {
+    const ids = (data.groupIds as string[] | undefined) ?? [];
+    const media = String(data.mediaType ?? "text");
+    return ids.length ? `${ids.length} grupo(s) · ${media}` : "Selecione grupos";
+  }
+  if (type === "send_email") {
+    const subject = String(data.subject ?? "").trim();
+    return subject ? subject.slice(0, 40) : "Configure o e-mail";
+  }
   if (type === "delay") return `${data.value} ${data.unit}`;
   if (type === "schedule_at") return String(data.datetime ?? "").slice(0, 16);
   if (type.startsWith("send_")) return String(data.url ?? "").slice(0, 30);

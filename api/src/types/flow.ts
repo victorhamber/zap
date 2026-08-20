@@ -18,7 +18,9 @@ export type NodeType =
   | "send_text"
   | "send_image"
   | "send_video"
-  | "send_audio";
+  | "send_audio"
+  | "send_groups"
+  | "send_email";
 
 export type FlowEdge = {
   id: string;
@@ -121,6 +123,30 @@ export type SendTextNodeData = {
 export type SendMediaNodeData = {
   url: string;
   caption?: string;
+};
+
+/** Envia a mesma mensagem para N grupos, com intervalo humanizado entre cada um. */
+export type SendGroupsNodeData = {
+  mediaType: "text" | "image" | "video" | "audio";
+  text?: string;
+  url?: string;
+  caption?: string;
+  groupIds: string[];
+  /** Nome exibido no editor (JID → subject). */
+  groupLabels?: Record<string, string>;
+  /** Intervalo mínimo entre grupos (segundos). Default 20. */
+  staggerMinSec?: number;
+  /** Intervalo máximo entre grupos (segundos). Default 45. */
+  staggerMaxSec?: number;
+};
+
+export type SendEmailNodeData = {
+  /** Destinatário Mustache — default `{{email}}`. */
+  to: string;
+  subject: string;
+  /** HTML do corpo (builder TipTap). */
+  html: string;
+  replyTo?: string;
 };
 
 export type TriggerHotmartData = {

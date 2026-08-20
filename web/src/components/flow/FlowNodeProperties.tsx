@@ -3,6 +3,7 @@ import type { Node } from "@xyflow/react";
 import { api } from "../../api/client";
 import { hotmartWebhookUrl, customWebhookUrl, buildWaMeLink, NODE_LABELS } from "./nodeMeta";
 import { TemplateVariablesHelp } from "./TemplateVariablesHelp";
+import { EmailBuilder } from "../email/EmailBuilder";
 
 type Props = {
   selectedNode: Node;
@@ -80,6 +81,9 @@ export function FlowNodeProperties({
   const [loadingSample, setLoadingSample] = useState(false);
   const [ownerDigits, setOwnerDigits] = useState("");
   const [copiedWaLink, setCopiedWaLink] = useState(false);
+  const [waGroups, setWaGroups] = useState<Array<{ id: string; name: string }>>([]);
+  const [groupsLoading, setGroupsLoading] = useState(false);
+  const [groupSearch, setGroupSearch] = useState("");
   const webhookUrl = flowId
     ? nodeType === "trigger_custom_webhook"
       ? customWebhookUrl(flowId)
@@ -151,6 +155,15 @@ export function FlowNodeProperties({
     api<FlowRecord[]>("/api/flows")
       .then(setAllFlows)
       .catch(() => setAllFlows([]));
+  }, [nodeType]);
+
+  useEffect(() => {
+    if (nodeType !== "send_groups") return;
+    setGroupsLoading(true);
+    api<{ groups: Array<{ id: string; name: string }> }>("/api/wpp/groups")
+      .then((res) => setWaGroups(res.groups ?? []))
+      .catch(() => setWaGroups([]))
+      .finally(() => setGroupsLoading(false));
   }, [nodeType]);
 
   useEffect(() => {
@@ -390,6 +403,188 @@ export function FlowNodeProperties({
                 <p className="text-[11px] text-zinc-600">Enter cria nova linha na legenda do WhatsApp.</p>
               </>
             )}
+          </>
+        )}
+
+        {nodeType === "send_groups" && (
+          <>
+            <p className="text-xs text-zinc-500 leading-relaxed">
+              Envia a mesma mensagem para vários grupos, com intervalo seguro entre cada envio
+              (anti-ban).
+            </p>
+            <label className="text-xs text-zinc-500">Tipo de mensagem</label>
+            <select
+              value={String(config.mediaType ?? "text")}
+              onChange={(e) => onUpdate({ mediaType: e.target.value })}
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-white"
+            >
+              <option value="text">Texto</option>
+              <option value="image">Imagem</option>
+              <option value="video">Vídeo</option>
+              <option value="audio">Áudio</option>
+            </select>
+
+            {String(config.mediaType ?? "text") === "text" ? (
+              <>
+                <TemplateVariablesHelp onInsert={(s) => insertVariable(s, "text")} />
+                <label className="text-xs text-zinc-500">Mensagem</label>
+                <textarea
+                  ref={textRef}
+                  rows={6}
+                  value={String(config.text ?? "")}
+                  onChange={(e) => onUpdate({ text: e.target.value })}
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-mono text-white"
+                />
+              </>
+            ) : (
+              <>
+                <label className="text-xs text-zinc-500">URL do arquivo</label>
+                <input
+                  value={String(config.url ?? "")}
+                  onChange={(e) => onUpdate({ url: e.target.value })}
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-white"
+                />
+                {String(config.mediaType) !== "audio" && (
+                  <>
+                    <TemplateVariablesHelp compact onInsert={(s) => insertVariable(s, "caption")} />
+                    <label className="text-xs text-zinc-500">Legenda</label>
+                    <textarea
+                      ref={captionRef}
+                      rows={4}
+                      value={String(config.caption ?? "")}
+                      onChange={(e) => onUpdate({ caption: e.target.value })}
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-mono text-white"
+                    />
+                  </>
+                )}
+              </>
+            )}
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs text-zinc-500">Intervalo mín. (seg)</label>
+                <input
+                  type="number"
+                  min={5}
+                  max={600}
+                  value={Number(config.staggerMinSec ?? 20)}
+                  onChange={(e) => onUpdate({ staggerMinSec: Number(e.target.value) || 20 })}
+                  className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-white"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-zinc-500">Intervalo máx. (seg)</label>
+                <input
+                  type="number"
+                  min={5}
+                  max={900}
+                  value={Number(config.staggerMaxSec ?? 45)}
+                  onChange={(e) => onUpdate({ staggerMaxSec: Number(e.target.value) || 45 })}
+                  className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-white"
+                />
+              </div>
+            </div>
+
+            <label className="text-xs text-zinc-500">Grupos</label>
+            <input
+              value={groupSearch}
+              onChange={(e) => setGroupSearch(e.target.value)}
+              placeholder="Buscar grupo…"
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-white"
+            />
+            {groupsLoading ? (
+              <p className="text-xs text-zinc-500">Carregando grupos…</p>
+            ) : (
+              <div className="max-h-48 space-y-1 overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-950/50 p-2">
+                {waGroups
+                  .filter((g) => {
+                    const q = groupSearch.trim().toLowerCase();
+                    if (!q) return true;
+                    return g.name.toLowerCase().includes(q) || g.id.toLowerCase().includes(q);
+                  })
+                  .map((g) => {
+                    const selected = ((config.groupIds as string[] | undefined) ?? []).includes(g.id);
+                    return (
+                      <label
+                        key={g.id}
+                        className={`flex cursor-pointer items-start gap-2 rounded-lg px-2 py-1.5 text-xs ${
+                          selected ? "bg-emerald-500/10 text-emerald-200" : "text-zinc-400 hover:bg-zinc-900"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          onChange={() => {
+                            const prev = ((config.groupIds as string[] | undefined) ?? []).slice();
+                            const labels = {
+                              ...((config.groupLabels as Record<string, string> | undefined) ?? {})
+                            };
+                            if (selected) {
+                              onUpdate({
+                                groupIds: prev.filter((id) => id !== g.id),
+                                groupLabels: Object.fromEntries(
+                                  Object.entries(labels).filter(([id]) => id !== g.id)
+                                )
+                              });
+                            } else {
+                              labels[g.id] = g.name;
+                              onUpdate({ groupIds: [...prev, g.id], groupLabels: labels });
+                            }
+                          }}
+                          className="mt-0.5"
+                        />
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium">{g.name}</span>
+                          <span className="block truncate font-mono text-[10px] text-zinc-600">
+                            {g.id}
+                          </span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                {!waGroups.length && (
+                  <p className="px-1 py-2 text-[11px] text-zinc-600">
+                    Nenhum grupo encontrado na instância ativa.
+                  </p>
+                )}
+              </div>
+            )}
+            <p className="text-[11px] text-zinc-600">
+              {((config.groupIds as string[] | undefined) ?? []).length} grupo(s) selecionado(s)
+            </p>
+          </>
+        )}
+
+        {nodeType === "send_email" && (
+          <>
+            <p className="text-xs text-zinc-500 leading-relaxed">
+              Envia via Resend. Configure a API em <strong className="text-zinc-400">Configurações → E-mail</strong>.
+            </p>
+            <label className="text-xs text-zinc-500">Para (destinatário)</label>
+            <input
+              value={String(config.to ?? "{{email}}")}
+              onChange={(e) => onUpdate({ to: e.target.value })}
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-mono text-white"
+              placeholder="{{email}}"
+            />
+            <label className="text-xs text-zinc-500">Assunto</label>
+            <input
+              value={String(config.subject ?? "")}
+              onChange={(e) => onUpdate({ subject: e.target.value })}
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
+            />
+            <label className="text-xs text-zinc-500">Reply-To (opcional)</label>
+            <input
+              value={String(config.replyTo ?? "")}
+              onChange={(e) => onUpdate({ replyTo: e.target.value })}
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-white"
+              placeholder="suporte@seudominio.com"
+            />
+            <label className="text-xs text-zinc-500">Corpo do e-mail</label>
+            <EmailBuilder
+              html={String(config.html ?? "")}
+              onChange={(html) => onUpdate({ html })}
+            />
           </>
         )}
 

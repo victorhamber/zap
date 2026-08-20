@@ -38,6 +38,18 @@ async function listServerSessionNames(): Promise<{ sessions: string[]; error?: s
 export async function wppRoutes(app: FastifyInstance) {
   app.addHook("preHandler", requireAuth);
 
+  app.get("/api/wpp/groups", async (_req, reply) => {
+    try {
+      const groups = await wpp.listAllGroups();
+      return { groups };
+    } catch (e: any) {
+      return reply.status(502).send({
+        groups: [],
+        error: e?.message ?? String(e)
+      });
+    }
+  });
+
   app.get("/api/wpp/instances", async () => {
     if (!prisma) throw new Error("Banco indisponível");
 

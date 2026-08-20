@@ -377,11 +377,37 @@ async function postSendTextOnce(
   }
 }
 
-export async function sendText(phone: string, message: string): Promise<string | null> {
+export async function sendText(
+  phone: string,
+  message: string,
+  opts?: { isGroup?: boolean }
+): Promise<string | null> {
   const text = String(message ?? "").trim();
   if (!text) throw new Error("sendText: mensagem vazia");
 
   const instance = await getInstanceName();
+
+  if (isGroupDestination(phone, opts?.isGroup)) {
+    const number = normalizeGroupSendNumber(phone);
+    let lastError = "sendText: falha desconhecida";
+    for (let attempt = 0; attempt < SEND_TEXT_MAX_ATTEMPTS; attempt++) {
+      const result = await postSendTextOnce(instance, number, text);
+      if (result.ok) return result.id;
+      lastError = result.error;
+      if (!isRetriableSendError(result.status, result.error)) {
+        throw new Error(`${lastError} (grupo ${number})`);
+      }
+      if (attempt < SEND_TEXT_MAX_ATTEMPTS - 1) {
+        await sleep(3500 * (attempt + 1));
+        continue;
+      }
+      break;
+    }
+    throw new Error(
+      `${lastError} — desistiu após ${SEND_TEXT_MAX_ATTEMPTS} tentativas (grupo ${number})`
+    );
+  }
+
   let resolved = await resolveEvolutionSendNumber(phone);
   const d = digitsOnly(resolved);
   if (d.startsWith("55") && d.length >= 12) {
@@ -430,6 +456,20 @@ export async function sendText(phone: string, message: string): Promise<string |
   throw new Error(
     `${lastError} — desistiu após ${SEND_TEXT_MAX_ATTEMPTS} tentativas (tel. ${phone})`
   );
+}
+
+function isGroupDestination(phone: string, isGroup?: boolean): boolean {
+  const p = String(phone ?? "").trim();
+  return isGroup === true || p.includes("@g.us") || p.includes("@newsletter");
+}
+
+function normalizeGroupSendNumber(phone: string): string {
+  const p = String(phone ?? "").trim();
+  if (p.includes("@g.us") || p.includes("@newsletter")) {
+    return normalizeDirectJid(p);
+  }
+  const d = digitsOnly(p);
+  return d ? `${d}@g.us` : p;
 }
 
 function inferMimeType(fileName?: string, mimeHint?: string): string {
@@ -725,8 +765,22 @@ export async function sendImage(
   phone: string,
   url: string,
   caption?: string,
-  opts?: { mimeType?: string; fileName?: string }
+  opts?: { mimeType?: string; fileName?: string; isGroup?: boolean }
 ): Promise<string | null> {
+  if (isGroupDestination(phone, opts?.isGroup)) {
+    const number = normalizeGroupSendNumber(phone);
+    try {
+      return await sendImageOnce(number, url, caption, opts);
+    } catch (err) {
+      const lastErr = err instanceof Error ? err : new Error(String(err));
+      if (isHttp400MediaError(lastErr.message)) {
+        const fallback = await sendImageOnceForceBase64(number, url, caption, opts);
+        if (fallback !== null) return fallback;
+      }
+      throw lastErr;
+    }
+  }
+
   const variants = phoneSendVariants(phone);
   let lastErr: Error | null = null;
 
@@ -758,10 +812,12 @@ export async function sendVideo(
   phone: string,
   url: string,
   caption?: string,
-  opts?: { mimeType?: string; fileName?: string }
+  opts?: { mimeType?: string; fileName?: string; isGroup?: boolean }
 ): Promise<string | null> {
   const instance = await getInstanceName();
-  const number = await resolveEvolutionSendNumber(phone);
+  const number = isGroupDestination(phone, opts?.isGroup)
+    ? normalizeGroupSendNumber(phone)
+    : await resolveEvolutionSendNumber(phone);
   const resolved = await resolveEvolutionMediaInputCached(url, opts?.mimeType, opts?.fileName);
   return postSendMedia(
     instance,
@@ -777,9 +833,15 @@ export async function sendVideo(
   );
 }
 
-export async function sendAudio(phone: string, media: string): Promise<string | null> {
+export async function sendAudio(
+  phone: string,
+  media: string,
+  opts?: { isGroup?: boolean }
+): Promise<string | null> {
   const instance = await getInstanceName();
-  const number = await resolveEvolutionSendNumber(phone);
+  const number = isGroupDestination(phone, opts?.isGroup)
+    ? normalizeGroupSendNumber(phone)
+    : await resolveEvolutionSendNumber(phone);
 
   let audio: string;
   if (media.startsWith("data:")) {
@@ -1520,9 +1582,13 @@ export async function callSessionApi(
 
   if (safe === "/send-message" && method === "POST" && body && typeof body === "object") {
     const b = body as Record<string, unknown>;
-    const phone = phoneFromCallBody(b);
+    const isGroup = b.isGroup === true;
+    let phone = phoneFromCallBody(b);
+    if (isGroup && phone && !phone.includes("@")) {
+      phone = `${digitsOnly(phone)}@g.us`;
+    }
     const message = String(b.message ?? "");
-    const waMessageId = await sendText(phone, message);
+    const waMessageId = await sendText(phone, message, { isGroup });
     return { success: true, id: waMessageId, key: waMessageId ? { id: waMessageId } : undefined };
   }
 
@@ -1539,25 +1605,35 @@ export async function callSessionApi(
 
   if (safe === "/send-image" && method === "POST" && body && typeof body === "object") {
     const b = body as Record<string, unknown>;
+    const isGroup = b.isGroup === true;
+    let phone = phoneFromCallBody(b);
+    if (isGroup && phone && !phone.includes("@")) {
+      phone = `${digitsOnly(phone)}@g.us`;
+    }
     const { media, mimeType, fileName } = mediaFromCallBody(b);
-    const waMessageId = await sendImage(phoneFromCallBody(b), media, String(b.caption ?? ""), {
+    const waMessageId = await sendImage(phone, media, String(b.caption ?? ""), {
       mimeType,
-      fileName
+      fileName,
+      isGroup
     });
     return { success: true, id: waMessageId, key: waMessageId ? { id: waMessageId } : undefined };
   }
 
   if (safe === "/send-file" && method === "POST" && body && typeof body === "object") {
     const b = body as Record<string, unknown>;
-    const phone = phoneFromCallBody(b);
+    const isGroup = b.isGroup === true;
+    let phone = phoneFromCallBody(b);
+    if (isGroup && phone && !phone.includes("@")) {
+      phone = `${digitsOnly(phone)}@g.us`;
+    }
     const { media, mimeType, fileName } = mediaFromCallBody(b);
     const filename = fileName.toLowerCase();
     const caption = String(b.caption ?? "");
-    const opts = { mimeType, fileName };
+    const opts = { mimeType, fileName, isGroup };
     let waMessageId: string | null = null;
     const sendAs = String(b.sendAs ?? "auto").toLowerCase();
     if (sendAs === "document") {
-      waMessageId = await sendDocument(phone, media, caption, fileName, opts);
+      waMessageId = await sendDocument(phone, media, caption, fileName, { mimeType });
     } else if (
       (sendAs === "video" || sendAs === "auto") &&
       /\.(mp4|webm|mov|mkv)(\?|$)/.test(filename)
@@ -1569,7 +1645,7 @@ export async function callSessionApi(
     ) {
       waMessageId = await sendImage(phone, media, caption, opts);
     } else {
-      waMessageId = await sendDocument(phone, media, caption, fileName, opts);
+      waMessageId = await sendDocument(phone, media, caption, fileName, { mimeType });
     }
     return { success: true, id: waMessageId, key: waMessageId ? { id: waMessageId } : undefined };
   }
@@ -1739,6 +1815,42 @@ export async function fetchGroupSubjectMap(): Promise<Map<string, string>> {
     return new Map(rememberGroupSubjects(list));
   } catch {
     return new Map();
+  }
+}
+
+/** Lista todos os grupos da instância ativa (para o bloco send_groups). */
+export async function listAllGroups(): Promise<Array<{ id: string; name: string }>> {
+  try {
+    const now = Date.now();
+    let list =
+      groupsCatalogCache && now - groupsCatalogCache.at < GROUPS_CATALOG_TTL_MS
+        ? groupsCatalogCache.list
+        : null;
+
+    if (!list) {
+      const instance = await getInstanceName();
+      const res = await evoFetch(
+        `/group/fetchAllGroups/${encodeURIComponent(instance)}?getParticipants=false`
+      );
+      const data = await readJson(res);
+      if (!res.ok) return [];
+      list = extractEvolutionChatList(data);
+      groupsCatalogCache = { at: now, list };
+      rememberGroupSubjects(list);
+    } else {
+      rememberGroupSubjects(list);
+    }
+
+    const out: Array<{ id: string; name: string }> = [];
+    for (const item of list) {
+      const id = groupIdFromCatalogItem(item);
+      if (!id.includes("@g.us")) continue;
+      const name = groupSubjectFromCatalogItem(item);
+      out.push({ id, name: name || id.replace(/@.*/, "") });
+    }
+    return out.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  } catch {
+    return [];
   }
 }
 

@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "AppSettings" ADD COLUMN IF NOT EXISTS "resendApiKeyEnc" TEXT;
+ALTER TABLE "AppSettings" ADD COLUMN IF NOT EXISTS "emailFrom" TEXT;
+ALTER TABLE "AppSettings" ADD COLUMN IF NOT EXISTS "emailFromName" TEXT;

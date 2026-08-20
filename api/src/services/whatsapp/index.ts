@@ -79,3 +79,6 @@ export const callSessionApi = p.callSessionApi;
 export const fetchGroupSubjectMap = isEvolution
   ? evolution.fetchGroupSubjectMap
   : async (): Promise<Map<string, string>> => new Map();
+export const listAllGroups = isEvolution
+  ? evolution.listAllGroups
+  : async (): Promise<Array<{ id: string; name: string }>> => [];

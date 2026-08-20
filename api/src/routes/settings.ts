@@ -10,6 +10,11 @@ import {
   getLastWppWebhookSavedAt,
   getLastWppWebhookSkipReason
 } from "../services/wppWebhook.js";
+import {
+  getEmailSettingsDto,
+  saveEmailSettings,
+  sendTestEmail
+} from "../services/email/resend.js";
 
 export async function settingsRoutes(app: FastifyInstance) {
   app.addHook("preHandler", requireAuth);
@@ -318,6 +323,36 @@ export async function settingsRoutes(app: FastifyInstance) {
         state: "ERRO",
         message: e?.message ?? String(e)
       };
+    }
+  });
+
+  app.get("/api/settings/email", async () => getEmailSettingsDto());
+
+  app.put("/api/settings/email", async (req, reply) => {
+    try {
+      const body = (req.body ?? {}) as {
+        apiKey?: string | null;
+        removeApiKey?: boolean;
+        emailFrom?: string;
+        emailFromName?: string;
+      };
+      return await saveEmailSettings(body);
+    } catch (e: any) {
+      return reply.status(400).send({ error: e?.message ?? String(e) });
+    }
+  });
+
+  app.post("/api/settings/email/test", async (req, reply) => {
+    try {
+      const body = (req.body ?? {}) as { to?: string };
+      const to = String(body.to ?? "").trim();
+      if (!to || !to.includes("@")) {
+        return reply.status(400).send({ error: "Informe um e-mail de destino válido" });
+      }
+      const result = await sendTestEmail(to);
+      return { ok: true, id: result.id };
+    } catch (e: any) {
+      return reply.status(400).send({ ok: false, error: e?.message ?? String(e) });
     }
   });
 }

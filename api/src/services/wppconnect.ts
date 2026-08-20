@@ -416,10 +416,16 @@ async function readWppJson(res: Response): Promise<unknown> {
   }
 }
 
-export async function sendText(phone: string, message: string) {
+export async function sendText(phone: string, message: string, opts?: { isGroup?: boolean }) {
+  const isGroup = opts?.isGroup === true || String(phone).includes("@g.us");
+  const digits = phone.includes("@") ? phone.replace(/@.*/, "").replace(/\D/g, "") : phone.replace(/\D/g, "");
   const res = await wppFetch("/send-message", {
     method: "POST",
-    body: JSON.stringify({ phone, message, isGroup: false })
+    body: JSON.stringify({
+      phone: isGroup ? digits || phone : phone,
+      message,
+      isGroup
+    })
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");

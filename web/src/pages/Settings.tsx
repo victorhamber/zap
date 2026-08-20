@@ -2,9 +2,10 @@ import { useState } from "react";
 import { WppConnectPanel } from "../components/wpp/WppConnectPanel";
 import { WppInstancesManager } from "../components/wpp/WppInstancesManager";
 import { AiAssistantPanel } from "../components/ai/AiAssistantPanel";
+import { EmailSettingsPanel } from "../components/email/EmailSettingsPanel";
 import { Icon, type IconName, PageHeader } from "../components/ui";
 
-type Tab = "instances" | "connect" | "ai";
+type Tab = "instances" | "connect" | "ai" | "email";
 
 const TABS: { id: Tab; label: string; desc: string; icon: IconName }[] = [
   {
@@ -24,6 +25,12 @@ const TABS: { id: Tab; label: string; desc: string; icon: IconName }[] = [
     label: "Assistente IA",
     desc: "Aprendizado, regras e auto-resposta por instância.",
     icon: "spark"
+  },
+  {
+    id: "email",
+    label: "E-mail",
+    desc: "API Resend e remetente para o bloco Enviar e-mail nos fluxos.",
+    icon: "send"
   }
 ];
 
@@ -36,7 +43,7 @@ export function Settings() {
     <div className="max-w-3xl space-y-6">
       <PageHeader
         title="Configurações"
-        subtitle="Gerencie a instância ativa, conecte o WhatsApp e configure o assistente de IA. O atendimento fica no menu WhatsApp."
+        subtitle="Gerencie a instância ativa, conecte o WhatsApp, configure o assistente de IA e o envio de e-mails."
       />
 
       <div>
@@ -80,6 +87,7 @@ export function Settings() {
         )}
         {tab === "connect" && <WppConnectPanel key={panelKey} />}
         {tab === "ai" && <AiAssistantPanel />}
+        {tab === "email" && <EmailSettingsPanel />}
       </div>
     </div>
   );

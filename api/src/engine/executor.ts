@@ -31,6 +31,8 @@ import type {
   FlowGraph,
   HotmartMapping,
   ScheduleAtNodeData,
+  SendEmailNodeData,
+  SendGroupsNodeData,
   SendMediaNodeData,
   SendTextNodeData,
   SplitRoundRobinData,
@@ -41,6 +43,9 @@ import type {
   TriggerInboundData,
   TriggerWaLinkData
 } from "../types/flow.js";
+import { humanGapMs, reserveStaggeredStartDelay } from "../services/flowStagger.js";
+import { defaultWhatsAppSession } from "../env.js";
+import { sendTransactionalEmail } from "../services/email/resend.js";
 
 function delayToMs(value: number, unit: DelayUnit): number {
   const v = Math.max(0, value);
@@ -707,6 +712,151 @@ async function executeNode(
       await logSendFailure(node.type, err);
     }
     await logStep(flowRunId, nodeId, node.type, "ok", "Áudio enviado");
+  } else if (node.type === "send_groups") {
+    const data = node.data as unknown as SendGroupsNodeData;
+    const groupIds = (data.groupIds ?? [])
+      .map((id) => String(id).trim())
+      .filter(Boolean);
+    if (groupIds.length === 0) {
+      await logStep(flowRunId, nodeId, node.type, "failed", "Nenhum grupo selecionado");
+      throw new Error("Nenhum grupo selecionado no bloco Enviar para grupos");
+    }
+
+    const progressNode = String(vars._groupsSendNodeId ?? "");
+    let index =
+      progressNode === nodeId && typeof vars._groupsSendIndex === "number"
+        ? Math.max(0, Math.floor(Number(vars._groupsSendIndex)))
+        : 0;
+    if (index >= groupIds.length) index = 0;
+
+    const groupId = groupIds[index];
+    const label = data.groupLabels?.[groupId] || groupId.replace(/@.*/, "");
+    const mediaType = data.mediaType ?? "text";
+
+    try {
+      // Cadência global da sessão + envio ao grupo atual.
+      await reserveStaggeredStartDelay(defaultWhatsAppSession(), 2, 6);
+      if (mediaType === "text") {
+        const text = render(data.text ?? "", vars);
+        if (!text.trim()) {
+          await logStep(flowRunId, nodeId, node.type, "failed", "Texto da mensagem vazio");
+          throw new Error("Texto da mensagem vazio");
+        }
+        await wpp.sendText(groupId, text, { isGroup: true });
+      } else if (mediaType === "image") {
+        const caption = data.caption ? render(data.caption, vars) : undefined;
+        await sendMediaWithRetries(async () => {
+          await wpp.sendImage(groupId, String(data.url ?? ""), caption, { isGroup: true });
+        });
+      } else if (mediaType === "video") {
+        const caption = data.caption ? render(data.caption, vars) : undefined;
+        await sendMediaWithRetries(async () => {
+          await wpp.sendVideo(groupId, String(data.url ?? ""), caption, { isGroup: true });
+        });
+      } else if (mediaType === "audio") {
+        await sendMediaWithRetries(async () => {
+          await wpp.sendAudio(groupId, String(data.url ?? ""), { isGroup: true });
+        });
+      } else {
+        throw new Error(`Tipo de mídia inválido: ${mediaType}`);
+      }
+    } catch (err) {
+      await logSendFailure(node.type, err);
+    }
+
+    await logStep(
+      flowRunId,
+      nodeId,
+      node.type,
+      "ok",
+      `Grupo ${index + 1}/${groupIds.length}: ${label}`,
+      { groupId, index }
+    );
+
+    const nextIndex = index + 1;
+    if (nextIndex < groupIds.length) {
+      const minSec = Math.max(5, Math.min(600, Number(data.staggerMinSec ?? 20) || 20));
+      const maxSec = Math.max(minSec, Math.min(900, Number(data.staggerMaxSec ?? 45) || 45));
+      const delayMs = humanGapMs(minSec, maxSec);
+      const nextVars = {
+        ...vars,
+        _groupsSendIndex: nextIndex,
+        _groupsSendNodeId: nodeId
+      };
+      const jobId = `${flowRunId}_${nodeId}_g${nextIndex}`;
+      const job = await enqueueFlowJob({ flowRunId, nodeId }, delayMs, jobId);
+      if (prisma) {
+        await prisma.scheduledJob.create({
+          data: {
+            flowRunId,
+            nodeId,
+            bullJobId: job.id ?? jobId,
+            runAt: new Date(Date.now() + delayMs),
+            status: "pending"
+          }
+        });
+        await prisma.flowRun.update({
+          where: { id: flowRunId },
+          data: {
+            status: "waiting",
+            currentNodeId: nodeId,
+            variables: nextVars as object
+          }
+        });
+      }
+      await logStep(
+        flowRunId,
+        nodeId,
+        node.type,
+        "scheduled",
+        `Aguardando ~${Math.round(delayMs / 1000)}s antes do próximo grupo`
+      );
+      return;
+    }
+
+    // Limpa progresso interno antes de seguir.
+    if (prisma) {
+      const cleaned = { ...vars };
+      delete cleaned._groupsSendIndex;
+      delete cleaned._groupsSendNodeId;
+      Object.assign(vars, cleaned);
+      delete (vars as Record<string, unknown>)._groupsSendIndex;
+      delete (vars as Record<string, unknown>)._groupsSendNodeId;
+      await prisma.flowRun.update({
+        where: { id: flowRunId },
+        data: { variables: vars as object }
+      });
+    }
+  } else if (node.type === "send_email") {
+    const data = node.data as unknown as SendEmailNodeData;
+    const to = render(data.to || "{{email}}", vars).trim();
+    const subject = render(data.subject ?? "", vars).trim();
+    const html = render(data.html ?? "", vars);
+    if (!to || !to.includes("@")) {
+      await logStep(flowRunId, nodeId, node.type, "failed", "Destinatário de e-mail inválido ou vazio");
+      throw new Error("Destinatário de e-mail inválido ou vazio (confira {{email}})");
+    }
+    if (!subject) {
+      await logStep(flowRunId, nodeId, node.type, "failed", "Assunto do e-mail vazio");
+      throw new Error("Assunto do e-mail vazio");
+    }
+    if (!html.trim()) {
+      await logStep(flowRunId, nodeId, node.type, "failed", "Corpo do e-mail vazio");
+      throw new Error("Corpo do e-mail vazio");
+    }
+    try {
+      const result = await sendTransactionalEmail({
+        to,
+        subject,
+        html,
+        replyTo: data.replyTo ? render(data.replyTo, vars).trim() : undefined
+      });
+      await logStep(flowRunId, nodeId, node.type, "ok", `E-mail enviado para ${to}`, {
+        id: result.id
+      });
+    } catch (err) {
+      await logSendFailure(node.type, err);
+    }
   } else if (
     node.type.startsWith("trigger_")
   ) {
