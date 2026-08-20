@@ -69,7 +69,6 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
       { type: "condition_offer_code", label: "Código da oferta" },
       { type: "condition_contact_tag", label: "Contato tem tag?" },
       { type: "condition_contact_replied", label: "Contato respondeu?" },
-      { type: "condition_weekday", label: "Dia da semana (rotear)" },
       { type: "wait_weekday", label: "Aguardar dia (Seg…Dom)" },
       { type: "split_round_robin", label: "Dividir rotativo (A/B/C)" },
       { type: "start_flow", label: "Iniciar outro fluxo" },
