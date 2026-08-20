@@ -11,7 +11,6 @@ export const NODE_LABELS: Record<string, string> = {
   condition_offer_code: "Código da oferta",
   condition_contact_tag: "Contato tem tag?",
   condition_contact_replied: "Contato respondeu?",
-  condition_weekday: "Dia da semana",
   wait_weekday: "Aguardar dia",
   split_round_robin: "Dividir rotativo",
   tag_action: "Tag",

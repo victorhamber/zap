@@ -1436,8 +1436,8 @@ export function FlowNodeProperties({
           <>
             <p className="text-xs text-zinc-500 leading-relaxed">
               Só escolhe os <strong className="text-zinc-400">grupos de destino</strong>. Depois use
-              nós de fluxo: <strong className="text-zinc-400">Aguardar dia</strong> (Segunda,
-              Terça…) e mensagens / atrasos para manhã, tarde e noite.
+              nós <strong className="text-zinc-400">Aguardar dia</strong> (Segunda, Terça…) e as
+              mensagens / atrasos para manhã, tarde e noite.
             </p>
 
             <label className="text-xs text-zinc-500">Grupos</label>
@@ -1546,14 +1546,10 @@ export function FlowNodeProperties({
         )}
 
         {nodeType === "condition_weekday" && (
-          <div className="space-y-2 text-xs text-zinc-500 leading-relaxed">
+          <div className="space-y-2 text-xs text-amber-200/90 leading-relaxed rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
             <p>
-              Roteia <strong className="text-zinc-400">na hora</strong> conforme o dia de hoje
-              (Brasília) — 7 saídas. Útil se você dispara o fluxo todo dia e quer só o ramo de hoje.
-            </p>
-            <p className="text-zinc-600">
-              Para programar a semana em sequência (espera Segunda, depois Terça…), use o nó{" "}
-              <strong className="text-zinc-400">Aguardar dia</strong>.
+              Este nó saiu da paleta (confundia com &quot;Aguardar dia&quot;). Prefira apagar e usar{" "}
+              <strong>Aguardar dia</strong> em sequência: Seg → msgs → Ter → msgs…
             </p>
           </div>
         )}
