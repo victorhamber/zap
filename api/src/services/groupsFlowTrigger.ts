@@ -19,12 +19,7 @@ function readTriggerGroupsData(data: Record<string, unknown>): TriggerGroupsData
     groupLabels:
       data.groupLabels && typeof data.groupLabels === "object"
         ? (data.groupLabels as Record<string, string>)
-        : {},
-    weekdays: Array.isArray(data.weekdays)
-      ? data.weekdays.map((n) => Number(n)).filter((n) => n >= 0 && n <= 6)
-      : [],
-    time: String(data.time ?? "09:00"),
-    scheduleEnabled: data.scheduleEnabled !== false
+        : {}
   };
 }
 
@@ -90,7 +85,10 @@ export async function dispatchGroupsFlow(
 
       if (result && "skipped" in result && result.skipped) {
         skipped++;
-      } else if (result && (("runId" in result && result.runId) || ("queued" in result && result.queued))) {
+      } else if (
+        result &&
+        (("runId" in result && result.runId) || ("queued" in result && result.queued))
+      ) {
         scheduled++;
       } else {
         skipped++;

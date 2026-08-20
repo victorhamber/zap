@@ -42,12 +42,18 @@ import type {
   TriggerCustomWebhookData,
   TriggerHotmartData,
   TriggerInboundData,
-  TriggerWaLinkData
+  TriggerWaLinkData,
+  WaitWeekdayData
 } from "../types/flow.js";
 import { humanGapMs, reserveStaggeredStartDelay } from "../services/flowStagger.js";
 import { defaultWhatsAppSession } from "../env.js";
 import { sendTransactionalEmail } from "../services/email/resend.js";
-import { getSaoPauloClock } from "../services/groupsFlowSchedule.js";
+import {
+  getSaoPauloClock,
+  msUntilNextWeekdayTime,
+  normalizeTimeHm,
+  WEEKDAY_LABELS_PT
+} from "../utils/saoPauloTime.js";
 
 function delayToMs(value: number, unit: DelayUnit): number {
   const v = Math.max(0, value);
@@ -311,8 +317,7 @@ async function executeNode(
     void data;
     const clock = getSaoPauloClock();
     const handle = String(clock.weekday);
-    const labels = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
-    const label = labels[clock.weekday] ?? handle;
+    const label = WEEKDAY_LABELS_PT[clock.weekday] ?? handle;
 
     await logStep(flowRunId, nodeId, node.type, "ok", `Hoje é ${label}`, {
       weekday: clock.weekday,
@@ -657,6 +662,45 @@ async function executeNode(
       });
     }
     await logStep(flowRunId, nodeId, node.type, "scheduled", `Agendado para ${data.datetime}`);
+    return;
+  }
+
+  if (node.type === "wait_weekday") {
+    const data = node.data as unknown as WaitWeekdayData;
+    const weekday = Math.max(0, Math.min(6, Math.floor(Number(data.weekday) || 1)));
+    const time = normalizeTimeHm(data.time, "09:00");
+    const ms = msUntilNextWeekdayTime(weekday, time);
+    const nextId = getNextNodeId(graph, nodeId);
+    if (!nextId) {
+      await finishRun(flowRunId, "completed");
+      return;
+    }
+    const runAt = new Date(Date.now() + ms);
+    const jobId = `${flowRunId}_${nextId}_wd${weekday}`;
+    const job = await enqueueFlowJob({ flowRunId, nodeId: nextId }, ms, jobId);
+    if (prisma) {
+      await prisma.scheduledJob.create({
+        data: {
+          flowRunId,
+          nodeId: nextId,
+          bullJobId: job.id ?? jobId,
+          runAt,
+          status: "pending"
+        }
+      });
+      await prisma.flowRun.update({
+        where: { id: flowRunId },
+        data: { status: "waiting", currentNodeId: nodeId }
+      });
+    }
+    const label = WEEKDAY_LABELS_PT[weekday] ?? String(weekday);
+    await logStep(
+      flowRunId,
+      nodeId,
+      node.type,
+      "scheduled",
+      `Aguardando ${label} ${time} (Brasília) — ~${Math.round(ms / 60000)} min`
+    );
     return;
   }
 

@@ -1435,71 +1435,10 @@ export function FlowNodeProperties({
         {nodeType === "trigger_groups" && (
           <>
             <p className="text-xs text-zinc-500 leading-relaxed">
-              Define os <strong className="text-zinc-400">grupos de destino</strong>. As mensagens
-              seguintes (Enviar texto, imagem, etc.) vão para esses grupos. Use a agenda para
-              programar a semana inteira.
+              Só escolhe os <strong className="text-zinc-400">grupos de destino</strong>. Depois use
+              nós de fluxo: <strong className="text-zinc-400">Aguardar dia</strong> (Segunda,
+              Terça…) e mensagens / atrasos para manhã, tarde e noite.
             </p>
-
-            <label className="flex items-center gap-2 text-xs text-zinc-300">
-              <input
-                type="checkbox"
-                checked={config.scheduleEnabled !== false}
-                onChange={(e) => onUpdate({ scheduleEnabled: e.target.checked })}
-              />
-              Agenda automática (dias + horário)
-            </label>
-
-            {config.scheduleEnabled !== false && (
-              <>
-                <label className="text-xs text-zinc-500">Dias da semana</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {(
-                    [
-                      [1, "Seg"],
-                      [2, "Ter"],
-                      [3, "Qua"],
-                      [4, "Qui"],
-                      [5, "Sex"],
-                      [6, "Sáb"],
-                      [0, "Dom"]
-                    ] as const
-                  ).map(([day, label]) => {
-                    const selected = ((config.weekdays as number[] | undefined) ?? []).includes(day);
-                    return (
-                      <button
-                        key={day}
-                        type="button"
-                        onClick={() => {
-                          const prev = ((config.weekdays as number[] | undefined) ?? []).slice();
-                          onUpdate({
-                            weekdays: selected
-                              ? prev.filter((d) => d !== day)
-                              : [...prev, day].sort((a, b) => a - b)
-                          });
-                        }}
-                        className={`rounded-lg px-2.5 py-1.5 text-xs font-medium ${
-                          selected
-                            ? "bg-sky-500/20 text-sky-200 ring-1 ring-sky-500/40"
-                            : "bg-zinc-900 text-zinc-500 ring-1 ring-zinc-700 hover:text-zinc-300"
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-                <label className="text-xs text-zinc-500">Horário (Brasília)</label>
-                <input
-                  type="time"
-                  value={String(config.time ?? "09:00").slice(0, 5)}
-                  onChange={(e) => onUpdate({ time: e.target.value || "09:00" })}
-                  className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-white"
-                />
-                <p className="text-[11px] text-zinc-600">
-                  O worker dispara neste horário nos dias marcados (fuso America/Sao_Paulo).
-                </p>
-              </>
-            )}
 
             <label className="text-xs text-zinc-500">Grupos</label>
             <input
@@ -1566,8 +1505,42 @@ export function FlowNodeProperties({
               </div>
             )}
             <p className="text-[11px] text-zinc-600">
-              {((config.groupIds as string[] | undefined) ?? []).length} grupo(s) · depois use
-              &quot;Disparar grupos&quot; na barra ou a agenda automática
+              {((config.groupIds as string[] | undefined) ?? []).length} grupo(s) · use &quot;Disparar
+              grupos&quot; na barra para iniciar o fluxo
+            </p>
+          </>
+        )}
+
+        {nodeType === "wait_weekday" && (
+          <>
+            <p className="text-xs text-zinc-500 leading-relaxed">
+              Pausa o fluxo até o próximo <strong className="text-zinc-400">dia + horário</strong>{" "}
+              (Brasília). Encaixe um nó por dia (Segunda → mensagens → Terça → …).
+            </p>
+            <label className="text-xs text-zinc-500">Dia</label>
+            <select
+              value={Number(config.weekday ?? 1)}
+              onChange={(e) => onUpdate({ weekday: Number(e.target.value) })}
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-white"
+            >
+              <option value={1}>Segunda</option>
+              <option value={2}>Terça</option>
+              <option value={3}>Quarta</option>
+              <option value={4}>Quinta</option>
+              <option value={5}>Sexta</option>
+              <option value={6}>Sábado</option>
+              <option value={0}>Domingo</option>
+            </select>
+            <label className="text-xs text-zinc-500">Horário (Brasília)</label>
+            <input
+              type="time"
+              value={String(config.time ?? "09:00").slice(0, 5)}
+              onChange={(e) => onUpdate({ time: e.target.value || "09:00" })}
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-white"
+            />
+            <p className="text-[11px] text-zinc-600">
+              Depois deste nó, coloque as mensagens do dia. Use &quot;Aguardar tempo&quot; entre manhã /
+              tarde / noite.
             </p>
           </>
         )}
@@ -1575,19 +1548,13 @@ export function FlowNodeProperties({
         {nodeType === "condition_weekday" && (
           <div className="space-y-2 text-xs text-zinc-500 leading-relaxed">
             <p>
-              Roteia a execução conforme o <strong className="text-zinc-400">dia de hoje</strong>{" "}
-              (horário de Brasília). Ligue cada bolinha do bloco a uma sequência diferente — por
-              exemplo, mensagem de segunda, mensagem de terça, etc.
+              Roteia <strong className="text-zinc-400">na hora</strong> conforme o dia de hoje
+              (Brasília) — 7 saídas. Útil se você dispara o fluxo todo dia e quer só o ramo de hoje.
             </p>
-            <ul className="list-disc space-y-1 pl-4 text-zinc-600">
-              <li>Saída 1 → Segunda</li>
-              <li>Saída 2 → Terça</li>
-              <li>Saída 3 → Quarta</li>
-              <li>Saída 4 → Quinta</li>
-              <li>Saída 5 → Sexta</li>
-              <li>Saída 6 → Sábado</li>
-              <li>Saída 7 → Domingo</li>
-            </ul>
+            <p className="text-zinc-600">
+              Para programar a semana em sequência (espera Segunda, depois Terça…), use o nó{" "}
+              <strong className="text-zinc-400">Aguardar dia</strong>.
+            </p>
           </div>
         )}
       </div>

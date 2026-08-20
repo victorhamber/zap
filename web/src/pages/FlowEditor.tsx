@@ -44,13 +44,14 @@ function summaryFor(type: string, data: Record<string, unknown>): string {
   if (type === "send_text") return String(data.text ?? "").slice(0, 40);
   if (type === "trigger_groups") {
     const ids = (data.groupIds as string[] | undefined) ?? [];
-    const days = (data.weekdays as number[] | undefined) ?? [];
-    const time = String(data.time ?? "09:00");
-    const sched = data.scheduleEnabled !== false && days.length > 0;
     if (!ids.length) return "Selecione grupos";
-    return sched
-      ? `${ids.length} grupo(s) · ${days.length} dia(s) · ${time}`
-      : `${ids.length} grupo(s) · só manual`;
+    return `${ids.length} grupo(s)`;
+  }
+  if (type === "wait_weekday") {
+    const labels = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+    const wd = Math.max(0, Math.min(6, Number(data.weekday) || 1));
+    const time = String(data.time ?? "09:00").slice(0, 5);
+    return `${labels[wd]} ${time}`;
   }
   if (type === "condition_weekday") return "Seg → Dom (7 saídas)";
   if (type === "send_groups") {
@@ -423,7 +424,7 @@ export function FlowEditor() {
     if (enabled && !wasEnabled && hasGroupsTrigger()) {
       if (
         window.confirm(
-          "Publicado! Deseja disparar este fluxo agora para os grupos do gatilho?\n\n(A agenda por dia da semana continua valendo nos próximos horários.)"
+          "Publicado! Deseja disparar este fluxo agora para os grupos do gatilho?\n\nOs nós \"Aguardar dia\" controlam Segunda, Terça, etc."
         )
       ) {
         setStatus("Agendando grupos…");

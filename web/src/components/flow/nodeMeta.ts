@@ -12,6 +12,7 @@ export const NODE_LABELS: Record<string, string> = {
   condition_contact_tag: "Contato tem tag?",
   condition_contact_replied: "Contato respondeu?",
   condition_weekday: "Dia da semana",
+  wait_weekday: "Aguardar dia",
   split_round_robin: "Dividir rotativo",
   tag_action: "Tag",
   start_flow: "Iniciar fluxo",
@@ -44,7 +45,7 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
       { type: "trigger_wa_link", label: "Link WhatsApp (mensagem pronta)" },
       { type: "trigger_tag", label: "Tag do contato" },
       { type: "trigger_broadcast", label: "Broadcast (todos)" },
-      { type: "trigger_groups", label: "Grupos (agenda / dispara)" },
+      { type: "trigger_groups", label: "Grupos (selecionar destinos)" },
       { type: "trigger_inbound", label: "Mensagem recebida" },
       { type: "trigger_manual", label: "Teste manual" }
     ]
@@ -68,7 +69,8 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
       { type: "condition_offer_code", label: "Código da oferta" },
       { type: "condition_contact_tag", label: "Contato tem tag?" },
       { type: "condition_contact_replied", label: "Contato respondeu?" },
-      { type: "condition_weekday", label: "Dia da semana" },
+      { type: "condition_weekday", label: "Dia da semana (rotear)" },
+      { type: "wait_weekday", label: "Aguardar dia (Seg…Dom)" },
       { type: "split_round_robin", label: "Dividir rotativo (A/B/C)" },
       { type: "start_flow", label: "Iniciar outro fluxo" },
       { type: "delay", label: "Aguardar tempo" },
@@ -152,13 +154,12 @@ export function defaultNodeData(type: string): Record<string, unknown> {
     case "trigger_groups":
       return {
         groupIds: [] as string[],
-        groupLabels: {},
-        weekdays: [1, 2, 3, 4, 5],
-        time: "09:00",
-        scheduleEnabled: true
+        groupLabels: {}
       };
     case "condition_weekday":
       return { timezone: "America/Sao_Paulo" };
+    case "wait_weekday":
+      return { weekday: 1, time: "09:00" };
     case "trigger_inbound":
       return { keyword: "", tags: [] as string[] };
     case "condition_offer_code":

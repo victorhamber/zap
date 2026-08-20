@@ -12,6 +12,7 @@ export type NodeType =
   | "condition_contact_tag"
   | "condition_contact_replied"
   | "condition_weekday"
+  | "wait_weekday"
   | "split_round_robin"
   | "tag_action"
   | "start_flow"
@@ -91,27 +92,30 @@ export type ConditionContactRepliedData = {
 };
 
 /**
- * Gatilho de grupos: define os destinos; mensagens seguintes (send_*) vão para o grupo.
- * Agenda opcional por dias da semana + horário (America/Sao_Paulo).
+ * Gatilho de grupos: só define os destinos.
+ * As mensagens seguintes (send_*) vão para esses grupos.
+ * Dias/horários ficam em nós de fluxo (wait_weekday / condition_weekday).
  */
 export type TriggerGroupsData = {
   groupIds: string[];
   groupLabels?: Record<string, string>;
-  /**
-   * Dias da semana (Date.getDay): 0=domingo … 6=sábado.
-   * Vazio = não agenda automático (só disparo manual).
-   */
-  weekdays?: number[];
-  /** Horário local HH:mm (padrão 09:00). */
-  time?: string;
-  /** Se true (padrão quando há weekdays), o worker dispara no horário. */
-  scheduleEnabled?: boolean;
 };
 
 /** Roteia por dia da semana (handles: "0"…"6" = dom…sáb). */
 export type ConditionWeekdayData = {
   /** Timezone IANA — padrão America/Sao_Paulo. */
   timezone?: string;
+};
+
+/**
+ * Aguarda até o próximo dia da semana + horário (Brasília), depois segue o fluxo.
+ * Ex.: Segunda 08:00 → mensagens da manhã → delay → tarde…
+ */
+export type WaitWeekdayData = {
+  /** Date.getDay(): 0=domingo … 6=sábado */
+  weekday: number;
+  /** HH:mm em America/Sao_Paulo */
+  time?: string;
 };
 
 /** Divide o fluxo em N ramos iguais — cada execução segue o próximo ramo (round robin). */
