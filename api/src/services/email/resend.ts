@@ -124,7 +124,11 @@ export async function sendTransactionalEmail(params: {
   });
 
   if (error) {
-    throw new Error(error.message || "Falha ao enviar e-mail via Resend");
+    const msg = error.message || "Falha ao enviar e-mail via Resend";
+    if (/429|rate|too many/i.test(msg)) {
+      throw new Error(`Resend recusou (rate limit): ${msg}`);
+    }
+    throw new Error(msg);
   }
   return { id: data?.id ?? null };
 }

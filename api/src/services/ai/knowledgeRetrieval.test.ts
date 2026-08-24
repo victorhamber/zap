@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   formatKnowledgeSnippet,
   isKnownWrongCapitalMinimum,
+  redactLeadNamesFromKnowledge,
   type KnowledgeRow
 } from "./knowledgeRetrieval.js";
 
@@ -42,6 +43,17 @@ describe("knowledgeRetrieval", () => {
     assert.equal(
       isKnownWrongCapitalMinimum("Conta standard: USD 3.000 ou acima"),
       false
+    );
+  });
+
+  it("remove vocativos de outros leads no aprendizado", () => {
+    assert.match(
+      redactLeadNamesFromKnowledge("Oi Gustavo, o capital mínimo é USD 50", "Victor"),
+      /^Oi,? o capital mínimo/
+    );
+    assert.match(
+      redactLeadNamesFromKnowledge("Oi Victor, segue o acesso", "Victor"),
+      /Oi Victor/
     );
   });
 });

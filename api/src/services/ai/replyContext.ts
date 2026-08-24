@@ -50,7 +50,7 @@ export { refreshConversationMemory };
 export async function fetchKnowledgeSnippetsForAi(
   session: string,
   chatId: string,
-  options?: { inboundText?: string; limit?: number }
+  options?: { inboundText?: string; limit?: number; allowedClientName?: string | null }
 ): Promise<string[]> {
   try {
     const { fetchSessionKnowledgeForReply } = await import("./knowledgeRetrieval.js");
@@ -58,7 +58,8 @@ export async function fetchKnowledgeSnippetsForAi(
       session,
       chatId,
       inboundText: options?.inboundText,
-      limit: options?.limit
+      limit: options?.limit,
+      allowedClientName: options?.allowedClientName
     });
   } catch (err) {
     console.warn("[ai] fetchKnowledgeSnippetsForAi failed", err);

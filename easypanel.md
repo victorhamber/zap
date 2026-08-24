@@ -101,6 +101,10 @@ CORS_ORIGIN=https://zap.trajettu.com
 FLOW_DISPATCH_STAGGER=true
 FLOW_DISPATCH_MIN_SEC=45
 FLOW_DISPATCH_MAX_SEC=120
+
+# Cadência global de e-mails do fluxo (Resend) — fila separada do WhatsApp
+EMAIL_DISPATCH_MIN_SEC=15
+EMAIL_DISPATCH_MAX_SEC=45
 ```
 
 ## Evitar restrição por spam no WhatsApp
@@ -109,6 +113,7 @@ A punição de ~24h costuma vir de **muitas mensagens automáticas / em massa** 
 
 **No EasyPanel (recomendado):**
 - `FLOW_DISPATCH_STAGGER=true` com intervalo **45–120 s** (ou mais) entre cada disparo
+- E-mails do fluxo (`send_email`) usam fila própria: `EMAIL_DISPATCH_MIN_SEC` / `EMAIL_DISPATCH_MAX_SEC` (padrão 15–45 s) para não sair tudo de uma vez no Resend
 - Evite broadcast para **toda** a base de contatos de uma vez
 - Nos fluxos pós-compra: use **Aguardar 2–4 dias** → bloco **Contato respondeu?**
   - **Saída Sim:** continue o fluxo

@@ -127,16 +127,29 @@ export function contactToJson(
   };
 }
 
+export function isWeakContactName(name?: string | null): boolean {
+  const n = String(name ?? "").trim();
+  if (!n) return true;
+  if (/^(contato|cliente|user|voc[eê])$/i.test(n)) return true;
+  const digits = n.replace(/\D/g, "");
+  const compact = n.replace(/\s/g, "");
+  if (digits.length >= 8 && digits.length >= compact.length - 1) return true;
+  return false;
+}
+
 export async function ensureContact(phone: string, name?: string) {
   if (!prisma) throw new Error("Banco indisponível");
   const normalized = toStoragePhone(phone);
   const existing = await findContactByPhoneLoose(normalized);
+  const incoming = name?.trim() ? firstNameFromFullName(name, name.trim()) : undefined;
 
   if (existing) {
-    if (name !== undefined && name.trim()) {
+    // Só preenche nome vazio/genérico. Não sobrescreve um nome real com outro
+    // (evita misturar leads quando o webhook traz pushName errado).
+    if (incoming && !isWeakContactName(incoming) && isWeakContactName(existing.name)) {
       return prisma.contact.update({
         where: { id: existing.id },
-        data: { name: firstNameFromFullName(name, name.trim()) }
+        data: { name: incoming }
       });
     }
     return existing;
@@ -144,10 +157,10 @@ export async function ensureContact(phone: string, name?: string) {
 
   return prisma.contact.upsert({
     where: { phone: normalized },
-    update: name !== undefined && name.trim() ? { name: firstNameFromFullName(name, name.trim()) } : {},
+    update: incoming && !isWeakContactName(incoming) ? { name: incoming } : {},
     create: {
       phone: normalized,
-      name: name?.trim() ? firstNameFromFullName(name, name.trim()) : undefined
+      name: incoming && !isWeakContactName(incoming) ? incoming : undefined
     }
   });
 }

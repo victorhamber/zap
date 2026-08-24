@@ -171,6 +171,32 @@ export function formatKnowledgeSnippet(row: KnowledgeRow): string {
   return `[${row.kind}${topic ? ` — ${topic}` : ""}] ${row.content}`;
 }
 
+function normalizePersonName(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .trim();
+}
+
+/**
+ * Remove vocativos de outros leads nos exemplos de aprendizado
+ * ("Oi Gustavo," → "Oi,") para a IA não copiar o nome.
+ */
+export function redactLeadNamesFromKnowledge(
+  text: string,
+  allowedName?: string | null
+): string {
+  const allowedFirst = allowedName?.trim().split(/\s+/)[0] ?? "";
+  const allowedNorm = allowedFirst ? normalizePersonName(allowedFirst) : "";
+  const keep = (name: string) => Boolean(allowedNorm) && normalizePersonName(name) === allowedNorm;
+
+  return text.replace(
+    /\b((?:oi|ol[áa]|e a[ií]|fala|bom dia|boa tarde|boa noite)[,!]?\s+)([A-ZÁÉÍÓÚÂÊÔÃÕ][\p{L}'-]{2,})\b/giu,
+    (full, greet: string, name: string) => (keep(name) ? full : greet.trimEnd())
+  );
+}
+
 function dedupeSnippets(rows: KnowledgeRow[]): KnowledgeRow[] {
   const seen = new Set<string>();
   const out: KnowledgeRow[] = [];
@@ -189,6 +215,7 @@ export async function fetchSessionKnowledgeForReply(params: {
   chatId: string;
   inboundText?: string;
   limit?: number;
+  allowedClientName?: string | null;
 }): Promise<string[]> {
   if (!prisma) return [];
 
@@ -241,5 +268,7 @@ export async function fetchSessionKnowledgeForReply(params: {
     .sort((a, b) => b.score - a.score || b.row.createdAt.getTime() - a.row.createdAt.getTime());
 
   const picked = dedupeSnippets(ranked.map((r) => r.row)).slice(0, limit);
-  return picked.map(formatKnowledgeSnippet);
+  return picked.map((row) =>
+    redactLeadNamesFromKnowledge(formatKnowledgeSnippet(row), params.allowedClientName)
+  );
 }

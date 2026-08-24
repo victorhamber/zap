@@ -16,9 +16,10 @@ export function buildSystemPrompt(params: {
   const clientNameRules = [
     clientNameBlock,
     "- Se não houver nome cadastrado, cumprimente de forma neutra (ex.: \"Olá!\", \"Oi, tudo bem?\") sem usar nomes próprios.",
-    "- Use o nome do CRM somente quando estiver cadastrado acima.",
+    "- Use o nome do CRM somente quando estiver cadastrado acima — e só o primeiro nome desse cadastro.",
     "- Nunca use o nome do atendente — nem nomes que aparecem nas mensagens do atendente — como se fossem o nome do cliente.",
-    "- Não invente nomes."
+    "- O aprendizado histórico é de OUTROS clientes. Se um exemplo disser \"Oi Gustavo\" ou qualquer outro nome, IGNORE esse nome. Não copie vocativos de outros leads.",
+    "- Não invente nomes. Não \"adivinhe\" pelo histórico da instância."
   ].join("\n");
 
   const tags = (params.leadTags ?? []).map((t) => t.trim()).filter(Boolean);
@@ -186,6 +187,40 @@ export function stripDismissiveClosing(reply: string): string {
   }
 
   return text || reply.trim();
+}
+
+function normalizePersonName(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .trim();
+}
+
+/**
+ * Corta vocativo errado ("Oi Gustavo", "Maria, tudo bem?") quando não é o nome do CRM.
+ * O modelo copia nomes de qa_pairs de outros leads.
+ */
+export function sanitizeReplyClientName(reply: string, allowedName: string | null | undefined): string {
+  const text = reply.trim();
+  if (!text) return text;
+
+  const allowedFirst = allowedName?.trim().split(/\s+/)[0] ?? "";
+  const allowedNorm = allowedFirst ? normalizePersonName(allowedFirst) : "";
+
+  const keep = (name: string) => Boolean(allowedNorm) && normalizePersonName(name) === allowedNorm;
+
+  let out = text.replace(
+    /^((?:oi|ol[áa]|e a[ií]|fala|bom dia|boa tarde|boa noite)[,!]?\s+)([A-ZÁÉÍÓÚÂÊÔÃÕ][\p{L}'-]{2,})\b/iu,
+    (full, greet: string, name: string) => (keep(name) ? full : greet.trimEnd())
+  );
+
+  out = out.replace(
+    /^([A-ZÁÉÍÓÚÂÊÔÃÕ][\p{L}'-]{2,}),\s+/u,
+    (full, name: string) => (keep(name) ? full : "")
+  );
+
+  return out.trim() || text;
 }
 
 /** Detecta se a resposta repete quase igual uma mensagem recente da IA. */

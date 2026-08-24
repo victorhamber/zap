@@ -8,7 +8,8 @@ import {
   validateReplyAgainstRules,
   injectOfficialLinksHint,
   isRepetitiveReply,
-  stripDismissiveClosing
+  stripDismissiveClosing,
+  sanitizeReplyClientName
 } from "./rulesEngine.js";
 import { buildOfficialFactsBlock } from "./knowledgeRetrieval.js";
 import { generateReply } from "./openaiClient.js";
@@ -127,8 +128,13 @@ async function resolveClientNameForAi(chatId: string): Promise<string | null> {
     const phone = phoneFromChatId(chatId);
     const contact = await findContactByPhoneLoose(phone);
     const name = contact?.name?.trim();
-    if (!name || name.replace(/\D/g, "") === phone.replace(/\D/g, "")) return null;
-    return name;
+    if (!name) return null;
+    const digits = name.replace(/\D/g, "");
+    if (digits.length >= 8 && digits === phone.replace(/\D/g, "")) return null;
+    if (/^\d{8,}$/.test(digits) && digits.length === name.replace(/\s/g, "").length) return null;
+    const first = name.split(/\s+/)[0] ?? name;
+    if (first.length < 2) return null;
+    return first;
   } catch (err) {
     console.warn("[ai] resolveClientNameForAi failed", err);
     return null;
@@ -351,7 +357,8 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
   }
 
   const snippets = await fetchKnowledgeSnippetsForAi(payload.session, payload.chatId, {
-    inboundText
+    inboundText,
+    allowedClientName: clientName
   });
   const officialFacts = buildOfficialFactsBlock(settingsRow.officialFacts);
 
@@ -382,6 +389,7 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
       });
     }
     reply = stripDismissiveClosing(reply);
+    reply = sanitizeReplyClientName(reply, clientName);
   } catch (err) {
     await logAiEvent({
       session: payload.session,
@@ -398,18 +406,21 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
     // proibida. Regenera uma vez; se ainda vier a expressão, envia mesmo assim
     // (o prompt já orienta a evitá-la) e apenas registra.
     try {
-      const retry = stripDismissiveClosing(
-        await generateReply({
-          apiKey,
-          model: settingsRow.modelChat,
-          systemPrompt,
-          chatHistory,
-          officialFacts,
-          knowledgeSnippets: snippets,
-          inboundText,
-          recentAiReplies,
-          retryAvoidRepeat: true
-        })
+      const retry = sanitizeReplyClientName(
+        stripDismissiveClosing(
+          await generateReply({
+            apiKey,
+            model: settingsRow.modelChat,
+            systemPrompt,
+            chatHistory,
+            officialFacts,
+            knowledgeSnippets: snippets,
+            inboundText,
+            recentAiReplies,
+            retryAvoidRepeat: true
+          })
+        ),
+        clientName
       );
       if (validateReplyAgainstRules(retry, settingsRow.rulesForbidden).ok) {
         reply = retry;
@@ -557,6 +568,7 @@ export async function simulateReply(params: {
   const mediaResponses = parseMediaResponses(settings.mediaResponses);
   const mediaBlock = buildMediaResponsesBlock(mediaResponses);
 
+  const simClientName = await resolveClientNameForAi(params.chatId);
   const systemPrompt =
     buildSystemPrompt({
       productContext: settings.productContext,
@@ -564,7 +576,7 @@ export async function simulateReply(params: {
       rulesAllowed: settings.rulesAllowed,
       rulesForbidden: settings.rulesForbidden,
       officialLinks: settings.officialLinks,
-      clientName: await resolveClientNameForAi(params.chatId),
+      clientName: simClientName,
       leadTags: await resolveLeadTagsForAi(params.chatId)
     }) + (mediaBlock ? `\n\n${mediaBlock}` : "");
 
@@ -573,20 +585,24 @@ export async function simulateReply(params: {
     model: settings.modelChat
   });
   const snippets = await fetchKnowledgeSnippetsForAi(params.session, params.chatId, {
-    inboundText: params.inboundText
+    inboundText: params.inboundText,
+    allowedClientName: simClientName
   });
   const officialFacts = buildOfficialFactsBlock(settings.officialFacts);
 
-  const reply = stripDismissiveClosing(
-    await generateReply({
-      apiKey,
-      model: settings.modelChat,
-      systemPrompt,
-      chatHistory,
-      officialFacts,
-      knowledgeSnippets: snippets,
-      inboundText: params.inboundText
-    })
+  const reply = sanitizeReplyClientName(
+    stripDismissiveClosing(
+      await generateReply({
+        apiKey,
+        model: settings.modelChat,
+        systemPrompt,
+        chatHistory,
+        officialFacts,
+        knowledgeSnippets: snippets,
+        inboundText: params.inboundText
+      })
+    ),
+    simClientName
   );
 
   const markerId = extractMediaResponseMarker(reply);

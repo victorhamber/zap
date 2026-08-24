@@ -58,6 +58,10 @@ const EnvSchema = z.object({
   /** Intervalo máximo entre inícios (segundos). Valor real é aleatório entre min e max. */
   FLOW_DISPATCH_MAX_SEC: z.coerce.number().int().positive().default(30),
 
+  /** Cadência global de e-mails (Resend) — fila separada do WhatsApp. */
+  EMAIL_DISPATCH_MIN_SEC: z.coerce.number().int().positive().default(15),
+  EMAIL_DISPATCH_MAX_SEC: z.coerce.number().int().positive().default(45),
+
   HOTMART_WEBHOOK_SECRET: z.string().optional(),
   /**
    * Segredo compartilhado dos webhooks de mensagem (WPPConnect/Evolution).

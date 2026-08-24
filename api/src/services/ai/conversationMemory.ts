@@ -130,7 +130,8 @@ export async function refreshConversationMemory(params: {
         content: [
           "Você mantém a memória persistente de um atendimento WhatsApp.",
           "Atualize a memória com fatos novos sem apagar os importantes.",
-          "Inclua: nome do cliente, tags/status, o que já comprou, o que já foi oferecido ou explicado,",
+          "Inclua: nome do cliente SOMENTE se o próprio cliente disse o nome ou se já estava na memória (nunca copie nomes das falas do atendente — podem ser de outro lead),",
+          "tags/status, o que já comprou, o que já foi oferecido ou explicado,",
           "preços já informados, dúvidas em aberto e próximo passo lógico.",
           "Não invente. Máximo 350 palavras. Português do Brasil."
         ].join(" ")

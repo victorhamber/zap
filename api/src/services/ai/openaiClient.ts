@@ -235,6 +235,7 @@ export async function generateReply(params: {
       ? [
           "## APRENDIZADO DE CONVERSAS ANTERIORES",
           "Use como modelo de tom e procedimentos, exceto quando conflitar com os fatos oficiais acima.",
+          "Nomes próprios nestes exemplos são de OUTROS clientes. Nunca cumprimente o lead atual com o nome de um exemplo.",
           "Se houver qa_pair relevante, baseie sua resposta nele — mas NÃO copie fechamentos tipo \"estou à disposição\".",
           "Capital/banca/depósito de corretora: se o aprendizado citar reais (R$), ignore e use USD dos fatos oficiais.",
           "Conta cent: números altos (ex. 15000) são a TELA em cents (= USD/100). Sempre explique em dólares primeiro para não parecer que precisa de milhares de dólares.",

@@ -4,7 +4,8 @@ import {
   buildSystemPrompt,
   validateReplyAgainstRules,
   isRepetitiveReply,
-  stripDismissiveClosing
+  stripDismissiveClosing,
+  sanitizeReplyClientName
 } from "./rulesEngine.js";
 import { phoneFromChatId, isGroupChatId } from "./tagGate.js";
 
@@ -41,6 +42,14 @@ describe("rulesEngine", () => {
       clientName: "Maria"
     });
     assert.match(prompt, /Nome cadastrado no CRM: Maria/);
+    assert.match(prompt, /OUTROS clientes/);
+  });
+
+  it("remove vocativo de outro lead e preserva o nome do CRM", () => {
+    assert.equal(sanitizeReplyClientName("Oi Gustavo, tudo bem?", "Victor"), "Oi, tudo bem?");
+    assert.equal(sanitizeReplyClientName("Olá Maria! Vamos nessa.", "Victor"), "Olá! Vamos nessa.");
+    assert.equal(sanitizeReplyClientName("Oi Victor, tudo bem?", "Victor"), "Oi Victor, tudo bem?");
+    assert.equal(sanitizeReplyClientName("Gustavo, segue o link.", "Victor"), "segue o link.");
   });
 
   it("inclui tags do lead no prompt", () => {

@@ -46,7 +46,7 @@ import type {
   WaitWeekdayData
 } from "../types/flow.js";
 import { humanGapMs, reserveStaggeredStartDelay } from "../services/flowStagger.js";
-import { defaultWhatsAppSession } from "../env.js";
+import { defaultWhatsAppSession, env } from "../env.js";
 import { sendTransactionalEmail } from "../services/email/resend.js";
 import {
   getSaoPauloClock,
@@ -945,6 +945,46 @@ async function executeNode(
       await logStep(flowRunId, nodeId, node.type, "failed", "Corpo do e-mail vazio");
       throw new Error("Corpo do e-mail vazio");
     }
+
+    const emailSlotReady = vars._emailSlotNodeId === nodeId && vars._emailSlotReady === true;
+    if (!emailSlotReady) {
+      const minSec = Math.max(5, Math.min(300, env.EMAIL_DISPATCH_MIN_SEC));
+      const maxSec = Math.max(minSec, Math.min(600, env.EMAIL_DISPATCH_MAX_SEC));
+      const delayMs = await reserveStaggeredStartDelay("email", minSec, maxSec);
+      if (delayMs > 0) {
+        const nextVars = { ...vars, _emailSlotReady: true, _emailSlotNodeId: nodeId };
+        const jobId = `${flowRunId}_${nodeId}_email`;
+        const job = await enqueueFlowJob({ flowRunId, nodeId }, delayMs, jobId);
+        if (prisma) {
+          await prisma.scheduledJob.create({
+            data: {
+              flowRunId,
+              nodeId,
+              bullJobId: job.id ?? jobId,
+              runAt: new Date(Date.now() + delayMs),
+              status: "pending"
+            }
+          });
+          await prisma.flowRun.update({
+            where: { id: flowRunId },
+            data: {
+              status: "waiting",
+              currentNodeId: nodeId,
+              variables: nextVars as object
+            }
+          });
+        }
+        await logStep(
+          flowRunId,
+          nodeId,
+          node.type,
+          "scheduled",
+          `Fila de e-mail: aguardando ~${Math.round(delayMs / 1000)}s (anti-spam)`
+        );
+        return;
+      }
+    }
+
     try {
       const result = await sendTransactionalEmail({
         to,
@@ -957,6 +997,15 @@ async function executeNode(
       });
     } catch (err) {
       await logSendFailure(node.type, err);
+    }
+
+    delete vars._emailSlotReady;
+    delete vars._emailSlotNodeId;
+    if (prisma) {
+      await prisma.flowRun.update({
+        where: { id: flowRunId },
+        data: { variables: vars as object }
+      });
     }
   } else if (
     node.type.startsWith("trigger_")
