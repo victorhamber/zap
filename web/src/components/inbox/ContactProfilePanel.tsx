@@ -8,6 +8,7 @@ type ContactInfo = {
   id: string;
   phone: string;
   name: string | null;
+  email?: string | null;
   notes?: string | null;
   tags: Tag[];
 };
@@ -18,6 +19,7 @@ type Profile = {
   chatId: string;
   phone: string;
   name: string | null;
+  email: string | null;
   notes: string | null;
   isGroup: boolean;
   contact: ContactInfo | null;
@@ -72,6 +74,7 @@ export function ContactProfilePanel({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [notes, setNotes] = useState("");
   const [deleting, setDeleting] = useState(false);
 
@@ -94,6 +97,7 @@ export function ContactProfilePanel({
       }
       setProfile(r.profile);
       setName(r.profile.name ?? chat.name ?? "");
+      setEmail(r.profile.email ?? r.profile.contact?.email ?? "");
       setNotes(r.profile.notes ?? "");
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Erro ao carregar perfil");
@@ -128,7 +132,12 @@ export function ContactProfilePanel({
     void loadGroups();
   }, [loading, chat.isGroup, loadGroups]);
 
-  async function saveContact(patch: { name?: string; notes?: string; tagIds?: string[] }) {
+  async function saveContact(patch: {
+    name?: string;
+    email?: string;
+    notes?: string;
+    tagIds?: string[];
+  }) {
     if (chat.isGroup) return;
     setSaving(true);
     setError("");
@@ -139,6 +148,7 @@ export function ContactProfilePanel({
           method: "PUT",
           body: JSON.stringify({
             ...(patch.name !== undefined ? { name: patch.name.trim() || undefined } : {}),
+            ...(patch.email !== undefined ? { email: patch.email.trim() || undefined } : {}),
             ...(patch.notes !== undefined ? { notes: patch.notes.trim() || undefined } : {}),
             ...(patch.tagIds !== undefined ? { tagIds: patch.tagIds } : {})
           })
@@ -151,6 +161,7 @@ export function ContactProfilePanel({
             ? {
                 ...p,
                 name: r.contact.name,
+                email: r.contact.email ?? null,
                 notes: r.contact.notes ?? null,
                 contact: r.contact
               }
@@ -293,6 +304,26 @@ export function ContactProfilePanel({
           <p className="mx-4 mt-4 text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">
             {error}
           </p>
+        )}
+
+        {!loading && !chat.isGroup && (
+          <section className="px-4 py-4 border-b border-[#2a3942]/60">
+            <h3 className="text-xs uppercase tracking-wide text-[#00a884] mb-2">E-mail</h3>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onBlur={() => {
+                const saved = profile?.email ?? profile?.contact?.email ?? "";
+                if (email.trim() !== saved) void saveContact({ email: email.trim() });
+              }}
+              placeholder="email@exemplo.com (usado em fluxos)"
+              className="w-full rounded-lg bg-[#2a3942] px-3 py-2 text-sm text-[#e9edef] border-0 focus:ring-1 focus:ring-[#00a884]/50 outline-none"
+            />
+            <p className="mt-1 text-[11px] text-[#8696a0]">
+              Usado no nó Enviar e-mail quando o gatilho não traz {"{{email}}"}.
+            </p>
+          </section>
         )}
 
         {!loading && !chat.isGroup && (

@@ -16,6 +16,7 @@ export type ContactProfile = {
   chatId: string;
   phone: string;
   name: string | null;
+  email: string | null;
   notes: string | null;
   isGroup: boolean;
   contact: ReturnType<typeof contactToJson> | null;
@@ -53,6 +54,7 @@ export async function getContactProfile(params: {
       chatId: await findPrimaryChatIdForContact(session, chatId),
       phone: chatId.replace(/@.*/, ""),
       name: null,
+      email: null,
       notes: null,
       isGroup: true,
       contact: null,
@@ -78,6 +80,7 @@ export async function getContactProfile(params: {
     chatId,
     phone: contact?.phone ?? phoneDigits,
     name: contact?.name ?? null,
+    email: contact?.email ?? null,
     notes: contact?.notes ?? null,
     isGroup: false,
     contact: contact ? contactToJson(contact) : null,

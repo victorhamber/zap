@@ -27,7 +27,10 @@ async function findContactByPhoneLoose(phone: string): Promise<ContactWithTags |
   // Mesmo contato salvo com/sem nono dígito — usa o registro mais completo.
   return matches.sort((a, b) => {
     const score = (c: typeof a) =>
-      (c.tags.length > 0 ? 10 : 0) + (c.name?.trim() ? 5 : 0) + c.phone.length;
+      (c.tags.length > 0 ? 10 : 0) +
+      (c.name?.trim() ? 5 : 0) +
+      (c.email?.trim() ? 3 : 0) +
+      c.phone.length;
     return score(b) - score(a);
   })[0];
 }
@@ -40,17 +43,20 @@ export async function getContactTagNames(phone: string): Promise<string[]> {
 
 export async function upsertContact(
   phone: string,
-  data: { name?: string; notes?: string; tagIds?: string[] }
+  data: { name?: string; email?: string; notes?: string; tagIds?: string[] }
 ) {
   if (!prisma) throw new Error("Banco indisponível");
   const normalized = toStoragePhone(phone);
   const existing = await findContactByPhoneLoose(normalized);
+  const email =
+    data.email !== undefined ? normalizeContactEmail(data.email) || null : undefined;
 
   const contact = existing
     ? await prisma.contact.update({
         where: { id: existing.id },
         data: {
           ...(data.name !== undefined ? { name: data.name } : {}),
+          ...(email !== undefined ? { email } : {}),
           ...(data.notes !== undefined ? { notes: data.notes } : {})
         }
       })
@@ -58,11 +64,13 @@ export async function upsertContact(
         where: { phone: normalized },
         update: {
           ...(data.name !== undefined ? { name: data.name } : {}),
+          ...(email !== undefined ? { email } : {}),
           ...(data.notes !== undefined ? { notes: data.notes } : {})
         },
         create: {
           phone: normalized,
-          name: data.name
+          name: data.name,
+          email: email ?? undefined
         }
       });
 
@@ -111,6 +119,12 @@ export async function listContactsWithTags() {
   });
 }
 
+function normalizeContactEmail(value: unknown): string | null {
+  const s = String(value ?? "").trim();
+  if (!s || !s.includes("@") || s.startsWith("@") || s.endsWith("@")) return null;
+  return s;
+}
+
 export function contactToJson(
   c: Awaited<ReturnType<typeof listContactsWithTags>>[number]
 ) {
@@ -118,6 +132,7 @@ export function contactToJson(
     id: c.id,
     phone: c.phone,
     name: c.name,
+    email: c.email,
     notes: c.notes,
     tags: c.tags.map((ct) => ({
       id: ct.tag.id,
@@ -137,19 +152,25 @@ export function isWeakContactName(name?: string | null): boolean {
   return false;
 }
 
-export async function ensureContact(phone: string, name?: string) {
+export async function ensureContact(phone: string, name?: string, email?: string) {
   if (!prisma) throw new Error("Banco indisponível");
   const normalized = toStoragePhone(phone);
   const existing = await findContactByPhoneLoose(normalized);
   const incoming = name?.trim() ? firstNameFromFullName(name, name.trim()) : undefined;
+  const incomingEmail = email !== undefined ? normalizeContactEmail(email) : undefined;
 
   if (existing) {
-    // Só preenche nome vazio/genérico. Não sobrescreve um nome real com outro
-    // (evita misturar leads quando o webhook traz pushName errado).
+    const data: { name?: string; email?: string | null } = {};
     if (incoming && !isWeakContactName(incoming) && isWeakContactName(existing.name)) {
+      data.name = incoming;
+    }
+    if (incomingEmail && incomingEmail !== normalizeContactEmail(existing.email)) {
+      data.email = incomingEmail;
+    }
+    if (Object.keys(data).length > 0) {
       return prisma.contact.update({
         where: { id: existing.id },
-        data: { name: incoming }
+        data
       });
     }
     return existing;
@@ -157,10 +178,14 @@ export async function ensureContact(phone: string, name?: string) {
 
   return prisma.contact.upsert({
     where: { phone: normalized },
-    update: incoming && !isWeakContactName(incoming) ? { name: incoming } : {},
+    update: {
+      ...(incoming && !isWeakContactName(incoming) ? { name: incoming } : {}),
+      ...(incomingEmail ? { email: incomingEmail } : {})
+    },
     create: {
       phone: normalized,
-      name: incoming && !isWeakContactName(incoming) ? incoming : undefined
+      name: incoming && !isWeakContactName(incoming) ? incoming : undefined,
+      email: incomingEmail ?? undefined
     }
   });
 }

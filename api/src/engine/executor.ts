@@ -8,6 +8,7 @@ import { assertValidWhatsAppPhone, firstNameFromFullName } from "../utils/phone.
 import { hotmartEventName, hotmartPurchaseStatus } from "../utils/hotmartEvents.js";
 import {
   addContactTagsByNames,
+  ensureContact,
   getContactTagNames,
   removeContactTagsByNames
 } from "../services/contacts.js";
@@ -48,6 +49,11 @@ import type {
 import { humanGapMs, reserveStaggeredStartDelay } from "../services/flowStagger.js";
 import { defaultWhatsAppSession, env } from "../env.js";
 import { sendTransactionalEmail } from "../services/email/resend.js";
+import {
+  enrichFlowVariables,
+  normalizeFlowEmail,
+  persistContactFromFlowVariables
+} from "../services/flowVariables.js";
 import {
   getSaoPauloClock,
   msUntilNextWeekdayTime,
@@ -930,12 +936,24 @@ async function executeNode(
     }
   } else if (node.type === "send_email") {
     const data = node.data as unknown as SendEmailNodeData;
+    const phoneKey = String(vars.phone ?? "").trim();
+    if (phoneKey && !phoneKey.includes("@g.us")) {
+      Object.assign(vars, await enrichFlowVariables(phoneKey, vars));
+    }
     const to = render(data.to || "{{email}}", vars).trim();
     const subject = render(data.subject ?? "", vars).trim();
     const html = render(data.html ?? "", vars);
     if (!to || !to.includes("@")) {
-      await logStep(flowRunId, nodeId, node.type, "failed", "Destinatário de e-mail inválido ou vazio");
-      throw new Error("Destinatário de e-mail inválido ou vazio (confira {{email}})");
+      const hint =
+        normalizeFlowEmail(vars.email)
+          ? "Confira o campo Para do nó."
+          : "Mapeie e-mail no gatilho (Hotmart/webhook) ou cadastre no contato do CRM.";
+      const message = `Destinatário de e-mail inválido ou vazio — ${hint}`;
+      await logStep(flowRunId, nodeId, node.type, "failed", message, {
+        toTemplate: data.to || "{{email}}",
+        emailVar: normalizeFlowEmail(vars.email) ? "(preenchido)" : "(vazio)"
+      });
+      throw new Error(message);
     }
     if (!subject) {
       await logStep(flowRunId, nodeId, node.type, "failed", "Assunto do e-mail vazio");
@@ -1128,6 +1146,19 @@ export async function startFlowRun(params: {
     if (existing) return { skipped: true, reason: "duplicate", runId: existing.id };
   }
 
+  const contactPhone = params.contactPhone.trim();
+  if (!contactPhone.includes("@g.us")) {
+    await ensureContact(
+      contactPhone,
+      String(params.variables.fullName ?? params.variables.name ?? ""),
+      String(params.variables.email ?? "")
+    ).catch(() => {});
+    await persistContactFromFlowVariables(contactPhone, params.variables).catch(() => {});
+  }
+  const variables = contactPhone.includes("@g.us")
+    ? params.variables
+    : await enrichFlowVariables(contactPhone, params.variables);
+
   const graph = parseGraph(flow.graphJson);
   let startNodeId = params.startFromNodeId;
   let recordedTriggerType = params.triggerType;
@@ -1153,8 +1184,8 @@ export async function startFlowRun(params: {
       data: {
         flowId: params.flowId,
         triggerType: recordedTriggerType,
-        contactPhone: params.contactPhone,
-        variables: params.variables as object,
+        contactPhone: contactPhone,
+        variables: variables as object,
         externalId: params.externalId,
         status: "running",
         currentNodeId: startNodeId
@@ -1183,7 +1214,7 @@ export async function startFlowRun(params: {
   try {
     const startLabel = params.manualStart ? "Início manual (gatilho ignorado)" : "Início";
     await logStep(run.id, startNodeId, recordedTriggerType, "ok", startLabel);
-    await executeNode(graph, run.id, firstActionId, params.variables);
+    await executeNode(graph, run.id, firstActionId, variables);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     await prisma.flowRun.update({

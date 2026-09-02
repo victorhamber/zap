@@ -591,7 +591,7 @@ export async function inboxRoutes(app: FastifyInstance) {
 
   app.put("/api/contacts/:phone", async (req, reply) => {
     const phone = decodeURIComponent((req.params as { phone: string }).phone);
-    const body = req.body as { name?: string; notes?: string; tagIds?: string[] };
+    const body = req.body as { name?: string; email?: string; notes?: string; tagIds?: string[] };
     try {
       const contact = await upsertContact(phone, body);
       return { ok: true, contact: contact ? contactToJson(contact) : null };

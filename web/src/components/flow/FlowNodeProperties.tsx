@@ -559,6 +559,8 @@ export function FlowNodeProperties({
           <>
             <p className="text-xs text-zinc-500 leading-relaxed">
               Envia via Resend. Configure a API em <strong className="text-zinc-400">Configurações → E-mail</strong>.
+              O destinatário padrão é <code className="text-zinc-400">{"{{email}}"}</code> — vem do gatilho
+              Hotmart/webhook ou do cadastro do contato no CRM.
             </p>
             <label className="text-xs text-zinc-500">Para (destinatário)</label>
             <input
