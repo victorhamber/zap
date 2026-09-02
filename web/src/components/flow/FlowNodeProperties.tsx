@@ -3,7 +3,8 @@ import type { Node } from "@xyflow/react";
 import { api } from "../../api/client";
 import { hotmartWebhookUrl, customWebhookUrl, buildWaMeLink, NODE_LABELS } from "./nodeMeta";
 import { TemplateVariablesHelp } from "./TemplateVariablesHelp";
-import { EmailBuilder } from "../email/EmailBuilder";
+import { EmailEditorModal } from "../email/EmailEditorModal";
+import { htmlPreviewText } from "../email/emailBlocks";
 
 type Props = {
   selectedNode: Node;
@@ -84,6 +85,7 @@ export function FlowNodeProperties({
   const [waGroups, setWaGroups] = useState<Array<{ id: string; name: string }>>([]);
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [groupSearch, setGroupSearch] = useState("");
+  const [emailEditorOpen, setEmailEditorOpen] = useState(false);
   const webhookUrl = flowId
     ? nodeType === "trigger_custom_webhook"
       ? customWebhookUrl(flowId)
@@ -583,9 +585,27 @@ export function FlowNodeProperties({
               placeholder="suporte@seudominio.com"
             />
             <label className="text-xs text-zinc-500">Corpo do e-mail</label>
-            <EmailBuilder
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 space-y-3">
+              <p className="text-xs text-zinc-500 leading-relaxed line-clamp-3">
+                {htmlPreviewText(String(config.html ?? ""), 180) || "Nenhum conteúdo ainda."}
+              </p>
+              <button
+                type="button"
+                onClick={() => setEmailEditorOpen(true)}
+                className="w-full rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2.5 text-sm font-medium text-emerald-300 hover:bg-emerald-500/20 transition"
+              >
+                Abrir editor de e-mail…
+              </button>
+              <p className="text-[10px] text-zinc-600">
+                Editor em popup com blocos, títulos, botão visual e arrastar/soltar.
+              </p>
+            </div>
+            <EmailEditorModal
+              open={emailEditorOpen}
               html={String(config.html ?? "")}
-              onChange={(html) => onUpdate({ html })}
+              subject={String(config.subject ?? "")}
+              onClose={() => setEmailEditorOpen(false)}
+              onSave={(html) => onUpdate({ html })}
             />
           </>
         )}
