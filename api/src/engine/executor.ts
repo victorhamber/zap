@@ -17,6 +17,7 @@ import { saveInboxMessage, contactHasInboundReply, canonicalizeChatId, resolveAl
 import { toPublicMediaUrl } from "../services/uploads.js";
 import {
   findFlowTriggerNode,
+  getLinearNextNodeIds,
   getNextNodeId,
   getNextNodeIdByHandle,
   getNode,
@@ -299,12 +300,82 @@ async function logStep(
  */
 const MAX_NODES_PER_RUN_SEGMENT = 200;
 
+type FanOutState = { pending: string[] };
+
+function fanOutPendingFromVars(vars: Record<string, unknown>): string[] {
+  const raw = vars._fanOutPending;
+  if (!Array.isArray(raw)) return [];
+  return raw.map(String).filter(Boolean);
+}
+
+function stashFanOutInVars(vars: Record<string, unknown>, fanOut?: FanOutState): void {
+  if (fanOut?.pending?.length) {
+    vars._fanOutPending = fanOut.pending;
+  }
+}
+
+/** Após um nó, segue sequência ou ramificações paralelas (fan-out). */
+async function continueAfterNode(
+  graph: FlowGraph,
+  flowRunId: string,
+  nodeId: string,
+  vars: Record<string, unknown>,
+  depth: number,
+  fanOut?: FanOutState
+): Promise<void> {
+  const nextIds = getLinearNextNodeIds(graph, nodeId);
+
+  if (nextIds.length > 0) {
+    const [first, ...splitRest] = nextIds;
+    if (prisma) {
+      await prisma.flowRun.update({
+        where: { id: flowRunId },
+        data: { currentNodeId: first, status: "running" }
+      });
+    }
+    if (nextIds.length === 1) {
+      stashFanOutInVars(vars, fanOut);
+      if (prisma && fanOut?.pending?.length) {
+        await prisma.flowRun.update({
+          where: { id: flowRunId },
+          data: { variables: vars as object }
+        });
+      }
+      await executeNode(graph, flowRunId, first, vars, depth, fanOut);
+      return;
+    }
+    const merged: FanOutState = {
+      pending: [...splitRest, ...(fanOut?.pending ?? [])]
+    };
+    await executeNode(graph, flowRunId, first, vars, depth, merged);
+    return;
+  }
+
+  const pending = fanOut?.pending?.length ? fanOut.pending : fanOutPendingFromVars(vars);
+  if (pending.length > 0) {
+    delete vars._fanOutPending;
+    const [next, ...rest] = pending;
+    if (prisma) {
+      await prisma.flowRun.update({
+        where: { id: flowRunId },
+        data: { currentNodeId: next, status: "running", variables: vars as object }
+      });
+    }
+    await executeNode(graph, flowRunId, next, vars, depth, rest.length ? { pending: rest } : undefined);
+    return;
+  }
+
+  delete vars._fanOutPending;
+  await finishRun(flowRunId, "completed");
+}
+
 async function executeNode(
   graph: FlowGraph,
   flowRunId: string,
   nodeId: string,
   vars: Record<string, unknown>,
-  visitedCount = 0
+  visitedCount = 0,
+  fanOut?: FanOutState
 ): Promise<void> {
   if (visitedCount >= MAX_NODES_PER_RUN_SEGMENT) {
     const message = `Fluxo excedeu ${MAX_NODES_PER_RUN_SEGMENT} blocos seguidos — provável ciclo no desenho. Execução interrompida.`;
@@ -970,7 +1041,14 @@ async function executeNode(
       const maxSec = Math.max(minSec, Math.min(600, env.EMAIL_DISPATCH_MAX_SEC));
       const delayMs = await reserveStaggeredStartDelay("email", minSec, maxSec);
       if (delayMs > 0) {
-        const nextVars = { ...vars, _emailSlotReady: true, _emailSlotNodeId: nodeId };
+        const nextVars: Record<string, unknown> = {
+          ...vars,
+          _emailSlotReady: true,
+          _emailSlotNodeId: nodeId
+        };
+        if (fanOut?.pending?.length) {
+          nextVars._fanOutPending = fanOut.pending;
+        }
         const jobId = `${flowRunId}_${nodeId}_email`;
         const job = await enqueueFlowJob({ flowRunId, nodeId }, delayMs, jobId);
         if (prisma) {
@@ -1031,20 +1109,7 @@ async function executeNode(
     await logStep(flowRunId, nodeId, node.type, "ok", "Gatilho");
   }
 
-  const nextId = getNextNodeId(graph, nodeId);
-  if (!nextId) {
-    await finishRun(flowRunId, "completed");
-    return;
-  }
-
-  if (prisma) {
-    await prisma.flowRun.update({
-      where: { id: flowRunId },
-      data: { currentNodeId: nextId, status: "running" }
-    });
-  }
-
-  await executeNode(graph, flowRunId, nextId, vars, depth);
+  await continueAfterNode(graph, flowRunId, nodeId, vars, depth, fanOut);
 }
 
 async function finishRun(flowRunId: string, status: string) {
@@ -1205,8 +1270,8 @@ export async function startFlowRun(params: {
     throw err;
   }
 
-  const firstActionId = getNextNodeId(graph, startNodeId);
-  if (!firstActionId) {
+  const firstActionIds = getLinearNextNodeIds(graph, startNodeId);
+  if (firstActionIds.length === 0) {
     await finishRun(run.id, "completed");
     return { runId: run.id };
   }
@@ -1214,7 +1279,12 @@ export async function startFlowRun(params: {
   try {
     const startLabel = params.manualStart ? "Início manual (gatilho ignorado)" : "Início";
     await logStep(run.id, startNodeId, recordedTriggerType, "ok", startLabel);
-    await executeNode(graph, run.id, firstActionId, variables);
+    if (firstActionIds.length === 1) {
+      await executeNode(graph, run.id, firstActionIds[0], variables);
+    } else {
+      const [first, ...rest] = firstActionIds;
+      await executeNode(graph, run.id, first, variables, 0, { pending: rest });
+    }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     await prisma.flowRun.update({

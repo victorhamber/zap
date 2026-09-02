@@ -39,13 +39,20 @@ export function getFirstActionAfterTrigger(graph: FlowGraph): string | null {
   return getNextNodeId(graph, trigger.id);
 }
 
-export function getNextNodeId(graph: FlowGraph, currentNodeId: string): string | null {
+export function getLinearNextNodeIds(graph: FlowGraph, currentNodeId: string): string[] {
   const outgoing = graph.edges.filter((e) => e.source === currentNodeId);
-  if (outgoing.length === 0) return null;
-  const linear = outgoing.find((e) => !e.sourceHandle);
-  if (linear) return linear.target;
-  if (outgoing.length === 1) return outgoing[0].target;
-  return null;
+  if (outgoing.length === 0) return [];
+
+  const linear = outgoing.filter((e) => !e.sourceHandle);
+  if (linear.length > 0) return linear.map((e) => e.target);
+
+  if (outgoing.length === 1) return [outgoing[0].target];
+  return [];
+}
+
+export function getNextNodeId(graph: FlowGraph, currentNodeId: string): string | null {
+  const next = getLinearNextNodeIds(graph, currentNodeId);
+  return next[0] ?? null;
 }
 
 export function getNextNodeIdByHandle(

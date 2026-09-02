@@ -247,10 +247,20 @@ export function FlowEditor() {
   }, [id, setNodes, setEdges]);
 
   useEffect(() => {
+    function isTypingInPanel(e: KeyboardEvent): boolean {
+      const el = e.target;
+      if (!(el instanceof HTMLElement)) return false;
+      const tag = el.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+      if (el.isContentEditable) return true;
+      if (el.closest(".ProseMirror")) return true;
+      if (el.closest("[data-flow-properties]")) return true;
+      return false;
+    }
+
     function onKey(e: KeyboardEvent) {
       if (e.key === "Delete" || e.key === "Backspace") {
-        const tag = (e.target as HTMLElement)?.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+        if (isTypingInPanel(e)) return;
         if (selectedEdgeId) {
           e.preventDefault();
           deleteEdge(selectedEdgeId);
@@ -262,6 +272,7 @@ export function FlowEditor() {
         }
       }
       if (e.key === "Escape") {
+        if (isTypingInPanel(e)) return;
         setContextMenu(null);
         setSelectedId(null);
         selectEdge(null);
@@ -759,7 +770,10 @@ export function FlowEditor() {
         )}
 
         {selectedNode && (
-          <aside className="absolute right-0 top-0 bottom-0 z-30 w-full max-w-md border-l border-zinc-800 bg-zinc-950/98 shadow-[-8px_0_32px_rgba(0,0,0,0.45)] backdrop-blur pointer-events-auto">
+          <aside
+            data-flow-properties
+            className="absolute right-0 top-0 bottom-0 z-30 w-full max-w-md border-l border-zinc-800 bg-zinc-950/98 shadow-[-8px_0_32px_rgba(0,0,0,0.45)] backdrop-blur pointer-events-auto"
+          >
             <FlowNodeProperties
               selectedNode={selectedNode}
               flowId={flow?.id}
