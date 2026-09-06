@@ -357,6 +357,111 @@ function clarifySendTextError(status: number, formatted: string): string {
   return `sendText: ${formatted}`;
 }
 
+/** Verifica se a instância Evolution está open (conectada). */
+async function assertEvolutionConnectedForSend(instance: string): Promise<void> {
+  try {
+    const raw = await checkConnection();
+    if (!parseConnectionCheck(raw)) {
+      const state = extractSessionState(raw) || "desconhecido";
+      throw new Error(
+        `sendText: WhatsApp desconectado na Evolution (estado: ${state}). Reconecte a instância "${instance}" e escaneie o QR.`
+      );
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith("sendText: WhatsApp desconectado")) {
+      throw err;
+    }
+    /* se o check falhar por rede, deixa o send seguir — o erro real vem no POST */
+  }
+}
+
+type NumberExistsResult = { number: string; exists: boolean | null; jid?: string };
+
+/** Consulta Evolution se o número tem WhatsApp (quando o sendText só devolve HTTP 400 genérico). */
+async function checkNumbersOnWhatsApp(
+  instance: string,
+  numbers: string[]
+): Promise<NumberExistsResult[]> {
+  const unique = [...new Set(numbers.map(digitsOnly).filter(Boolean))];
+  if (unique.length === 0) return [];
+  try {
+    const res = await evoFetch(`/chat/whatsappNumbers/${encodeURIComponent(instance)}`, {
+      method: "POST",
+      body: JSON.stringify({ numbers: unique })
+    });
+    const data = await readJson(res);
+    if (!res.ok) return unique.map((n) => ({ number: n, exists: null }));
+
+    const list = Array.isArray(data)
+      ? data
+      : Array.isArray((data as Record<string, unknown>).response)
+        ? ((data as Record<string, unknown>).response as unknown[])
+        : [];
+
+    const byDigits = new Map<string, NumberExistsResult>();
+    for (const row of list) {
+      if (!row || typeof row !== "object") continue;
+      const o = row as Record<string, unknown>;
+      const rawNum = String(o.number ?? o.jid ?? "").replace(/\D/g, "");
+      const key = unique.find((u) => rawNum.endsWith(u) || u.endsWith(rawNum)) ?? rawNum;
+      const exists =
+        typeof o.exists === "boolean"
+          ? o.exists
+          : typeof o.isWhatsApp === "boolean"
+            ? o.isWhatsApp
+            : null;
+      byDigits.set(key || rawNum, {
+        number: key || rawNum,
+        exists,
+        jid: String(o.jid ?? "").trim() || undefined
+      });
+    }
+    return unique.map((n) => byDigits.get(n) ?? { number: n, exists: null });
+  } catch {
+    return unique.map((n) => ({ number: n, exists: null }));
+  }
+}
+
+async function diagnoseSendTextFailure(
+  instance: string,
+  phone: string,
+  variants: string[],
+  lastError: string
+): Promise<string> {
+  await assertEvolutionConnectedForSend(instance);
+
+  const checks = await checkNumbersOnWhatsApp(instance, variants);
+  const noneExist =
+    checks.length > 0 && checks.every((c) => c.exists === false);
+  if (noneExist) {
+    return (
+      `sendText: número sem WhatsApp (${variants.join(" / ")}). ` +
+      `Confira o telefone na Hotmart (DDI + DDD + celular). Último erro: ${lastError}`
+    );
+  }
+
+  const anyUnknown = checks.some((c) => c.exists === null);
+  if (/HTTP 400:\s*Bad Request/i.test(lastError) && !anyUnknown) {
+    const ok = checks.find((c) => c.exists === true);
+    if (ok) {
+      return (
+        `${lastError} — número parece ter WhatsApp (${ok.number}), mas a Evolution recusou o envio. ` +
+        `Reinicie a instância "${instance}" ou tente de novo em alguns minutos.`
+      );
+    }
+  }
+
+  if (/HTTP 400:\s*Bad Request/i.test(lastError)) {
+    return (
+      `${lastError} — tel. ${phone}. ` +
+      `Causas comuns: WhatsApp da Evolution desconectado/instável, número inválido na Hotmart, ou sessão travada. ` +
+      `Confira Conexão/QR no painel e o telefone do comprador.`
+    );
+  }
+
+  return `${lastError} (tel. ${phone})`;
+}
+
 async function postSendTextOnce(
   instance: string,
   number: string,
@@ -391,6 +496,9 @@ export async function sendText(
     const number = normalizeGroupSendNumber(phone);
     let lastError = "sendText: falha desconhecida";
     for (let attempt = 0; attempt < SEND_TEXT_MAX_ATTEMPTS; attempt++) {
+      if (attempt === 1) {
+        await assertEvolutionConnectedForSend(instance);
+      }
       const result = await postSendTextOnce(instance, number, text);
       if (result.ok) return result.id;
       lastError = result.error;
@@ -417,6 +525,10 @@ export async function sendText(
   let lastError = "sendText: falha desconhecida";
 
   for (let attempt = 0; attempt < SEND_TEXT_MAX_ATTEMPTS; attempt++) {
+    if (attempt === 1) {
+      await assertEvolutionConnectedForSend(instance);
+    }
+
     let hadRetriable = false;
     let permanentOnly = true;
 
@@ -453,8 +565,9 @@ export async function sendText(
     break;
   }
 
+  const diagnosed = await diagnoseSendTextFailure(instance, phone, variants, lastError);
   throw new Error(
-    `${lastError} — desistiu após ${SEND_TEXT_MAX_ATTEMPTS} tentativas (tel. ${phone})`
+    `${diagnosed} — desistiu após ${SEND_TEXT_MAX_ATTEMPTS} tentativas`
   );
 }
 
