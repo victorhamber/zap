@@ -1,4 +1,4 @@
-# MAP — zap-review · 2026-11-10 · 199 arquivos · 42266 linhas
+# MAP — zap-review · 2026-11-10 · 199 arquivos · 42348 linhas
 > Gerado por ai-docs/tools/map_repo.py — NÃO editar. Use isto em vez de ler o código inteiro: ache o arquivo/símbolo aqui e abra só o trecho.
 Stack: node
 Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, build:web, start; api/src/index.ts; api/src/services/whatsapp/index.ts
@@ -20,7 +20,7 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 - tsconfig.json [17L]
 
 ## api/src/
-- bootstrap.ts [87L] — bootstrapDatabase()
+- bootstrap.ts [89L] — bootstrapDatabase()
 - env.ts [117L] URL interna do Zap na rede Docker. O WAHA chama o webhook por aqui. Ex: http://z — defaultWhatsAppSession()
 - index.ts [136L]
 - prisma.ts [6L]
@@ -29,7 +29,7 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 - worker.ts [132L] — main()
 
 ## api/src/engine/
-- executor.ts [1523L] — delayToMs(), render(), sleepMs(), isRetriableSendError(), sendWithRetries(), sendMediaWithRetries(), persistFlowOutboundMessage(), resolveFlowTriggerType(), resolveSendTarget(), resolveHotmartOfferCode(), resolveHotmartPurchaseId(), extractHotmartVariables(), +17
+- executor.ts [1522L] — delayToMs(), render(), sleepMs(), isRetriableSendError(), sendWithRetries(), sendMediaWithRetries(), persistFlowOutboundMessage(), resolveFlowTriggerType(), resolveSendTarget(), resolveHotmartOfferCode(), resolveHotmartPurchaseId(), extractHotmartVariables(), +17
 - graph.test.ts [32L]
 - graph.ts [124L] — parseGraph(), findTriggerNode(), findFlowTriggerNode(), getFirstActionAfterTrigger(), getLinearNextNodeIds(), getNextNodeId(), getNextNodeIdByHandle(), getNode(), defaultHotmartGraph()
 
@@ -44,7 +44,7 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 - inbox.ts [697L] — sortQuickReplies(), normalizeQuickReply(), parseQuickReplies(), sanitizeQuickRepliesForSave(), preferMergedChatId(), mergeInboxChatRows(), dedupeInboxChatRows(), inboxRoutes()
 - media.ts [47L] — mediaRoutes()
 - runs.ts [31L] — runRoutes()
-- settings.ts [358L] — settingsRoutes()
+- settings.ts [349L] — settingsRoutes()
 - webhooks.ts [620L] — triggerInboundFlows(), whatsappWebhookAuthorized(), rejectWebhook(), webhookRoutes()
 - wpp.ts [372L] — buildKeepSessionNames(), listServerSessionNames(), wppRoutes()
 
@@ -64,7 +64,7 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 - flowVariables.ts [68L] E-mail válido para Mustache / Resend. */ — normalizeFlowEmail(), enrichFlowVariables(), persistContactFromFlowVariables()
 - groupsFlowTrigger.ts [210L] — normalizeGroupId(), readTriggerGroupsData(), getTriggerGroupsFromFlow(), dispatchGroupsFlow(), countActiveGroupsRuns(), ensureGroupsFlowRunning(), groupsFlowHasScheduleNodes(), restartGroupsFlow()
 - inbox.test.ts [166L] Cenário do bug: a Evolution marcou um contato direto como isGroup.
-- inbox.ts [1334L] — readChatKey(), markChatReadLocally(), isChatReadLocally(), markInboxChatAsRead(), extractWaId(), isValidWaId(), chatIdToPhone(), isPhoneLikeText(), resolveChatId(), detectKind(), coerceDisplayText(), pickChatDisplayName(), +32
+- inbox.ts [1331L] — readChatKey(), markChatReadLocally(), isChatReadLocally(), markInboxChatAsRead(), extractWaId(), isValidWaId(), chatIdToPhone(), isPhoneLikeText(), resolveChatId(), detectKind(), coerceDisplayText(), pickChatDisplayName(), +32
 - inboxStore.ts [1584L] — isButtonPlaceholderBody(), isPrismaUniqueConflict(), digitsOnly(), chatIdVariants(), messageSyncJidCandidates(), chatIdVariantsResolved(), resolveAllChatIdsForContact(), preferPrimaryChatId(), canonicalizeChatId(), findPrimaryChatIdForPhone(), findPrimaryChatIdForContact(), getSessionName(), +45
 - inboxSync.ts [56L] — syncRecentMessagesFromWpp()
 - inboxTemplateRepair.ts [91L] Reprocessa mensagens antigas gravadas com o texto genérico de template/botão — maskMissingParameters(), repairTemplatePlaceholders()
@@ -77,7 +77,7 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 - waJid.ts [135L] Normalização de JIDs WhatsApp (Evolution / Baileys LID vs telefone). */ — isGenericSelfChatName(), digitsOnly(), isGroupLikeJid(), jidRank(), pickBestJid(), canonicalEvolutionChatId(), normalizeDirectJid(), isLikelyInternalLidDigits(), isLikelyInternalLidJid(), isValidWhatsAppPhoneDigits(), isOwnerPhoneDigits(), evolutionSendNumber()
 - waLidMap.test.ts [61L]
 - waLidMap.ts [267L] Mapeia @lid interno → telefone real (@s.whatsapp.net). */ — storeKey(), mapFile(), legacyMapFile(), jidCandidates(), pickPhoneJid(), pickLidJid(), applyWaJidMapping(), loadWaLidMap(), persistWaLidMap(), recordWaJidMappingSync(), recordWaJidMapping(), flushWaLidMap(), +6
-- waha.ts [898L] Cliente HTTP do WAHA. Único motor de WhatsApp do Zap. — baseUrl(), apiKey(), webhookUrl(), sessionConfig(), waha(), readBody(), formatWppError(), wahaJson(), normalizeSessionName(), sessionName(), getActiveWppSessionName(), setActiveSession(), +64
+- waha.ts [989L] Cliente HTTP do WAHA. Único motor de WhatsApp do Zap. — baseUrl(), apiKey(), reachableBaseUrl(), webhookUrl(), sessionConfig(), waha(), readBody(), formatWppError(), wahaJson(), normalizeSessionName(), sessionName(), getActiveWppSessionName(), +69
 - wahaWebhook.ts [82L] — asRecord(), mediaType(), preview(), parseWahaMessage(), wahaSessionStatus()
 - wppHumanize.ts [13L] Pequenos intervalos entre chamadas ao WPP para parecer uso humano (não elimina r — wppHumanDelay()
 - wppMedia.ts [56L] — isInboundMediaType(), persistWahaUrl(), downloadMediaForStoredMessage(), downloadInboundMedia()
@@ -151,7 +151,7 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 - COLE-PATCH-WPP-COMPLETO.sh [91L] Cole INTEIRO no console EasyPanel do wppconnect. Aplica:
 - Dockerfile.wppconnect [22L] WPPConnect com patch para apagar tokens ao excluir sessão (clear-session-data).
 - docker-wpp-entrypoint.sh [11L] Entrypoint opcional: aplica patch de tokens antes de subir o WPP.
-- easypanel-waha.md [51L] WAHA no EasyPanel
+- easypanel-waha.md [53L] WAHA no EasyPanel
 - patch-wpp-token-node.js [85L] usr/bin/env node
 - patch-wpp-token-path.sh [11L] Corrige bug do WPPConnect 2.x: clear-session-data não apaga tokens/*.data.json
 - patch-wpp-zap-force-route.js [116L] usr/bin/env node — zapForceClearSession()
