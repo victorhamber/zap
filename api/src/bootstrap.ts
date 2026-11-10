@@ -1,7 +1,6 @@
 import { prisma } from "./prisma.js";
 import { syncAdminUserFromEnv } from "./services/adminUser.js";
 import { defaultWhatsAppSession, env, flags } from "./env.js";
-import { isEvolution } from "./services/whatsapp/index.js";
 import { defaultHotmartGraph } from "./engine/graph.js";
 import {
   startWppReconnectWatchdog,
@@ -23,7 +22,7 @@ export async function bootstrapDatabase() {
     update: {},
     create: {
       id: "default",
-      wppBaseUrl: env.WPP_BASE_URL,
+      wppBaseUrl: env.WAHA_BASE_URL,
       wppSession: defaultWhatsAppSession()
     }
   });
@@ -60,7 +59,7 @@ export async function bootstrapDatabase() {
     await ensureInboxCaptureStarted();
   }
 
-  console.log(`[bootstrap] WhatsApp provider: ${isEvolution ? "evolution" : "wppconnect"}`);
+  console.log(`[bootstrap] WhatsApp: WAHA ${env.WAHA_BASE_URL} sessão ${defaultWhatsAppSession()}`);
 
   if (flags.isProd) {
     if (!env.ZAP_INTERNAL_URL?.trim()) {
@@ -68,19 +67,8 @@ export async function bootstrapDatabase() {
         "[bootstrap] AVISO: ZAP_INTERNAL_URL não definido — mensagens recebidas provavelmente NÃO chegarão ao inbox."
       );
     }
-    if (isEvolution) {
-      if (!env.EVOLUTION_API_KEY?.trim()) {
-        console.warn("[bootstrap] AVISO: EVOLUTION_API_KEY não definida.");
-      }
-      if (!env.EVOLUTION_INTERNAL_URL?.trim()) {
-        console.warn(
-          "[bootstrap] AVISO: EVOLUTION_INTERNAL_URL não definido — use URL interna Docker (ex.: http://evolution:8080)."
-        );
-      }
-    } else if (!env.WPP_INTERNAL_URL?.trim()) {
-      console.warn(
-        "[bootstrap] AVISO: WPP_INTERNAL_URL não definido — o Zap pode não alcançar o wppconnect na rede Docker."
-      );
+    if (!env.WAHA_API_KEY?.trim()) {
+      console.warn("[bootstrap] AVISO: WAHA_API_KEY não definida.");
     }
   }
 

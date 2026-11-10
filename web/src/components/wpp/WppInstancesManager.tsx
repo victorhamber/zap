@@ -227,9 +227,9 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
               <p className="text-sm text-zinc-400 font-mono mt-0.5">{activeInstance.name}</p>
               <p className="text-xs text-zinc-500 mt-2">
                 {activeInstance.integration === "business"
-                  ? "API oficial Meta (Cloud API via Evolution)"
+                  ? "API oficial Meta (Cloud API)"
                   : activeInstance.onServer
-                    ? "Evolution Baileys — registrada no servidor"
+                    ? "WAHA — sessão no servidor"
                     : "Cadastrada no painel — conecte em Conexão / QR"}
               </p>
             </div>
@@ -285,7 +285,7 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
                     checked={newIntegration === "baileys"}
                     onChange={() => setNewIntegration("baileys")}
                   />
-                  Evolution (QR Code)
+                  WAHA (QR Code)
                 </label>
                 <label className="flex items-center gap-2 text-zinc-300">
                   <input
@@ -475,7 +475,7 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
             onClick={() => void saveBusinessConfig(configuring)}
             className="rounded-xl bg-sky-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-sky-500 disabled:opacity-50"
           >
-            Salvar e sincronizar com Evolution
+            Salvar credenciais Meta
           </button>
         </div>
       )}

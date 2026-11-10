@@ -2,7 +2,7 @@
   "name": "trajettu-zap",
   "private": true,
   "version": "1.0.0",
-  "description": "Automação WhatsApp com WPPConnect e editor visual de fluxos",
+  "description": "Inbox, fluxos e WhatsApp via WAHA",
   "license": "UNLICENSED",
   "type": "module",
   "engines": {

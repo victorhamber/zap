@@ -62,22 +62,9 @@ async function callSendMessage(
   target: WppSendTarget,
   message: string
 ): Promise<string | null> {
-  const raw = await wpp.callSessionApi("/send-message", "POST", {
-    phone: target.phone,
-    message,
-    isGroup: target.isGroup,
-    isLid: target.isLid,
-    isNewsletter: target.isNewsletter
+  return wpp.sendText(target.jid, message, {
+    isGroup: target.isGroup || target.isNewsletter
   });
-  if (!raw || typeof raw !== "object") return null;
-  const o = raw as Record<string, unknown>;
-  const key = o.key;
-  if (key && typeof key === "object") {
-    const id = String((key as Record<string, unknown>).id ?? "").trim();
-    if (id) return id;
-  }
-  const id = String(o.id ?? "").trim();
-  return id || null;
 }
 
 /** Envia texto; se falhar com @c.us, tenta isLid (contatos novos do WhatsApp). */

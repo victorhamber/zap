@@ -7,7 +7,7 @@ const isProd = process.env.NODE_ENV === "production";
 
 const EnvSchema = z.object({
   APP_PUBLIC_URL: isProd ? z.string().url() : z.string().default("http://localhost:5173"),
-  /** URL interna do app Zap na rede Docker (WPP baixa mídia e chama webhook). Ex: http://zap:3000 */
+  /** URL interna do Zap na rede Docker. O WAHA chama o webhook por aqui. Ex: http://zap-forexrendimento_zap-api:3000 */
   ZAP_INTERNAL_URL: z.string().url().optional(),
   DATABASE_URL: isProd ? z.string().min(1) : z.string().optional(),
   REDIS_URL: isProd ? z.string().min(1) : z.string().default("redis://127.0.0.1:6379"),
@@ -15,38 +15,23 @@ const EnvSchema = z.object({
   JWT_SECRET: isProd ? z.string().min(32) : z.string().default("dev-jwt-secret-change-in-production-32chars"),
   JWT_EXPIRES_IN: z.string().default("7d"),
 
-  /** wppconnect (legado) | evolution */
-  WHATSAPP_PROVIDER: z.enum(["wppconnect", "evolution"]).default("wppconnect"),
-  WPP_BASE_URL: z.string().default("https://wpp.trajettu.com"),
-  /** URL rede interna (EasyPanel). Ex: http://nome-servico-wpp:21465 */
-  WPP_INTERNAL_URL: z.string().optional(),
-  WPP_SESSION: z.string().default("autofintech"),
-  /** Nome da instância WhatsApp (Evolution ou WPPConnect). Preferir em vez de WPP_SESSION. */
-  WHATSAPP_SESSION: z.string().optional(),
-  /** Só obrigatório com WHATSAPP_PROVIDER=wppconnect */
-  WPP_SECRET_KEY: z.string().optional(),
-  /** false desliga reconexão automática em background */
+  /** Nome da sessão WAHA. Não use a sessão de outro projeto. */
+  WHATSAPP_SESSION: z.string().default("zap"),
+  /** URL do WAHA na rede Docker. Ex.: http://zap-forexrendimento_waha:3000 */
+  WAHA_BASE_URL: z.string().default("http://127.0.0.1:3000"),
+  WAHA_API_KEY: z.string().default(""),
+  /** false desliga a checagem automática da sessão em background */
   WPP_AUTO_RECONNECT: z
     .string()
     .optional()
     .transform((v) => v !== "false"),
   WPP_RECONNECT_INTERVAL_SEC: z.coerce.number().int().positive().default(120),
   WPP_RECONNECT_COOLDOWN_SEC: z.coerce.number().int().positive().default(180),
-  /** true = start-session HTTP bloqueia até escanear (padrão WPP 60s autoClose). false = retorna rápido e o painel faz polling do QR. */
-  WPP_START_WAIT_QR: z
-    .string()
-    .optional()
-    .transform((v) => v === "true"),
-  /** true = ao listar instâncias, remove órfãs no WPP (padrão false — use o botão no painel) */
+  /** true = ao listar sessões, remove as que não estão no painel */
   WPP_AUTO_PURGE_ORPHANS: z
     .string()
     .optional()
     .transform((v) => v === "true"),
-
-  /** Evolution API — https://doc.evolution-api.com */
-  EVOLUTION_BASE_URL: z.string().default("https://evo.trajettu.com"),
-  EVOLUTION_INTERNAL_URL: z.string().optional(),
-  EVOLUTION_API_KEY: z.string().default(""),
 
   /** false = inicia fluxos imediatamente, sem fila global */
   FLOW_DISPATCH_STAGGER: z
@@ -64,7 +49,7 @@ const EnvSchema = z.object({
 
   HOTMART_WEBHOOK_SECRET: z.string().optional(),
   /**
-   * Segredo compartilhado dos webhooks de mensagem (WPPConnect/Evolution).
+   * Segredo compartilhado do webhook WAHA.
    * Se definido, exigimos o header x-webhook-secret — sem ele, qualquer um
    * poderia injetar mensagens no inbox e disparar fluxos.
    */
@@ -101,35 +86,27 @@ const EnvSchema = z.object({
         "Defina ADMIN_PASSWORD em produção. Sem essa variável o painel sobe com a senha padrão 'admin123' e fica aberto na internet."
     });
   }
-  if (data.WHATSAPP_PROVIDER === "wppconnect") {
-    const key = data.WPP_SECRET_KEY?.trim() ?? "";
-    if (key.length < 8) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["WPP_SECRET_KEY"],
-        message: "Obrigatório (mín. 8 caracteres) quando WHATSAPP_PROVIDER=wppconnect"
-      });
-    }
-  }
-  if (data.WHATSAPP_PROVIDER === "evolution" && !data.EVOLUTION_API_KEY?.trim()) {
+  if (!data.WAHA_API_KEY?.trim()) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      path: ["EVOLUTION_API_KEY"],
-      message: "Obrigatório quando WHATSAPP_PROVIDER=evolution"
+      path: ["WAHA_API_KEY"],
+      message: "Obrigatório em produção. É a mesma chave WAHA_API_KEY do container WAHA."
+    });
+  }
+  if (!data.WAHA_BASE_URL?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["WAHA_BASE_URL"],
+      message: "Obrigatório em produção. Use a URL interna do container WAHA."
     });
   }
 });
 
 export const env = EnvSchema.parse(process.env);
 
-/** Sessão/instância padrão (Evolution: nome da instância). */
+/** Nome da sessão WAHA deste Zap. */
 export function defaultWhatsAppSession(): string {
-  return (env.WHATSAPP_SESSION ?? env.WPP_SESSION).trim().toLowerCase();
-}
-
-/** Chave WPPConnect — só usada quando WHATSAPP_PROVIDER=wppconnect */
-export function wppSecretKey(): string {
-  return env.WPP_SECRET_KEY?.trim() || "dev-secret-key";
+  return env.WHATSAPP_SESSION.trim().toLowerCase();
 }
 
 export const flags = {

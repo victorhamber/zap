@@ -94,8 +94,6 @@ export async function getContactProfile(params: {
 export async function getContactSharedGroups(phoneKey: string): Promise<ContactProfileGroup[]> {
   const phoneDigits = canonicalBrazilPhone(decodeURIComponent(phoneKey).replace(/@.*/, ""));
   if (phoneDigits.length < 10) return [];
-  const { isEvolution } = await import("./whatsapp/index.js");
-  if (!isEvolution) return [];
-  const { fetchGroupsForPhone } = await import("./whatsapp/evolution.js");
+  const { fetchGroupsForPhone } = await import("./waha.js");
   return fetchGroupsForPhone(phoneDigits);
 }

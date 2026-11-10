@@ -56,8 +56,6 @@ export async function markInboxChatAsRead(chatId: string, isGroup = false): Prom
   await loadWaLidMap(session);
   markChatReadLocally(session, chatId);
 
-  if (!wpp.isEvolution) return;
-
   const mapped = getMappedPhoneJid(session, chatId);
   const resolvedId = mapped ?? normalizeDirectJid(chatId);
   const { prisma } = await import("../prisma.js");
@@ -86,8 +84,8 @@ export async function markInboxChatAsRead(chatId: string, isGroup = false): Prom
 
   if (payload.length === 0 && !isGroup) return;
 
-  const { markEvolutionChatAsRead } = await import("./whatsapp/evolution.js");
-  await markEvolutionChatAsRead(resolvedId, payload.slice(0, 8));
+  const { markChatAsRead } = await import("./waha.js");
+  await markChatAsRead(resolvedId);
 }
 
 export type ChatKind = "direct" | "group" | "community";
@@ -777,7 +775,7 @@ function mergeContactNames(
 async function loadEvolutionContactNames(): Promise<Map<string, string>> {
   const map = new Map<string, string>();
   try {
-    const raw = await wpp.callSessionApi("/find-contacts", "POST", {});
+    const raw = await wpp.listContacts();
     const list = extractArray(raw);
     for (const item of list) {
       if (!item || typeof item !== "object") continue;
@@ -834,12 +832,12 @@ export async function fetchChats(): Promise<FetchChatsResult> {
   }> = [
     {
       name: "list-chats",
-      run: () => wpp.callSessionApi("/list-chats", "POST", { onlyUsers: true }),
+      run: () => wpp.listChats(),
       parse: (raw) => normalizeChats(raw, session)
     },
     {
       name: "all-groups",
-      run: () => wpp.callSessionApi("/all-groups", "GET"),
+      run: () => wpp.listGroups(),
       parse: normalizeGroups
     }
   ];
@@ -918,7 +916,7 @@ export async function fetchChats(): Promise<FetchChatsResult> {
             return a.name.localeCompare(b.name, "pt-BR");
           }),
           contactNames,
-          wpp.isEvolution ? await wpp.getConnectedOwnerDigits() : null
+          await wpp.getConnectedOwnerDigits()
         ),
         groupSubjects
       ).map((c) => ({
@@ -1027,8 +1025,8 @@ export async function fetchMessages(
   // (skipSync) ficam de fora para não pesar.
   if (messages.length === 0 && !options.skipSync && !options.isGroup) {
     try {
-      const { resolveEvolutionPeerJid } = await import("./whatsapp/evolution.js");
-      const peer = await resolveEvolutionPeerJid(options.chatId, options.isGroup);
+      const { resolvePeerJid } = await import("./waha.js");
+      const peer = await resolvePeerJid(options.chatId);
       if (peer && peer !== options.chatId) {
         await recordWaJidMapping(session, options.chatId, peer);
         const { syncRecentMessagesFromWpp } = await import("./inboxSync.js");
@@ -1045,8 +1043,8 @@ export async function fetchMessages(
 
   if (messages.length === 0 && !options.skipSync && isLikelyInternalLidJid(options.chatId)) {
     try {
-      const { resolveEvolutionPeerJid } = await import("./whatsapp/evolution.js");
-      const peer = await resolveEvolutionPeerJid(options.chatId, options.isGroup);
+      const { resolvePeerJid } = await import("./waha.js");
+      const peer = await resolvePeerJid(options.chatId);
       if (peer) {
         await recordWaJidMapping(session, options.chatId, peer);
         const retry = await listStoredMessages(peer, options.count ?? 200, session);

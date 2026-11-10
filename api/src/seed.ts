@@ -16,7 +16,7 @@ async function main() {
     update: {},
     create: {
       id: "default",
-      wppBaseUrl: env.WPP_BASE_URL,
+      wppBaseUrl: env.WAHA_BASE_URL,
       wppSession: defaultWhatsAppSession()
     }
   });

@@ -3,7 +3,6 @@ import { prisma } from "../prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import { defaultWhatsAppSession, env } from "../env.js";
 import * as wpp from "../services/whatsapp/index.js";
-import { isEvolution } from "../services/whatsapp/index.js";
 import {
   getLastWppWebhookAt,
   getLastWppWebhookEvent,
@@ -22,19 +21,19 @@ export async function settingsRoutes(app: FastifyInstance) {
   app.get("/api/settings/wpp", async () => {
     if (!prisma) {
       return {
-        provider: isEvolution ? "evolution" : "wppconnect",
-        wppBaseUrl: isEvolution ? env.EVOLUTION_BASE_URL : env.WPP_BASE_URL,
+        provider: "waha",
+        wppBaseUrl: env.WAHA_BASE_URL,
         wppSession: defaultWhatsAppSession(),
-        hasToken: isEvolution ? Boolean(env.EVOLUTION_API_KEY) : false,
+        hasToken: Boolean(env.WAHA_API_KEY),
         connectionStatus: null
       };
     }
     const s = await prisma.appSettings.findUnique({ where: { id: "default" } });
     return {
-      provider: isEvolution ? "evolution" : "wppconnect",
-      wppBaseUrl: isEvolution ? env.EVOLUTION_BASE_URL : (s?.wppBaseUrl ?? env.WPP_BASE_URL),
+      provider: "waha",
+      wppBaseUrl: env.WAHA_BASE_URL,
       wppSession: s?.wppSession ?? defaultWhatsAppSession(),
-      hasToken: isEvolution ? Boolean(env.EVOLUTION_API_KEY) : Boolean(s?.wppToken),
+      hasToken: Boolean(env.WAHA_API_KEY),
       connectionStatus: s?.connectionStatus
     };
   });
@@ -53,7 +52,7 @@ export async function settingsRoutes(app: FastifyInstance) {
       },
       create: {
         id: "default",
-        wppBaseUrl: body.wppBaseUrl ?? env.WPP_BASE_URL,
+        wppBaseUrl: body.wppBaseUrl ?? env.WAHA_BASE_URL,
         wppSession: wppSession ?? defaultWhatsAppSession()
       }
     });
@@ -276,7 +275,7 @@ export async function settingsRoutes(app: FastifyInstance) {
           ? "O Zap já gravou mensagem recebida no inbox. Abra o chat no menu WhatsApp."
           : lastAt
             ? `O WPP chama o Zap (${lastEvent ?? "evento"}), mas nenhuma mensagem foi salva ainda${lastSkip ? ` — último skip: ${lastSkip}` : ""}. Confira instância ativa e envie texto de outro celular.`
-            : "Após conectar, clique em Atualizar webhook e envie uma mensagem do celular. Se continuar vazio, o wppconnect não está alcançando o Zap."
+            : "Depois de conectar, clique em Atualizar webhook e mande uma mensagem de outro celular. Se continuar vazio, o WAHA não está alcançando o Zap."
     };
   });
 

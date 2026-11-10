@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../api/client";
 
 type WppSettings = {
-  provider?: "evolution" | "wppconnect";
+  provider?: "waha";
   wppBaseUrl: string;
   wppSession: string;
   hasToken: boolean;
@@ -108,7 +108,7 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
         setNoticeKind("warn");
         setNoticeText(
           text ||
-            "O servidor WPP encerrou a sessão antes de concluir o login (timeout ~60s). No serviço wppconnect, configure createOptions.autoClose: 0, reinicie o WPP e escaneie o QR em até 30 segundos."
+            "O QR do WAHA ainda não ficou pronto. Aguarde a sessão sair de STARTING e atualize."
         );
         setQrImage(null);
         return;
@@ -482,7 +482,7 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
         <p className="mt-3 text-xs text-zinc-500 leading-relaxed">
           Mensagens recebidas chegam em{" "}
           <span className="font-mono text-zinc-400">/api/webhooks/meta</span> no Zap (cada instância com
-          seu token de verificação). Envios usam a Evolution com suas credenciais salvas no painel.
+          seu token de verificação). Envios da API oficial usam as credenciais salvas no painel.
         </p>
       )}
 

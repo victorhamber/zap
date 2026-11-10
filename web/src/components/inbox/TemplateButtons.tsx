@@ -105,7 +105,7 @@ export const TemplateMessageBody = memo(function TemplateMessageBody({
             ))}
             {rest.length === 0 && (
               <p className="text-[12px] leading-snug text-[#8696a0]">
-                O texto completo não chega pela Evolution. Veja no WhatsApp do celular.
+                O texto completo desse template não veio no webhook. Veja no WhatsApp do celular.
               </p>
             )}
           </div>

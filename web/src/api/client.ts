@@ -16,7 +16,7 @@ function sanitizeErrorMessage(text: string, status: number): string {
   const lower = text.toLowerCase();
   if (lower.includes("<html") || lower.includes("<!doctype")) {
     if (status === 502 || lower.includes("bad gateway")) {
-      return "Servidor WPP indisponível (502). Verifique se o WPPConnect está online e o WPP_INTERNAL_URL no EasyPanel.";
+      return "WhatsApp indisponível (502). Confira se o WAHA está no ar e se WAHA_BASE_URL está certo no EasyPanel.";
     }
     return `Erro HTTP ${status} no servidor. Tente novamente em instantes.`;
   }

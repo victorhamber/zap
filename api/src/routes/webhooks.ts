@@ -441,7 +441,7 @@ export async function webhookRoutes(app: FastifyInstance) {
     return { ok: true, started, saved, event };
   });
 
-  app.get("/api/webhooks/evolution", async () => {
+  app.get("/api/webhooks/waha", async () => {
     const {
       getLastWppWebhookAt,
       getLastWppWebhookEvent,
@@ -451,7 +451,7 @@ export async function webhookRoutes(app: FastifyInstance) {
     const activeSession = await getActiveWppSessionName();
     return {
       ok: true,
-      provider: "evolution",
+      provider: "waha",
       activeSession,
       lastWebhookAt: getLastWppWebhookAt(),
       lastWebhookEvent: getLastWppWebhookEvent(),
@@ -460,7 +460,7 @@ export async function webhookRoutes(app: FastifyInstance) {
     };
   });
 
-  app.post("/api/webhooks/evolution", async (req, reply) => {
+  app.post("/api/webhooks/waha", async (req, reply) => {
     if (!prisma) return { ok: false };
     if (!whatsappWebhookAuthorized(req)) {
       return rejectWebhook(reply, String((req.body as Record<string, unknown>)?.event ?? "desconhecido"));
@@ -470,152 +470,78 @@ export async function webhookRoutes(app: FastifyInstance) {
     const event = String(body.event ?? "").toLowerCase();
     touchWppWebhookReceived(event);
 
-    let saved = false;
-
     try {
-      const {
-        parseEvolutionMessagePayload,
-        parseEvolutionConnectionEvent,
-        extractEvolutionQr,
-        extractEvolutionMessagePayloads,
-        isEvolutionMessageEvent
-      } = await import("../services/whatsapp/evolutionWebhook.js");
-
+      const { parseWahaMessage, wahaSessionStatus } = await import("../services/wahaWebhook.js");
+      const { handleWppLifecycleWebhook } = await import("../services/waha.js");
       const activeSession = await getActiveWppSessionName();
-      const instance = String(body.instance ?? "").trim().toLowerCase();
-      // Mensagens de QUALQUER instância são gravadas (com a sessão da própria
-      // instância) — inclusive da API oficial Meta via Evolution. Antes, tudo
-      // que não fosse da instância ativa era descartado e o histórico sumia.
-      const isActiveInstance = !instance || instance === activeSession;
+      const session = String(body.session ?? "").trim().toLowerCase();
+      const isActiveSession = !session || session === activeSession;
 
-      const connLabel = parseEvolutionConnectionEvent(body);
-      if (connLabel) {
-        // connectionStatus é global do painel: só a instância ativa atualiza.
-        if (isActiveInstance) {
-          await prisma.appSettings.update({
-            where: { id: "default" },
-            data: { connectionStatus: connLabel }
-          });
-        }
-        return { ok: true, lifecycle: true, event, instance };
+      if (wahaSessionStatus(body)) {
+        if (isActiveSession) await handleWppLifecycleWebhook(body);
+        return { ok: true, lifecycle: true, event, session };
       }
 
-      const qr = extractEvolutionQr(body);
-      if (qr) {
-        if (isActiveInstance) {
-          await prisma.appSettings.update({
-            where: { id: "default" },
-            data: { connectionStatus: "AWAITING_QR:QRCODE" }
-          });
-        }
-        return { ok: true, qr: true, event, instance };
-      }
-
-      if (!isEvolutionMessageEvent(body)) {
+      const parsed = parseWahaMessage(body);
+      if (!parsed) {
         touchWppWebhookSkipped("not_message");
         return { ok: true, skipped: "not_message", event };
       }
 
-      const payloads = extractEvolutionMessagePayloads(body);
-      let lastParsed: ReturnType<typeof parseEvolutionMessagePayload> = null;
-      let lastPushName = "";
-
       const { ensureInboxCaptureStarted } = await import("../services/inboxStore.js");
+      await ensureInboxCaptureStarted();
+      const sessionName = parsed.session || activeSession;
+      const { hydrateTemplatePlaceholder } = await import("../services/whatsapp/metaTemplates.js");
+      const messageBody = await hydrateTemplatePlaceholder({
+        session: sessionName,
+        text: parsed.text,
+        raw: parsed.raw
+      });
+      await saveInboxMessage({
+        chatId: parsed.chatId,
+        body: messageBody,
+        fromMe: parsed.fromMe,
+        type: parsed.type === "ptt" ? "audio" : parsed.type,
+        mediaUrl: null,
+        waMessageId: parsed.waMessageId,
+        timestamp: new Date(parsed.timestamp),
+        sessionName,
+        peerJids: [parsed.chatId, String(parsed.raw.from ?? ""), String(parsed.raw.to ?? "")].filter(
+          Boolean
+        )
+      });
+      touchWppWebhookSaved();
 
-      for (const payload of payloads) {
-        let parsed: ReturnType<typeof parseEvolutionMessagePayload> = null;
-        try {
-          parsed = parseEvolutionMessagePayload(body, payload);
-          if (!parsed) continue;
-          lastParsed = parsed;
-          if (!parsed.fromMe) {
-            const pushName = String(payload.pushName ?? "").trim();
-            if (pushName && pushName !== "Você") lastPushName = pushName;
-          }
-
-          await ensureInboxCaptureStarted();
-
-          const key = (payload.key ?? {}) as Record<string, unknown>;
-          const msgType = parsed.type === "ptt" ? "audio" : parsed.type;
-          const sessionName = parsed.instance || activeSession;
-          // Evolution Business encapsula a API oficial: o template chega só com
-          // nome + parâmetros. Busca o texto real do cadastro na Meta.
-          const { hydrateTemplatePlaceholder } = await import(
-            "../services/whatsapp/metaTemplates.js"
-          );
-          const messageBody = await hydrateTemplatePlaceholder({
-            session: sessionName,
-            text: parsed.text,
-            raw: payload
+      if (
+        parsed.waMessageId &&
+        isInboundMediaType(parsed.type) &&
+        !webhookMediaAlreadyInline(parsed)
+      ) {
+        const waId = parsed.waMessageId;
+        void downloadInboundMedia(body, waId, parsed.raw)
+          .then((url) => {
+            if (url) return updateInboxMessageMedia(waId, url);
+          })
+          .catch((e) => {
+            req.log.warn({ err: e, waId }, "download waha media async");
           });
-          await saveInboxMessage({
-            chatId: parsed.chatId,
-            body: messageBody,
-            fromMe: parsed.fromMe,
-            type: msgType,
-            mediaUrl: parsed.mediaUrl,
-            waMessageId: parsed.waMessageId,
-            timestamp: parsed.timestamp,
-            sessionName,
-            peerJids: [
-              String(key.remoteJid ?? ""),
-              String(key.remoteJidAlt ?? ""),
-              String(key.participant ?? ""),
-              String(key.participantAlt ?? ""),
-              String(body.sender ?? "")
-            ].filter(Boolean)
-          });
-          saved = true;
-          touchWppWebhookSaved();
-
-          const needsMediaDownload =
-            parsed.waMessageId &&
-            isInboundMediaType(parsed.type) &&
-            !webhookMediaAlreadyInline(parsed);
-
-          if (needsMediaDownload) {
-            const waId = parsed.waMessageId;
-            void downloadInboundMedia(body, waId, parsed.rawData)
-              .then((url) => {
-                if (url) return updateInboxMessageMedia(waId!, url);
-              })
-              .catch((e) => {
-                req.log.warn({ err: e, waId }, "download evolution media async");
-              });
-          }
-        } catch (err) {
-          req.log.warn({ err, event, waMessageId: parsed?.waMessageId }, "save evolution message failed");
-        }
-      }
-
-      const parsed = lastParsed;
-      const from = parsed?.chatId ?? "";
-      const text = parsed?.text ?? "";
-
-      if (!from) {
-        touchWppWebhookSkipped(saved ? "no_from_flow" : "no_from_unparsed");
-        return { ok: true, skipped: saved ? "no_from_flow" : "no_from_unparsed", event, saved };
       }
 
       let started: string[] = [];
-      // Fluxos enviam pela instância ativa; só dispara para mensagens dela.
-      if (saved && parsed && !parsed.fromMe && isActiveInstance) {
+      if (!parsed.fromMe && isActiveSession) {
         started = await triggerInboundFlows({
-          chatId: from,
-          text,
-          contactName: lastPushName || undefined,
+          chatId: parsed.chatId,
+          text: parsed.text,
+          contactName: parsed.pushName || undefined,
           log: req.log
         });
       }
-
-      if (!saved) touchWppWebhookSkipped("message_unparsed");
-      return { ok: true, started, saved, event };
+      return { ok: true, started, saved: true, event };
     } catch (err) {
-      req.log.error({ err, event }, "evolution webhook handler error");
+      req.log.error({ err, event }, "waha webhook handler error");
       touchWppWebhookSkipped("handler_error");
       return reply.status(200).send({
         ok: false,
-        saved,
         event,
         error: err instanceof Error ? err.message : String(err)
       });

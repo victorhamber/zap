@@ -1,47 +1,44 @@
-# Zap — WhatsApp, inbox e automações (WPPConnect)
+# Zap — inbox, fluxos e WhatsApp (WAHA)
 
-Painel web para conectar WhatsApp via **WPPConnect**, conversar no **inbox** e criar **fluxos visuais** (Hotmart, mensagens, mídia, agendamentos).
+Painel para conectar WhatsApp pelo **WAHA** (NOWEB), conversar no inbox e rodar fluxos (Hotmart, mensagem, mídia, agendamento).
 
 ## O que tem no projeto
 
 | Pasta | Conteúdo |
 |-------|----------|
-| `api/` | API Fastify, webhooks, WPPConnect, fila BullMQ |
-| `web/` | Interface React (inbox, fluxos, conexão QR) |
-| `prisma/` | Schema Postgres e migrations |
-| `easypanel.md` | Deploy no EasyPanel (envs, volumes, WPP) |
+| `api/` | API Fastify, webhook WAHA, fila BullMQ |
+| `web/` | Inbox, fluxos, QR |
+| `prisma/` | Schema Postgres |
+| `easypanel.md` | Deploy |
 
-## Variáveis de ambiente
+## Variáveis
 
-Copie [`.env.example`](.env.example). Em produção use `ZAP_INTERNAL_URL` com o hostname Docker do serviço Zap (ex.: `http://zap_zap:3000`).
+Copie [`.env.example`](.env.example). Em produção, `WAHA_BASE_URL` é o hostname Docker do WAHA e `ZAP_INTERNAL_URL` é o hostname do Zap.
 
 ## Desenvolvimento local
 
 ```bash
 npm install
 cp .env.example .env
-# DATABASE_URL e REDIS_URL
 
 npm run db:generate
 npm run db:migrate
 npm run db:seed
 
-npm run dev:api      # terminal 1 — API :3000
-npm run dev:worker   # terminal 2 — agendamentos
-npm run dev:web      # terminal 3 — UI :5173
+npm run dev:api
+npm run dev:worker
+npm run dev:web
 ```
 
-Login (seed): `ADMIN_EMAIL` / `ADMIN_PASSWORD` do `.env`.
+Login: `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
 
 ## Deploy
 
-Guia passo a passo: **[easypanel.md](easypanel.md)** (Postgres, Redis, `zap`, `zap-worker`, `wppconnect`, volumes).
+[easypanel.md](easypanel.md) e [deploy/easypanel-waha.md](deploy/easypanel-waha.md).
 
 ## Webhooks
 
-- **Hotmart:** `POST /api/webhooks/hotmart/{flowId}` — header `x-hotmart-hottok` = `HOTMART_WEBHOOK_SECRET`
-- **WPPConnect:** `POST /api/webhooks/wppconnect` — registrado ao conectar no painel
-
-## Repositório
+- **Hotmart:** `POST /api/webhooks/hotmart/{flowId}`
+- **WhatsApp:** `POST /api/webhooks/waha` — o Zap registra isso na sessão ao conectar
 
 https://github.com/victorhamber/zap
