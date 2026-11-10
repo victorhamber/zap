@@ -1,0 +1,11 @@
+node_modules/
+vendor/
+dist/
+build/
+.next/
+coverage/
+*.lock
+*.min.js
+*.log
+*.ex5
+*.ex4
