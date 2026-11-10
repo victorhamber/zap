@@ -1,4 +1,4 @@
-# MAP — zap-review · 2026-11-10 · 199 arquivos · 42264 linhas
+# MAP — zap-review · 2026-11-10 · 199 arquivos · 42266 linhas
 > Gerado por ai-docs/tools/map_repo.py — NÃO editar. Use isto em vez de ler o código inteiro: ache o arquivo/símbolo aqui e abra só o trecho.
 Stack: node
 Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, build:web, start; api/src/index.ts; api/src/services/whatsapp/index.ts
@@ -6,7 +6,7 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 ## (raiz)/
 - .dockerignore [24L] .tsbuildinfo
 - .env.example [49L] Redis (BullMQ — agendamentos)
-- AGENTS.md [40L] zap-review — guia para IA
+- AGENTS.md [42L] Zap — guia para IA
 - Dockerfile [32L]
 - Dockerfile.worker [33L]
 - README.md [45L] Zap — inbox, fluxos e WhatsApp (WAHA)
