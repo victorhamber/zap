@@ -48,7 +48,7 @@ import type {
   WaitWeekdayData
 } from "../types/flow.js";
 import { humanGapMs, reserveStaggeredStartDelay } from "../services/flowStagger.js";
-import { defaultWhatsAppSession, env } from "../env.js";
+import { env } from "../env.js";
 import { sendTransactionalEmail } from "../services/email/resend.js";
 import {
   enrichFlowVariables,
@@ -119,8 +119,7 @@ async function persistFlowOutboundMessage(params: {
   mediaUrl?: string | null;
   waMessageId?: string | null;
 }): Promise<void> {
-  const { defaultWhatsAppSession } = await import("../env.js");
-  const session = defaultWhatsAppSession();
+  const session = await wpp.getActiveWppSessionName();
   const phoneJid = params.phone.includes("@")
     ? params.phone
     : `${params.phone.replace(/\D/g, "")}@s.whatsapp.net`;
@@ -913,7 +912,7 @@ async function executeNode(
 
     try {
       // Cadência global da sessão + envio ao grupo atual.
-      await reserveStaggeredStartDelay(defaultWhatsAppSession(), 2, 6);
+      await reserveStaggeredStartDelay(await wpp.getActiveWppSessionName(), 2, 6);
       if (mediaType === "text") {
         const text = render(data.text ?? "", vars);
         if (!text.trim()) {

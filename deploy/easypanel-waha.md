@@ -30,12 +30,14 @@ WAHA_DASHBOARD_ENABLED=false
 WHATSAPP_SESSION=zap
 WAHA_BASE_URL=http://NOME-DO-PROJETO_waha:3000
 WAHA_API_KEY=a-mesma-chave-do-container-waha
-ZAP_INTERNAL_URL=http://NOME-DO-PROJETO_zap-api:3000
+ZAP_INTERNAL_URL=http://zap-api:3000
 ```
 
 `WAHA_BASE_URL` é o DNS interno do EasyPanel: `{projeto}_{serviço}`. No projeto `zap-forexrendimento`, com o serviço chamado `waha`, fica `http://zap-forexrendimento_waha:3000`.
 
-Webhook que o Zap registra na sessão: `POST {ZAP_INTERNAL_URL}/api/webhooks/waha`.
+`ZAP_INTERNAL_URL` é o endereço em que o WAHA chama o Zap. Hostname com `_` recebe HTTP 400. O serviço `zap-api` precisa do alias de rede `zap-api`.
+
+Webhook que o Zap registra na sessão: `POST {ZAP_INTERNAL_URL}/api/webhooks/waha`. A sessão usada é a do banco, não um segundo nome vindo do env.
 
 Diagnóstico: `GET https://zap.forexrendimento.com/api/webhooks/waha` deve responder `{ ok: true, provider: "waha" }`.
 

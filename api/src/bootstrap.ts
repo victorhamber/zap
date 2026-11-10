@@ -59,7 +59,9 @@ export async function bootstrapDatabase() {
     await ensureInboxCaptureStarted();
   }
 
-  console.log(`[bootstrap] WhatsApp: WAHA ${env.WAHA_BASE_URL} sessão ${defaultWhatsAppSession()}`);
+  console.log(
+    `[bootstrap] WhatsApp: WAHA ${env.WAHA_BASE_URL} sessão ${settings?.wppSession?.trim() || defaultWhatsAppSession()}`
+  );
 
   if (flags.isProd) {
     if (!env.ZAP_INTERNAL_URL?.trim()) {

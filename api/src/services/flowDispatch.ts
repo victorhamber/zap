@@ -1,5 +1,5 @@
 import { startFlowRun } from "../engine/executor.js";
-import { defaultWhatsAppSession } from "../env.js";
+import { getActiveWppSessionName } from "./whatsapp/index.js";
 import { enqueueFlowRunStart, sanitizeQueueJobId } from "../queue.js";
 import type { FlowStartRunJobPayload } from "../types/flow.js";
 import { getGlobalDispatchStaggerConfig, reserveStaggeredStartDelay } from "./flowStagger.js";
@@ -20,7 +20,7 @@ export async function queueFlowRunStart(
     return startFlowRun(params);
   }
 
-  const session = defaultWhatsAppSession();
+  const session = await getActiveWppSessionName();
   const delayMs = await reserveStaggeredStartDelay(session, stagger.minSec, stagger.maxSec);
 
   if (delayMs <= 0) {

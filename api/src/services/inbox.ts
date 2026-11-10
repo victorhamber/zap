@@ -51,8 +51,7 @@ export function isChatReadLocally(session: string, chatId: string): boolean {
 }
 
 export async function markInboxChatAsRead(chatId: string, isGroup = false): Promise<void> {
-  const { defaultWhatsAppSession } = await import("../env.js");
-  const session = defaultWhatsAppSession();
+  const session = await wpp.getActiveWppSessionName();
   await loadWaLidMap(session);
   markChatReadLocally(session, chatId);
 
@@ -1070,9 +1069,8 @@ export async function sendChatMessage(
   /** "manual" (atendente) por padrão; "ai" quando a própria IA envia. */
   source: "manual" | "ai" | "flow" = "manual"
 ): Promise<void> {
-  const { defaultWhatsAppSession } = await import("../env.js");
   const { canonicalizeChatId } = await import("./inboxStore.js");
-  const session = defaultWhatsAppSession();
+  const session = await wpp.getActiveWppSessionName();
   const target = buildWppSendTarget(chatId, isGroup);
   const canonical = await canonicalizeChatId(session, chatId, [target.jid, chatId]);
 
@@ -1314,9 +1312,8 @@ export async function sendChatMedia(
     document: caption || "📎 Documento"
   };
 
-  const { defaultWhatsAppSession } = await import("../env.js");
   const { canonicalizeChatId } = await import("./inboxStore.js");
-  const session = defaultWhatsAppSession();
+  const session = await wpp.getActiveWppSessionName();
   const canonical = await canonicalizeChatId(session, chatId, [target.jid, chatId]);
 
   await saveInboxMessage({

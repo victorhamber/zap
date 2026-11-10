@@ -1,5 +1,5 @@
 # whatsapp
-Fontes: api/src/services/waha.ts, api/src/services/wahaWebhook.ts, api/src/services/whatsapp/index.ts, api/src/routes/webhooks.ts, api/src/routes/settings.ts, api/src/routes/wpp.ts
+Fontes: api/src/services/waha.ts, api/src/services/wahaWebhook.ts, api/src/services/whatsapp/index.ts, api/src/routes/webhooks.ts, api/src/routes/settings.ts, api/src/routes/wpp.ts, api/src/services/inbox.ts, api/src/services/flowDispatch.ts, api/src/engine/executor.ts, api/src/bootstrap.ts, easypanel.md, deploy/easypanel-waha.md
 Propósito: único motor WhatsApp do Zap, o WAHA NOWEB.
 
 ## API pública
@@ -17,11 +17,11 @@ Propósito: único motor WhatsApp do Zap, o WAHA NOWEB.
 3. Envio: `/api/sendText`, `/api/sendImage`, `/api/sendVideo` (`convert: true`), `/api/sendVoice`.
 
 ## Invariantes e armadilhas
-- `GET /api/settings/wpp/verify` chama `registerInboundWebhook` quando está conectado. Esse caminho faz PUT na sessão. O Desk não faz PUT em poll: a sessão volta para STARTING. Não repetir isso.
-- O validador do WAHA recusa hostname com `_`. Por isso o webhook usa `https://zap.forexrendimento.com/api/webhooks/waha`, não o DNS interno do Easypanel.
-- A sessão ativa do inbox é `appSettings.wppSession`, não o default do env, quando a linha existe.
-- Grupo: o Desk manda `mentions: ["all"]` e, em link do YouTube, `send/link-custom-preview`. O Zap ainda não faz os dois.
-- Não usar a sessão `postiz` nem a do Desk.
+- `GET /api/settings/wpp/verify` e o start da sessão só leem. O PUT do webhook fica em `POST /api/wpp/sync-webhook` e na criação (`ensureSession`). PUT no poll devolve a sessão para STARTING.
+- O validador do WAHA (`require_tld: false`) recusa hostname com `_`. O webhook interno é `http://zap-api:3000/api/webhooks/waha`, alias na rede do projeto. Sem esse alias, cai no site público.
+- A sessão ativa é `appSettings.wppSession` (`getActiveWppSessionName`). Inbox, fluxo e log usam esse nome. O env só entra se a linha não existir. Não criar outra sessão.
+- Grupo (`@g.us`): `mentions: ["all"]` em texto, imagem e vídeo. Link do YouTube: `POST /api/send/link-custom-preview` com oEmbed; se falhar, `sendText` com `linkPreviewHighQuality`.
+- O intervalo do fluxo continua 45–120 s. Não usar a sessão `postiz` nem a do Desk.
 
 ## Como testar
 - `GET /api/webhooks/waha` → `{ ok: true, provider: "waha" }`.

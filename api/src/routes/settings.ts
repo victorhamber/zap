@@ -145,14 +145,9 @@ export async function settingsRoutes(app: FastifyInstance) {
       const connected =
         wpp.isStablePhoneConnectionState(state) ||
         (!needsQr && wpp.isWppConnectedState(state));
-      const webhook =
-        connected || wpp.isStablePhoneConnectionState(state)
-          ? await wpp.registerInboundWebhook().catch((e: Error) => ({
-              url: wpp.getInboundWebhookDiagnostics().webhookUrl,
-              ok: false,
-              detail: e.message
-            }))
-          : null;
+      const webhook = connected
+        ? { url: wpp.webhookUrl(), ok: true, detail: "configurado na criação da sessão" }
+        : null;
 
       return {
         ok: true,
@@ -270,7 +265,7 @@ export async function settingsRoutes(app: FastifyInstance) {
       lastWebhookSkipReason: lastSkip,
       receivingOk: Boolean(lastSavedAt),
       hint: diag.needsInternalUrl
-        ? "Defina ZAP_INTERNAL_URL no serviço zap (rede Docker). Sem isso o WPP não entrega mensagens recebidas."
+        ? "Defina ZAP_INTERNAL_URL com um hostname sem _. O DNS zap-forexrendimento_zap-api é recusado pelo WAHA."
         : lastSavedAt
           ? "O Zap já gravou mensagem recebida no inbox. Abra o chat no menu WhatsApp."
           : lastAt
@@ -305,15 +300,11 @@ export async function settingsRoutes(app: FastifyInstance) {
           data: { connectionStatus: cs }
         });
       }
-      const payload = {
+      return {
         ok: true,
         ...result,
         needsQr: wpp.sessionNeedsQr(result.state ?? "")
       };
-      if (result.connected) {
-        void wpp.registerInboundWebhook().catch(() => {});
-      }
-      return payload;
     } catch (e: any) {
       return {
         ok: true,

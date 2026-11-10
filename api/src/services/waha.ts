@@ -35,10 +35,20 @@ function apiKey(): string {
   return key;
 }
 
+function reachableBaseUrl(): string {
+  const internal = env.ZAP_INTERNAL_URL?.trim().replace(/\/$/, "") ?? "";
+  if (internal) {
+    try {
+      if (!new URL(internal).hostname.includes("_")) return internal;
+    } catch {
+      /* hostname inválido: cai no site público */
+    }
+  }
+  return env.APP_PUBLIC_URL.replace(/\/$/, "");
+}
+
 export function webhookUrl(): string {
-  const internal = env.ZAP_INTERNAL_URL?.trim().replace(/\/$/, "");
-  const base = internal || env.APP_PUBLIC_URL.replace(/\/$/, "");
-  return `${base}/api/webhooks/waha`;
+  return `${reachableBaseUrl()}/api/webhooks/waha`;
 }
 
 function sessionConfig() {
@@ -366,9 +376,11 @@ export async function registerInboundWebhook(): Promise<{
 }
 
 export function getInboundWebhookDiagnostics() {
+  const internal = env.ZAP_INTERNAL_URL?.trim() ?? "";
+  const internalRejected = internal.includes("_");
   return {
     webhookUrl: webhookUrl(),
-    needsInternalUrl: !env.ZAP_INTERNAL_URL?.trim(),
+    needsInternalUrl: !internal || internalRejected,
     provider: "waha" as const,
     baseUrl: env.WAHA_BASE_URL
   };
@@ -554,8 +566,56 @@ function messageIdFrom(raw: unknown): string | null {
 
 function publicFileUrl(url: string): string {
   if (/^https?:\/\//i.test(url) || url.startsWith("data:")) return url;
-  const base = (env.ZAP_INTERNAL_URL || env.APP_PUBLIC_URL).replace(/\/$/, "");
+  const base = reachableBaseUrl();
   return `${base}${url.startsWith("/") ? url : `/${url}`}`;
+}
+
+function extractHttpUrl(text: string): string | null {
+  const match = text.match(/https?:\/\/[^\s<>"']+/i);
+  return match ? match[0].replace(/[),.\]]+$/, "") : null;
+}
+
+function isYoutubeUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return (
+      host === "youtu.be" ||
+      host.endsWith(".youtu.be") ||
+      host === "youtube.com" ||
+      host.endsWith(".youtube.com")
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function youtubeOEmbed(
+  url: string
+): Promise<{ title: string; description: string; imageUrl: string } | null> {
+  try {
+    const res = await fetch(
+      `https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(url)}`,
+      { signal: AbortSignal.timeout(8000) }
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      title?: string;
+      author_name?: string;
+      thumbnail_url?: string;
+    };
+    if (!data.title || !data.thumbnail_url) return null;
+    return {
+      title: data.title,
+      description: data.author_name || "YouTube",
+      imageUrl: data.thumbnail_url
+    };
+  } catch {
+    return null;
+  }
+}
+
+function mentionAll(chatId: string): { mentions: ["all"] } | Record<string, never> {
+  return chatId.endsWith("@g.us") ? { mentions: ["all"] } : {};
 }
 
 async function postSend(path: string, body: Record<string, unknown>): Promise<string | null> {
@@ -574,11 +634,38 @@ export async function sendText(
   const text = String(message ?? "").trim();
   if (!text) throw new Error("sendText: mensagem vazia");
   const name = await sessionName();
+  const chatId = toChatId(phone, opts?.isGroup);
+  const mentions = mentionAll(chatId);
+  const url = extractHttpUrl(text);
+  if (url && isYoutubeUrl(url)) {
+    const preview = await youtubeOEmbed(url);
+    if (preview) {
+      try {
+        return await postSend("/api/send/link-custom-preview", {
+          session: name,
+          chatId,
+          text,
+          linkPreviewHighQuality: true,
+          preview: {
+            url,
+            title: preview.title,
+            description: preview.description,
+            image: { url: preview.imageUrl }
+          },
+          ...mentions
+        });
+      } catch {
+        /* oEmbed ou o endpoint falhou: segue o sendText com prévia automática */
+      }
+    }
+  }
   return postSend("/api/sendText", {
     session: name,
-    chatId: toChatId(phone, opts?.isGroup),
+    chatId,
     text,
-    linkPreview: true
+    linkPreview: true,
+    linkPreviewHighQuality: true,
+    ...mentions
   });
 }
 
@@ -608,11 +695,13 @@ export async function sendImage(
 ): Promise<string | null> {
   const name = await sessionName();
   const file = fileMeta(url, opts, false);
+  const chatId = toChatId(phone, opts?.isGroup);
   return postSend("/api/sendImage", {
     session: name,
-    chatId: toChatId(phone, opts?.isGroup),
+    chatId,
     caption: caption ?? "",
-    file: { url: publicFileUrl(url), ...file }
+    file: { url: publicFileUrl(url), ...file },
+    ...mentionAll(chatId)
   });
 }
 
@@ -624,12 +713,14 @@ export async function sendVideo(
 ): Promise<string | null> {
   const name = await sessionName();
   const file = fileMeta(url, opts, true);
+  const chatId = toChatId(phone, opts?.isGroup);
   return postSend("/api/sendVideo", {
     session: name,
-    chatId: toChatId(phone, opts?.isGroup),
+    chatId,
     caption: caption ?? "",
     convert: true,
-    file: { url: publicFileUrl(url), ...file }
+    file: { url: publicFileUrl(url), ...file },
+    ...mentionAll(chatId)
   });
 }
 

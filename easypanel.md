@@ -50,7 +50,7 @@ Mídia do inbox fica em `/app/api/uploads`. Sem volume, some a cada redeploy.
 
 ```env
 APP_PUBLIC_URL=https://zap.forexrendimento.com
-ZAP_INTERNAL_URL=http://zap-forexrendimento_zap-api:3000
+ZAP_INTERNAL_URL=http://zap-api:3000
 NODE_ENV=production
 PORT=3000
 
@@ -78,7 +78,7 @@ EMAIL_DISPATCH_MIN_SEC=15
 EMAIL_DISPATCH_MAX_SEC=45
 ```
 
-Troque os hostnames se o nome do projeto ou do serviço no EasyPanel for outro. O padrão é `{projeto}_{serviço}`.
+`WAHA_BASE_URL` usa o DNS do EasyPanel `{projeto}_{serviço}`. `ZAP_INTERNAL_URL` não pode: o WAHA recusa `_` no hostname. No `zap-api`, o alias de rede é `zap-api`, e a URL fica `http://zap-api:3000`. O nome da sessão que vale é o do banco (`appSettings.wppSession`); `WHATSAPP_SESSION` só entra se essa linha não existir.
 
 ## Sessão WhatsApp
 
