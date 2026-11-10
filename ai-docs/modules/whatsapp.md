@@ -18,7 +18,7 @@ Propósito: único motor WhatsApp do Zap, o WAHA NOWEB.
 
 ## Invariantes e armadilhas
 - `GET /api/settings/wpp/verify` e o start da sessão só leem. O PUT do webhook fica em `POST /api/wpp/sync-webhook` e na criação (`ensureSession`). PUT no poll devolve a sessão para STARTING.
-- O validador do WAHA (`require_tld: false`) recusa hostname com `_`. O webhook interno é `http://zap-api:3000/api/webhooks/waha`, alias na rede do projeto. Sem esse alias, cai no site público.
+- O validador do WAHA (`require_tld: false`) recusa hostname com `_`. No `zap-forexrendimento` o alias `zap-api` já resolve, e o webhook da sessão é `http://zap-api:3000/api/webhooks/waha`. Se `ZAP_INTERNAL_URL` tiver `_`, o código cai no site público.
 - A sessão ativa é `appSettings.wppSession` (`getActiveWppSessionName`). Inbox, fluxo e log usam esse nome. O env só entra se a linha não existir. Não criar outra sessão.
 - Grupo (`@g.us`): `mentions: ["all"]` em texto, imagem e vídeo. Link do YouTube: `POST /api/send/link-custom-preview` com oEmbed; se falhar, `sendText` com `linkPreviewHighQuality`.
 - O intervalo do fluxo continua 45–120 s. Não usar a sessão `postiz` nem a do Desk.
