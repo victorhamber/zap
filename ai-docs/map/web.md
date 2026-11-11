@@ -10,7 +10,7 @@
 - vite.config.ts [36L]
 
 ## web/src/
-- App.tsx [85L] Páginas pesadas em chunks separados — só baixam quando abertas. — RouteFallback(), PrivateRoute(), App()
+- App.tsx [87L] Páginas pesadas em chunks separados — só baixam quando abertas. — RouteFallback(), PrivateRoute(), App()
 - main.tsx [11L]
 - styles.css [334L] Design tokens
 - vite-env.d.ts [3L] <reference types="vite/client" />
@@ -19,7 +19,7 @@
 - client.ts [99L] — getToken(), setToken(), clearToken(), sanitizeErrorMessage(), api(), filenameFromContentDisposition(), downloadApiFile()
 
 ## web/src/components/
-- Layout.tsx [204L] — isActive(), Layout()
+- Layout.tsx [205L] — isActive(), Layout()
 - ui.tsx [435L] Primitivos de UI do painel. — Icon(), Card(), CardHeader(), buttonClass(), Button(), LinkButton(), Badge(), SearchInput(), PageHeader(), Skeleton(), EmptyState(), ErrorNotice()
 
 ## web/src/components/ai/
@@ -28,7 +28,7 @@
 - aiCatalog.ts [83L] Catálogo visível no Deskcomm. Só entra em modelChat quem tem apiId da OpenAI. */ — modelLabel(), priceTitle()
 
 ## web/src/components/email/
-- EmailBlockEditor.tsx [559L] — VarChips(), BlockEditor(), blockTitle(), cloneBlock(), EmailBlockEditor()
+- EmailBlockEditor.tsx [625L] — VarChips(), EmailImageLibrary(), BlockEditor(), blockTitle(), cloneBlock(), EmailBlockEditor()
 - EmailBuilder.tsx [201L] — ToolbarButton(), EmailBuilder()
 - EmailEditorModal.tsx [122L] — EmailEditorModal()
 - EmailSettingsPanel.tsx [284L] — EmailSettingsPanel()
@@ -62,6 +62,7 @@
 - WppInstancesManager.tsx [499L] — WppInstancesManager()
 
 ## web/src/pages/
+- Broadcast.tsx [163L] — Broadcast()
 - Contacts.tsx [319L] — phoneLabel(), Contacts()
 - Dashboard.tsx [574L] — formatEventTime(), formatDay(), BarChart(), ChartSkeleton(), DistributionList(), Dashboard()
 - FlowEditor.tsx [795L] — summaryFor(), toReactFlowNodes(), toReactFlowEdges(), cloneNodeConfig(), FlowEditor()

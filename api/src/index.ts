@@ -19,6 +19,7 @@ import { mediaRoutes } from "./routes/media.js";
 import { dashboardRoutes } from "./routes/dashboard.js";
 import { aiRoutes } from "./routes/ai.js";
 import { emailPublicRoutes } from "./routes/emailPublic.js";
+import { broadcastRoutes } from "./routes/broadcast.js";
 import { bootstrapDatabase } from "./bootstrap.js";
 import { UPLOAD_DIR, ensureUploadDir } from "./services/uploads.js";
 
@@ -67,6 +68,7 @@ await app.register(crmRoutes);
 await app.register(mediaRoutes);
 await app.register(dashboardRoutes);
 await app.register(aiRoutes);
+await app.register(broadcastRoutes);
 
 await ensureUploadDir();
 

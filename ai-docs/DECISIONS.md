@@ -52,3 +52,9 @@
 - Decisão: o editor do nó usa esse formato. Continuam título, texto, lista, botão, imagem, divisor e espaço. Coluna, rede social, HTML cru e envio de teste não entram.
 - Alternativas: copiar o plugin WordPress. Recusado.
 - Consequência: o rodapé com remetente e cancelar segue no envio, não como bloco.
+
+## 2026-11-11 — Broadcast imediato, pausa sorteada
+- Contexto: disparar nos grupos exigia montar um fluxo. A pausa fixa parece robô e aumenta o risco de bloqueio.
+- Decisão: o menu Broadcast manda na hora. Cada grupo espera um intervalo novo entre 25 e 70 s. O e-mail, se marcado, usa a faixa 15–45 s que já existia. Não cria fluxo.
+- Alternativas: reusar o nó de grupos do fluxo, ou uma pausa igual para todos. Recusados.
+- Consequência: o intervalo 45–120 s dos fluxos não muda. O worker processa a fila `zap-broadcast`.

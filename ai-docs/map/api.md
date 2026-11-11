@@ -6,11 +6,11 @@
 ## api/src/
 - bootstrap.ts [89L] — bootstrapDatabase()
 - env.ts [117L] URL interna do Zap na rede Docker. O WAHA chama o webhook por aqui. Ex: http://z — defaultWhatsAppSession()
-- index.ts [140L]
+- index.ts [142L]
 - prisma.ts [6L]
 - queue.ts [177L] — getRedisConnection(), getFlowQueue(), sanitizeQueueJobId(), enqueueFlowJob(), getFlowStartQueue(), enqueueFlowRunStart(), getAiQueue(), aiReplyJobId(), enqueueAiLearnJob(), enqueueAiReplyJob(), cancelAiReplyJob(), getAiQueueCounts()
 - seed.ts [45L] — main()
-- worker.ts [132L] — main()
+- worker.ts [134L] — main()
 
 ## api/src/engine/
 - executor.ts [1530L] — delayToMs(), render(), sleepMs(), isRetriableSendError(), sendWithRetries(), sendMediaWithRetries(), persistFlowOutboundMessage(), resolveFlowTriggerType(), resolveSendTarget(), resolveHotmartOfferCode(), resolveHotmartPurchaseId(), extractHotmartVariables(), +17
@@ -23,6 +23,7 @@
 ## api/src/routes/
 - ai.ts [226L] — aiRoutes()
 - auth.ts [98L] Janela e teto de tentativas de login por IP. */ — loginThrottle(), registerFailedLogin(), authRoutes()
+- broadcast.ts [40L] — broadcastRoutes()
 - crm.ts [56L] — crmRoutes()
 - dashboard.ts [213L] — funnelSnapshot(), countRadar(), startOfToday(), daysAgo(), localDayKey(), last7DayKeys(), bucketByDay(), dashboardRoutes()
 - emailPublic.ts [65L] — page(), emailPublicRoutes()
@@ -36,7 +37,10 @@
 
 ## api/src/services/
 - adminUser.ts [33L] Sincroniza admin do .env; ao mudar a senha, invalida JWTs emitidos antes. */ — syncAdminUserFromEnv()
+- broadcastDispatch.ts [132L] — broadcastQueue(), enqueueBroadcast(), listBroadcastEmails(), startBroadcast(), processBroadcastJob(), startBroadcastWorker()
 - broadcastFlowTrigger.ts [100L] — normalizeContactPhone(), queueBroadcastRun(), dispatchBroadcastFlow()
+- broadcastPlan.test.ts [23L]
+- broadcastPlan.ts [37L] Pausa entre grupos. Cada chamada sorteia um valor diferente. */ — groupGapMs(), emailGapMs(), filterGroupIds(), textToEmailHtml()
 - coldFollowUp.test.ts [74L]
 - coldFollowUp.ts [121L] — parseFollowUpSteps(), nextFollowUp(), runColdFollowUps()
 - contactAvatar.ts [35L] — getContactAvatarUrl()
@@ -56,7 +60,7 @@
 - inbox.test.ts [171L] Cenário do bug: a Evolution marcou um contato direto como isGroup.
 - inbox.ts [1342L] — readChatKey(), markChatReadLocally(), isChatReadLocally(), markInboxChatAsRead(), extractWaId(), isValidWaId(), chatIdToPhone(), isPhoneLikeText(), resolveChatId(), detectKind(), coerceDisplayText(), pickChatDisplayName(), +32
 - inboxArchive.test.ts [26L]
-- inboxMediaDownload.ts [35L] Baixa a mídia de uma mensagem já gravada. Grupo não baixa sozinho. */ — downloadInboxMessageOnDemand()
+- inboxMediaDownload.ts [36L] Baixa a mídia de uma mensagem já gravada. Grupo não baixa sozinho. */ — downloadInboxMessageOnDemand()
 - inboxStore.ts [1697L] — isButtonPlaceholderBody(), isPrismaUniqueConflict(), digitsOnly(), chatIdVariants(), messageSyncJidCandidates(), chatIdVariantsResolved(), resolveAllChatIdsForContact(), preferPrimaryChatId(), canonicalizeChatId(), findPrimaryChatIdForPhone(), findPrimaryChatIdForContact(), getSessionName(), +49
 - inboxSync.ts [79L] — syncRecentMessagesFromWpp()
 - inboxTemplateRepair.ts [91L] Reprocessa mensagens antigas gravadas com o texto genérico de template/botão — maskMissingParameters(), repairTemplatePlaceholders()
@@ -69,10 +73,11 @@
 - waJid.ts [141L] Normalização de JIDs WhatsApp (Evolution / Baileys LID vs telefone). */ — isGenericSelfChatName(), digitsOnly(), isGroupLikeJid(), isStatusBroadcastJid(), jidRank(), pickBestJid(), canonicalEvolutionChatId(), normalizeDirectJid(), isLikelyInternalLidDigits(), isLikelyInternalLidJid(), isValidWhatsAppPhoneDigits(), isOwnerPhoneDigits(), +1
 - waLidMap.test.ts [61L]
 - waLidMap.ts [267L] Mapeia @lid interno → telefone real (@s.whatsapp.net). */ — storeKey(), mapFile(), legacyMapFile(), jidCandidates(), pickPhoneJid(), pickLidJid(), applyWaJidMapping(), loadWaLidMap(), persistWaLidMap(), recordWaJidMappingSync(), recordWaJidMapping(), flushWaLidMap(), +6
-- waha.ts [1029L] Cliente HTTP do WAHA. Único motor de WhatsApp do Zap. — baseUrl(), apiKey(), reachableBaseUrl(), webhookUrl(), sessionConfig(), waha(), readBody(), formatWppError(), wahaJson(), normalizeSessionName(), sessionName(), getActiveWppSessionName(), +71
+- waha.ts [1097L] Cliente HTTP do WAHA. Único motor de WhatsApp do Zap. — baseUrl(), apiKey(), reachableBaseUrl(), webhookUrl(), sessionConfig(), waha(), readBody(), formatWppError(), wahaJson(), normalizeSessionName(), sessionName(), getActiveWppSessionName(), +75
+- wahaMedia.test.ts [20L]
 - wahaWebhook.ts [150L] — asRecord(), textOf(), typeFromMime(), typeFromName(), mediaType(), mediaUrlOf(), bufferFromThumb(), thumbnailDataUrl(), preview(), parseWahaMessage(), wahaSessionStatus()
 - wppHumanize.ts [13L] Pequenos intervalos entre chamadas ao WPP para parecer uso humano (não elimina r — wppHumanDelay()
-- wppMedia.ts [82L] Grava só o jpeg pequeno do WhatsApp. O vídeo/áudio inteiro continua no Baixar. * — isInboundMediaType(), persistWahaUrl(), persistGroupPreview(), previewStillNeedsFile(), persistRemoteMediaUrl(), downloadMediaForStoredMessage(), downloadInboundMedia()
+- wppMedia.ts [83L] Grava só o jpeg pequeno do WhatsApp. O vídeo/áudio inteiro continua no Baixar. * — isInboundMediaType(), persistWahaUrl(), persistGroupPreview(), previewStillNeedsFile(), persistRemoteMediaUrl(), downloadMediaForStoredMessage(), downloadInboundMedia()
 - wppReconnect.ts [156L] — shouldWatchReconnect(), needsQrScan(), attemptAutoReconnect(), startWppReconnectWatchdog(), tryRestoreSessionAfterDeploy()
 - wppSend.ts [110L] Monta destino para APIs do WPP (número + flags isLid / isGroup). */ — digitsOnly(), resolveChatId(), buildWppSendTarget(), parseWppErrorMessage(), callSendMessage(), sendWppText(), extractWppMessageId(), sendWppApi()
 - wppWebhook.ts [178L] Detecção de payload de mensagem no webhook WPPConnect (não confundir `event` com — touchWppWebhookReceived(), touchWppWebhookSaved(), touchWppWebhookSkipped(), getLastWppWebhookSavedAt(), getLastWppWebhookSkipReason(), getLastWppWebhookAt(), getLastWppWebhookEvent(), normalizeWppWebhookBody(), getWppWebhookEvent(), getWppMessageContentType(), isWppMessageWebhook()

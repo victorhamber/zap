@@ -11,6 +11,7 @@ const links: { to: string; label: string; icon: IconName }[] = [
   { to: "/whatsapp", label: "WhatsApp", icon: "chat" },
   { to: "/funil", label: "Funil", icon: "funnel" },
   { to: "/contacts", label: "Contatos", icon: "users" },
+  { to: "/broadcast", label: "Broadcast", icon: "send" },
   { to: "/media", label: "Mídias", icon: "media" },
   { to: "/settings", label: "Configurações", icon: "settings" }
 ];

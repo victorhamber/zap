@@ -570,6 +570,39 @@ function publicFileUrl(url: string): string {
   return `${base}${url.startsWith("/") ? url : `/${url}`}`;
 }
 
+/** O WAHA devolve `/api/files` em localhost. O Zap busca no WAHA_BASE_URL. */
+export function wahaMediaFileUrl(url: string): string {
+  const base = baseUrl();
+  if (url.startsWith("/api/files/")) return `${base}${url}`;
+  try {
+    const parsed = new URL(url);
+    if (parsed.pathname.startsWith("/api/files/")) {
+      return `${base}${parsed.pathname}${parsed.search}`;
+    }
+  } catch {
+    /* segue a url original */
+  }
+  return url;
+}
+
+/** `false_120363@g.us_3EB0…` → `3EB0…`, o id que o NOWEB aceita em chats/all. */
+export function plainWaMessageId(id: string): string {
+  const trimmed = id.trim();
+  const cut = trimmed.lastIndexOf("_");
+  if (trimmed.includes("@") && cut > 0) {
+    const plain = trimmed.slice(cut + 1).trim();
+    if (plain) return plain;
+  }
+  return trimmed;
+}
+
+function sameWaMessage(stored: string, candidate: string): boolean {
+  if (!stored || !candidate) return false;
+  if (stored === candidate) return true;
+  const plain = plainWaMessageId(stored);
+  return plain.length > 6 && plain === plainWaMessageId(candidate);
+}
+
 function extractHttpUrl(text: string): string | null {
   const match = text.match(/https?:\/\/[^\s<>"']+/i);
   return match ? match[0].replace(/[),.\]]+$/, "") : null;
@@ -943,9 +976,10 @@ export async function resolvePeerJid(chatId: string): Promise<string | null> {
 export async function saveRemoteMedia(
   url: string
 ): Promise<{ dataUrl: string; mime: string } | null> {
+  const target = wahaMediaFileUrl(url);
   const headers = new Headers();
-  if (url.startsWith(baseUrl())) headers.set("X-Api-Key", apiKey());
-  const res = await fetch(url, { headers });
+  if (target.startsWith(baseUrl())) headers.set("X-Api-Key", apiKey());
+  const res = await fetch(target, { headers });
   if (!res.ok) return null;
   const buf = Buffer.from(await res.arrayBuffer());
   if (!buf.length) return null;
@@ -962,29 +996,63 @@ function mediaUrlFromWahaMessage(o: Record<string, unknown>): string | null {
   return null;
 }
 
+function messageIdOf(o: Record<string, unknown>): string {
+  const id = o.id;
+  if (typeof id === "string") return id.trim();
+  if (id && typeof id === "object") {
+    const rec = id as Record<string, unknown>;
+    const serialized = String(rec._serialized ?? "").trim();
+    if (serialized) return serialized;
+    const plain = String(rec.id ?? "").trim();
+    if (plain) return plain;
+  }
+  return "";
+}
+
 export async function mediaUrlForMessage(
   chatId: string,
-  waMessageId: string
+  waMessageId: string,
+  aroundMs = 0
 ): Promise<string | null> {
   const name = await sessionName();
-  const chat = encodeURIComponent(toChatId(chatId));
-  const id = encodeURIComponent(waMessageId);
-  try {
-    const one = await wahaJson<Record<string, unknown>>(
-      `/api/${encodeURIComponent(name)}/chats/${chat}/messages/${id}?downloadMedia=true`
-    );
-    const url = mediaUrlFromWahaMessage(one);
-    if (url) return url;
-  } catch {
-    /* a lista abaixo cobre sessão que não aceita o id na URL */
+  const session = encodeURIComponent(name);
+  const chat = encodeURIComponent(toChatId(chatId, chatId.includes("@g.us")));
+  const fullId = waMessageId.trim();
+  const plain = plainWaMessageId(fullId);
+  const paths = [
+    `/api/${session}/chats/${chat}/messages/${encodeURIComponent(fullId)}?downloadMedia=true`,
+    `/api/${session}/chats/all/messages/${encodeURIComponent(plain)}?downloadMedia=true`
+  ];
+  if (plain !== fullId) {
+    paths.push(`/api/${session}/chats/${chat}/messages/${encodeURIComponent(plain)}?downloadMedia=true`);
   }
-  const messages = await listChatMessages(chatId, 50);
-  for (const item of messages) {
-    if (!item || typeof item !== "object") continue;
-    const o = item as Record<string, unknown>;
-    if (String(o.id ?? "") !== waMessageId) continue;
-    const url = mediaUrlFromWahaMessage(o);
-    if (url) return url;
+  for (const path of paths) {
+    try {
+      const one = await wahaJson<Record<string, unknown>>(path);
+      const url = mediaUrlFromWahaMessage(one);
+      if (url) return url;
+    } catch (err) {
+      console.warn("[waha] baixar mídia", path, err instanceof Error ? err.message : err);
+    }
+  }
+  if (aroundMs > 0) {
+    const sec = Math.floor(aroundMs / 1000);
+    const listPath =
+      `/api/${session}/chats/${chat}/messages?limit=20&downloadMedia=true` +
+      `&filter.timestamp.gte=${sec - 3}&filter.timestamp.lte=${sec + 3}`;
+    try {
+      const list = await wahaJson<unknown>(listPath);
+      const items = Array.isArray(list) ? list : [];
+      for (const item of items) {
+        if (!item || typeof item !== "object") continue;
+        const o = item as Record<string, unknown>;
+        if (!sameWaMessage(fullId, messageIdOf(o))) continue;
+        const url = mediaUrlFromWahaMessage(o);
+        if (url) return url;
+      }
+    } catch (err) {
+      console.warn("[waha] baixar mídia pela hora", err instanceof Error ? err.message : err);
+    }
   }
   return null;
 }

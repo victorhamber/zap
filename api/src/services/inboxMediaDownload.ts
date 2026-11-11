@@ -13,7 +13,7 @@ export async function downloadInboxMessageOnDemand(
   const session = await getInboxSessionName();
   const row = await prisma.inboxMessage.findFirst({
     where: { id, session },
-    select: { chatId: true, waMessageId: true, type: true, mediaUrl: true }
+    select: { chatId: true, waMessageId: true, type: true, mediaUrl: true, timestamp: true }
   });
   if (!row) return null;
   const type = row.type === "ptt" ? "audio" : row.type;
@@ -25,7 +25,8 @@ export async function downloadInboxMessageOnDemand(
   const saved = await downloadMediaForStoredMessage({
     chatId: row.chatId,
     waMessageId: row.waMessageId,
-    type
+    type,
+    aroundMs: row.timestamp?.getTime() ?? 0
   });
   if (!saved) return null;
   await updateInboxMessageMedia(row.waMessageId, saved);

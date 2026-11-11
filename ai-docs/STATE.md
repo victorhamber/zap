@@ -1,5 +1,5 @@
 # Estado — Zap
 Atualizado: 2026-11-11
-Feito: Contatos ganhou editar, excluir e páginas de 20.
-Próximo: deploy no EasyPanel para a lista, o Fechar e o editor de e-mail valerem no site.
+Feito: Baixar no grupo busca o arquivo de novo no WAHA, pelo id cru e pelo host certo.
+Próximo: deploy no EasyPanel para o Baixar, o editor e o broadcast valerem no site.
 Bloqueio: nenhum no código.

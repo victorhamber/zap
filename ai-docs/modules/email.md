@@ -13,7 +13,7 @@ Propósito: e-mail de fluxo pela Resend, com o que a caixa exige para não trata
 - Usado por: nó `send_email` do fluxo e a aba E-mail nas configurações.
 
 ## Fluxo
-1. O editor grava HTML e a linha de pré-visualização no nó. A tela tem paleta, o e-mail no centro e as propriedades do bloco selecionado. Sem coluna, rede social, HTML cru nem envio de teste.
+1. O editor grava HTML e a linha de pré-visualização no nó. A tela tem paleta, o e-mail no centro e as propriedades do bloco selecionado. O popup rola. A imagem pode vir da biblioteca ou de um link. Sem coluna, rede social, HTML cru nem envio de teste.
 2. O envio espera a fila que já existia, consulta o cancelamento e só então chama a Resend.
 3. O rodapé leva nome, From, endereço (se preenchido) e o link de cancelar.
 
@@ -21,7 +21,7 @@ Propósito: e-mail de fluxo pela Resend, com o que a caixa exige para não trata
 - SPF, DKIM e DMARC são do DNS do domínio. O Zap só mostra o que a Resend já verificou. DMARC a Resend não cria.
 - Trocar `JWT_SECRET` invalida links de cancelar já enviados. Os novos e-mails saem com link novo.
 - Quem cancelou não recebe de novo. O passo do fluxo segue, com log de que o envio foi ignorado.
-- O intervalo entre e-mails continua o que já estava em `EMAIL_DISPATCH_MIN_SEC` / `MAX_SEC`.
+- O intervalo entre e-mails continua o que já estava em `EMAIL_DISPATCH_MIN_SEC` / `MAX_SEC`. O menu Broadcast usa essa mesma faixa.
 
 ## Como testar
 - `npx tsx --test api/src/services/email/deliverability.test.ts`

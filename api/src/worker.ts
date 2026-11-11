@@ -7,6 +7,7 @@ import { prisma } from "./prisma.js";
 import { flags, env } from "./env.js";
 import { startFlowScheduler } from "./services/flowScheduler.js";
 import { startFlowStartWorker } from "./services/flowStartWorker.js";
+import { startBroadcastWorker } from "./services/broadcastDispatch.js";
 import { processLearnJob } from "./services/ai/learning.js";
 import { processReplyJob } from "./services/ai/replyService.js";
 
@@ -91,11 +92,12 @@ async function main() {
   });
 
   startFlowStartWorker();
+  const broadcastWorker = startBroadcastWorker();
   startFlowScheduler();
   console.log(
     `[worker] IA: concurrency=${env.AI_WORKER_CONCURRENCY}, max ${env.AI_OPENAI_RPM_LIMIT} req/min, stagger backfill=${env.AI_LEARN_STAGGER_MS}ms`
   );
-  console.log("[worker] Zap worker ativo: zap-flow-jobs + zap-flow-starts + zap-ai-jobs");
+  console.log("[worker] Zap worker ativo: zap-flow-jobs + zap-flow-starts + zap-ai-jobs + zap-broadcast");
 
   // Redeploy manda SIGTERM. Sem fechar os workers, um job de fluxo morre no
   // meio do envio e a execução fica travada em "running" para sempre.
@@ -110,7 +112,7 @@ async function main() {
         process.exit(1);
       }, 25_000);
       prazo.unref();
-      Promise.all([flowWorker.close(), aiWorker.close()])
+      Promise.all([flowWorker.close(), aiWorker.close(), broadcastWorker.close()])
         .then(() => prisma?.$disconnect())
         .catch((err) => console.error("[worker] erro ao encerrar:", err))
         .finally(() => process.exit(0));

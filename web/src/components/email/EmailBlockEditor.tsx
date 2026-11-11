@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState, type DragEvent } from "react";
+import { api } from "../../api/client";
 import { FLOW_TEMPLATE_VARIABLES, mustacheSnippet } from "../flow/flowTemplateVars";
 import {
   blocksToHtml,
@@ -63,6 +64,68 @@ function VarChips({ onInsert }: { onInsert: (snippet: string) => void }) {
           {mustacheSnippet(v.key)}
         </button>
       ))}
+    </div>
+  );
+}
+
+function EmailImageLibrary({ onPick }: { onPick: (url: string, alt: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [items, setItems] = useState<{ url: string; label: string }[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function load() {
+    setOpen(true);
+    if (items.length > 0) return;
+    setLoading(true);
+    setError("");
+    try {
+      const r = await api<{
+        items?: { url: string; kind: string; filename: string; previewLabel?: string }[];
+      }>("/api/media?filter=all");
+      setItems(
+        (r.items ?? [])
+          .filter((item) => item.kind === "image" && item.url)
+          .map((item) => ({ url: item.url, label: item.previewLabel || item.filename }))
+      );
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Não foi possível abrir a biblioteca.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <button
+        type="button"
+        onClick={() => void load()}
+        className="rounded-lg border border-zinc-700 px-2 py-1 text-xs text-zinc-200 hover:border-emerald-500/40"
+      >
+        Biblioteca do Zap
+      </button>
+      {open && (
+        <div className="max-h-40 overflow-y-auto rounded-lg border border-zinc-800 p-1">
+          {loading && <p className="px-1 py-2 text-xs text-zinc-500">Carregando imagens…</p>}
+          {error && <p className="px-1 py-2 text-xs text-amber-200">{error}</p>}
+          {!loading && !error && items.length === 0 && (
+            <p className="px-1 py-2 text-xs text-zinc-500">Nenhuma imagem na biblioteca.</p>
+          )}
+          <div className="grid grid-cols-3 gap-1">
+            {items.map((item) => (
+              <button
+                key={item.url}
+                type="button"
+                title={item.label}
+                onClick={() => onPick(item.url, item.label)}
+                className="overflow-hidden rounded border border-zinc-800 hover:border-emerald-500"
+              >
+                <img src={item.url} alt="" className="h-16 w-full object-cover" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -239,11 +302,14 @@ function BlockEditor({
     case "image":
       return (
         <div className="space-y-2">
+          <EmailImageLibrary
+            onPick={(url, alt) => onChange({ ...block, src: url, alt: block.alt.trim() || alt })}
+          />
           <input
             value={block.src}
             onChange={(e) => onChange({ ...block, src: e.target.value })}
             className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs font-mono text-white"
-            placeholder="URL da imagem"
+            placeholder="Ou cole o link da imagem"
           />
           <input
             value={block.alt}
@@ -254,7 +320,7 @@ function BlockEditor({
           {!block.alt.trim() && (
             <p className="text-xs text-amber-200">Sem descrição, filtros tratam a imagem como risco.</p>
           )}
-          {block.src.startsWith("http") && (
+          {block.src.trim() && (
             <img
               src={block.src}
               alt={block.alt}
@@ -422,8 +488,8 @@ export function EmailBlockEditor({ html, onChange, subject, preheader }: Props) 
   }
 
   return (
-    <div className="grid h-full min-h-[440px] grid-cols-1 overflow-hidden rounded-xl border border-zinc-800 lg:grid-cols-[180px_minmax(0,1fr)_280px]">
-      <aside className="overflow-y-auto border-b border-zinc-800 bg-zinc-950 p-3 lg:border-b-0 lg:border-r">
+    <div className="grid h-auto min-h-[420px] grid-cols-1 rounded-xl border border-zinc-800 lg:h-[min(62vh,640px)] lg:overflow-hidden lg:grid-cols-[180px_minmax(0,1fr)_300px]">
+      <aside className="min-h-0 overflow-y-auto border-b border-zinc-800 bg-zinc-950 p-3 lg:border-b-0 lg:border-r">
         <p className="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500">Elementos</p>
         {PALETTE.map((group) => (
           <div key={group.title} className="mb-4">
@@ -449,7 +515,7 @@ export function EmailBlockEditor({ html, onChange, subject, preheader }: Props) 
         ))}
       </aside>
 
-      <section className="flex min-h-0 flex-col bg-zinc-900">
+      <section className="flex min-h-0 flex-col overflow-hidden bg-zinc-900">
         <div className="flex items-center gap-1 border-b border-zinc-800 px-2 py-1.5">
           <button type="button" disabled={!canUndo} onClick={undo} className="rounded px-2 py-1 text-sm text-zinc-300 disabled:opacity-30" title="Desfazer">
             ↶
@@ -509,7 +575,7 @@ export function EmailBlockEditor({ html, onChange, subject, preheader }: Props) 
         </div>
       </section>
 
-      <aside className="overflow-y-auto border-t border-zinc-800 bg-zinc-950 p-3 lg:border-l lg:border-t-0">
+      <aside className="min-h-0 overflow-y-auto border-t border-zinc-800 bg-zinc-950 p-3 lg:border-l lg:border-t-0">
         <div className="mb-3 flex items-center justify-between gap-2">
           <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Propriedades</p>
           {selected && (

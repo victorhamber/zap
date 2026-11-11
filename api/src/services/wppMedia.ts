@@ -43,10 +43,11 @@ export async function downloadMediaForStoredMessage(params: {
   chatId: string;
   waMessageId: string;
   type: string;
+  aroundMs?: number;
 }): Promise<string | null> {
   if (!isInboundMediaType(params.type)) return null;
   try {
-    const url = await wpp.mediaUrlForMessage(params.chatId, params.waMessageId);
+    const url = await wpp.mediaUrlForMessage(params.chatId, params.waMessageId, params.aroundMs ?? 0);
     if (!url) return null;
     return await persistWahaUrl(url);
   } catch {

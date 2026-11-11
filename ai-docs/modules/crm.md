@@ -3,7 +3,7 @@ Fontes: api/src/services/contactStage.ts, api/src/services/contactStage.test.ts,
 Propósito: funil curto no contato que já existe, radar, retomada e a IA que já responde.
 
 ## API pública
-- `GET /api/contacts` lista quem já está no `Contact`. Em `/contacts` a tabela pagina de 20 em 20. Editar grava nome, e-mail, nota e etapa. Excluir chama `DELETE /api/contacts/:phone/crm`.
+- `GET /api/contacts` lista quem já está no `Contact`. `/contacts` pagina de 20. Editar grava nome, e-mail, nota e etapa. Excluir é `DELETE /api/contacts/:phone/crm`. O disparo fica em `modules/broadcast.md`.
 - `GET /api/crm/board` — contatos nas etapas Novo, Em conversa, Comprou, Perdido.
 - `GET/PUT /api/crm/follow-up` — até 3 passos `{ hours, flowId }`. Sem fluxo, o passo não entra.
 - `PUT /api/contacts/:phone` aceita `stage` e, em perdido, `lostReason` (`preco`, `sumiu`, `ja_tem`, `outro`).

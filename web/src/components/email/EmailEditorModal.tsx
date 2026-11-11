@@ -49,7 +49,7 @@ export function EmailEditorModal({ open, html, subject, preheader, onClose, onSa
       }}
     >
       <div
-        className="flex flex-col w-full max-w-6xl max-h-[min(94vh,900px)] rounded-2xl border border-zinc-700 bg-zinc-950 shadow-2xl overflow-hidden"
+        className="flex h-[min(94vh,900px)] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-950 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex items-start justify-between gap-4 border-b border-zinc-800 px-5 py-4 shrink-0">
@@ -69,7 +69,7 @@ export function EmailEditorModal({ open, html, subject, preheader, onClose, onSa
           </button>
         </header>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden px-5 py-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 py-4">
           <label className="block shrink-0 text-sm text-zinc-300">
             Linha de pré-visualização
             <input
@@ -79,7 +79,7 @@ export function EmailEditorModal({ open, html, subject, preheader, onClose, onSa
               className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
             />
           </label>
-          <div className="min-h-0 flex-1">
+          <div className="min-h-[480px] flex-1">
             <EmailBlockEditor
               key={editorKey}
               html={html}
