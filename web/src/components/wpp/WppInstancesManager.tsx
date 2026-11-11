@@ -211,6 +211,10 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
         </div>
       )}
 
+      <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-3 text-sm leading-relaxed text-zinc-400">
+        O número que atende agora entra pelo QR (WAHA), na aba ao lado. Esta tela é a API oficial da Meta, uma segunda forma de conectar. Um número só aparece aqui depois que você cria essa instância.
+      </div>
+
       {activeInstance && (
         <div className="rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-zinc-950/80 p-5">
           <div className="flex items-start gap-4">
@@ -382,8 +386,8 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
           ))}
           {instances.length === 0 && !showCreate && (
             <li className="px-5 py-8 text-center text-sm text-zinc-500">
-              Nenhuma instância ainda. Clique em <strong className="text-zinc-400">+ Nova</strong>{" "}
-              para criar.
+              Nenhuma instância da API oficial. O QR continua na aba ao lado. Clique em{" "}
+              <strong className="text-zinc-400">+ Nova</strong> para criar a conexão da Meta.
             </li>
           )}
         </ul>

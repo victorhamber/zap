@@ -1,4 +1,4 @@
-# MAP — zap-review · 2026-11-10 · 207 arquivos · 43275 linhas
+# MAP — zap-review · 2026-11-10 · 208 arquivos · 43352 linhas
 > Gerado por ai-docs/tools/map_repo.py — NÃO editar. Use isto em vez de ler o código inteiro: ache o arquivo/símbolo aqui e abra só o trecho.
 Stack: node
 Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, build:web, start; api/src/index.ts; api/src/services/whatsapp/index.ts
@@ -240,6 +240,9 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 ## prisma/migrations/0024_followup_sequence/
 - migration.sql [7L]
 
+## prisma/migrations/0025_chat_model_gpt4o/
+- migration.sql [9L]
+
 ## web/
 - eslint.config.js [12L]
 - index.html [16L]
@@ -263,7 +266,7 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 - ui.tsx [435L] Primitivos de UI do painel. — Icon(), Card(), CardHeader(), buttonClass(), Button(), LinkButton(), Badge(), SearchInput(), PageHeader(), Skeleton(), EmptyState(), ErrorNotice()
 
 ## web/src/components/ai/
-- AiAssistantPanel.tsx [1339L] — AiAssistantPanel(), StatCard(), TagSelectModal()
+- AiAssistantPanel.tsx [1343L] — AiAssistantPanel(), StatCard(), TagSelectModal()
 
 ## web/src/components/email/
 - EmailBlockEditor.tsx [427L] — BlockShell(), VarChips(), BlockEditor(), blockTitle(), EmailBlockEditor()
@@ -282,7 +285,7 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 - nodeMeta.ts [209L] — paletteDragType(), hotmartWebhookUrl(), customWebhookUrl(), buildWaMeLink(), defaultNodeData()
 
 ## web/src/components/inbox/
-- ContactProfilePanel.tsx [553L] — formatPhoneDisplay(), ContactProfilePanel()
+- ContactProfilePanel.tsx [563L] — formatPhoneDisplay(), ContactProfilePanel()
 - ForwardMessageModal.tsx [323L] — isBase64Blob(), mediaUrlFromMessage(), captionFromMessage(), messageToForwardPayload(), chatLabel(), ForwardMessageModal()
 - InboxComposer.tsx [508L] — readFileAsDataUrl(), blobToDataUrl(), uploadDataUrl(), pickAudioMimeType(), IconPlus(), IconSmile(), IconMic(), IconSend(), IconTrash(), InboxComposer()
 - LinkifyText.tsx [67L] — normalizeHref(), splitTrailingPunctuation()
@@ -296,14 +299,14 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 
 ## web/src/components/wpp/
 - WppConnectPanel.tsx [577L] — WppConnectPanel()
-- WppInstancesManager.tsx [493L] — WppInstancesManager()
+- WppInstancesManager.tsx [497L] — WppInstancesManager()
 
 ## web/src/pages/
 - Dashboard.tsx [632L] — formatEventTime(), formatDay(), StatCard(), BarChart(), ChartSkeleton(), DistributionList(), Dashboard()
 - FlowEditor.tsx [790L] — summaryFor(), toReactFlowNodes(), toReactFlowEdges(), cloneNodeConfig(), FlowEditor()
 - FlowRuns.tsx [269L] — statusBadge(), formatDateTime(), FlowRuns()
 - FlowsList.tsx [254L] — webhookShortcutForFlow(), formatUpdatedAt(), FlowsList()
-- Funnel.tsx [204L] — Funnel()
+- Funnel.tsx [254L] — Funnel()
 - Login.tsx [113L] — Login()
 - MediaLibrary.tsx [442L] — formatBytes(), formatDate(), MediaLibrary()
 - Settings.tsx [95L] — Settings()

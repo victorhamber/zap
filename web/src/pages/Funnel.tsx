@@ -29,6 +29,8 @@ const EMPTY_STEPS: FollowStep[] = [
   { hours: 168, flowId: "" }
 ];
 
+const PAGE_SIZE = 20;
+
 const FALLBACK_STAGES: Stage[] = [
   { id: "novo", label: "Novo" },
   { id: "em_conversa", label: "Em conversa" },
@@ -43,6 +45,13 @@ export function Funnel() {
   const [flows, setFlows] = useState<FlowOpt[]>([]);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState("");
+  const [query, setQuery] = useState("");
+  const [visible, setVisible] = useState<Record<string, number>>({});
+  const [lostFor, setLostFor] = useState<string | null>(null);
+
+  function reasonLabel(id?: string | null) {
+    return LOST_REASONS.find((reason) => reason.id === id)?.label ?? "";
+  }
 
   async function load() {
     const board = await api<{ stages?: Stage[]; contacts?: BoardContact[] }>("/api/crm/board");
@@ -63,13 +72,14 @@ export function Funnel() {
   async function move(phone: string, stage: string, lostReason?: string) {
     setError("");
     if (stage === "perdido" && !lostReason) {
-      setContacts((prev) => prev.map((c) => (c.phone === phone ? { ...c, stage, lostReason: c.lostReason || "" } : c)));
+      setLostFor(phone);
       return;
     }
     await api(`/api/contacts/${encodeURIComponent(phone)}`, {
       method: "PUT",
       body: JSON.stringify({ stage, ...(lostReason ? { lostReason } : {}) })
     });
+    setLostFor(null);
     setContacts((prev) => prev.map((c) => (c.phone === phone ? { ...c, stage, lostReason: lostReason ?? null } : c)));
   }
 
@@ -149,9 +159,27 @@ export function Funnel() {
         </p>
       </Card>
 
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Buscar por nome, telefone ou produto"
+        className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
+      />
+
       <div className="grid gap-3 lg:grid-cols-4">
         {stages.map((stage) => {
-          const column = contacts.filter((c) => (c.stage || "novo") === stage.id);
+          const needle = query.trim().toLowerCase();
+          const column = contacts.filter((c) => {
+            if ((c.stage || "novo") !== stage.id) return false;
+            if (!needle) return true;
+            return (
+              (c.name ?? "").toLowerCase().includes(needle) ||
+              c.phone.includes(needle) ||
+              (c.productName ?? "").toLowerCase().includes(needle)
+            );
+          });
+          const limit = visible[stage.id] ?? PAGE_SIZE;
+          const shown = column.slice(0, limit);
           return (
             <Card key={stage.id} padded={false} className="min-h-[280px]">
               <div className="flex items-center justify-between border-b border-[var(--line)] px-4 py-3">
@@ -159,16 +187,19 @@ export function Funnel() {
                 <span className="text-xs text-zinc-500">{column.length}</span>
               </div>
               <ul className="space-y-2 p-3">
-                {column.map((c) => (
+                {shown.map((c) => (
                   <li key={c.id} className="rounded-xl bg-zinc-900/80 p-3">
                     <p className="truncate text-sm text-white">{c.name || c.phone}</p>
                     <p className="truncate text-xs text-zinc-500">{c.phone}</p>
                     {c.stage === "comprou" && c.productName && (
                       <p className="truncate text-xs text-emerald-300">{c.productName}</p>
                     )}
+                    {c.stage === "perdido" && reasonLabel(c.lostReason) && (
+                      <p className="text-xs text-zinc-400">{reasonLabel(c.lostReason)}</p>
+                    )}
                     <select
                       value={c.stage || "novo"}
-                      onChange={(e) => void move(c.phone, e.target.value, e.target.value === "perdido" ? c.lostReason || undefined : undefined)}
+                      onChange={(e) => void move(c.phone, e.target.value)}
                       className="mt-2 w-full rounded-lg border-0 bg-zinc-800 px-2 py-1 text-xs text-zinc-200"
                     >
                       {stages.map((s) => (
@@ -177,23 +208,42 @@ export function Funnel() {
                         </option>
                       ))}
                     </select>
-                    {(c.stage || "novo") === "perdido" && (
-                      <select
-                        value={c.lostReason || ""}
-                        onChange={(e) => void move(c.phone, "perdido", e.target.value)}
-                        className="mt-2 w-full rounded-lg border-0 bg-zinc-800 px-2 py-1 text-xs text-zinc-200"
-                      >
-                        <option value="">Motivo</option>
-                        {LOST_REASONS.map((reason) => (
-                          <option key={reason.id} value={reason.id}>
-                            {reason.label}
-                          </option>
-                        ))}
-                      </select>
+                    {lostFor === c.phone && (
+                      <div className="mt-2 space-y-1">
+                        <p className="text-[11px] text-zinc-400">Motivo, antes de mover</p>
+                        <div className="flex flex-wrap gap-1">
+                          {LOST_REASONS.map((reason) => (
+                            <button
+                              key={reason.id}
+                              type="button"
+                              onClick={() => void move(c.phone, "perdido", reason.id)}
+                              className="rounded-md bg-zinc-800 px-2 py-1 text-[11px] text-zinc-200"
+                            >
+                              {reason.label}
+                            </button>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => setLostFor(null)}
+                            className="rounded-md px-2 py-1 text-[11px] text-zinc-500"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
                     )}
                   </li>
                 ))}
               </ul>
+              {column.length > shown.length && (
+                <button
+                  type="button"
+                  onClick={() => setVisible((prev) => ({ ...prev, [stage.id]: limit + PAGE_SIZE }))}
+                  className="w-full border-t border-[var(--line)] px-4 py-2 text-xs text-zinc-400"
+                >
+                  Ver mais {column.length - shown.length}
+                </button>
+              )}
             </Card>
           );
         })}

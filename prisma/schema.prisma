@@ -95,8 +95,8 @@ model InstanceAiSettings {
    */
   mediaResponses   Json     @default("[]")
   openaiApiKeyEnc  String?
-  modelChat        String   @default("gpt-4o-mini")
-  modelVision      String   @default("gpt-4o-mini")
+  modelChat        String   @default("gpt-4o")
+  modelVision      String   @default("gpt-4o")
   modelTranscribe  String   @default("whisper-1")
   replyDelaySec    Int      @default(60)
   humanIdleSec     Int      @default(60)

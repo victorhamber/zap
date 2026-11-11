@@ -23,3 +23,9 @@
 - Decisão: três passos com horas e fluxo. A sequência começa quando a última mensagem foi nossa e zera quando a pessoa responde. Compra grava `productName`. Perdido exige `preco`, `sumiu`, `ja_tem` ou `outro`.
 - Alternativas: modelo de mensagem da API oficial da Meta. Fica para quando o número sair do QR.
 - Consequência: o Dashboard mostra as quatro etapas e o radar. O intervalo 45–120 s do fluxo não muda.
+
+## 2026-11-11 — Atendimento em gpt-4o
+- Contexto: o Zap respondia com `gpt-4o-mini`. No Deskcomm, ao salvar OpenAI como padrão, "Atender o cliente" mostra `gpt-4o`.
+- Decisão: chat e visão passam para `gpt-4o`. A transcrição continua `whisper-1`.
+- Alternativas: Claude Sonnet, que é o padrão do Deskcomm quando o provedor é Anthropic. O Zap só tem chave OpenAI.
+- Consequência: a migration 0025 troca as linhas que ainda estavam no mini ou no GPT-4.

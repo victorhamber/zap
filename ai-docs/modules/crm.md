@@ -1,5 +1,5 @@
 # crm
-Fontes: api/src/services/contactStage.ts, api/src/services/contactStage.test.ts, api/src/services/coldFollowUp.ts, api/src/services/coldFollowUp.test.ts, api/src/routes/crm.ts, api/src/routes/dashboard.ts, api/src/services/contactProfile.ts, api/src/services/contacts.ts, api/src/services/inboxStore.ts, api/src/services/flowScheduler.ts, api/src/services/ai/chatState.ts, api/src/services/ai/rulesEngine.ts, api/src/services/ai/replyContext.ts, api/src/services/ai/replyService.ts, api/src/index.ts, api/src/routes/inbox.ts, prisma/schema.prisma, prisma/migrations/0023_contact_stage/migration.sql, prisma/migrations/0024_followup_sequence/migration.sql, web/src/pages/Funnel.tsx, web/src/pages/Dashboard.tsx, web/src/pages/Settings.tsx, web/src/App.tsx, web/src/components/Layout.tsx, web/src/components/ui.tsx, web/src/components/inbox/WhatsAppInbox.tsx, web/src/components/inbox/ContactProfilePanel.tsx, web/src/components/wpp/WppInstancesManager.tsx
+Fontes: api/src/services/contactStage.ts, api/src/services/contactStage.test.ts, api/src/services/coldFollowUp.ts, api/src/services/coldFollowUp.test.ts, api/src/routes/crm.ts, api/src/routes/dashboard.ts, api/src/services/contactProfile.ts, api/src/services/contacts.ts, api/src/services/inboxStore.ts, api/src/services/flowScheduler.ts, api/src/services/ai/chatState.ts, api/src/services/ai/rulesEngine.ts, api/src/services/ai/replyContext.ts, api/src/services/ai/replyService.ts, api/src/services/ai/settings.ts, api/src/services/ai/openaiClient.ts, api/src/index.ts, api/src/routes/inbox.ts, prisma/schema.prisma, prisma/migrations/0023_contact_stage/migration.sql, prisma/migrations/0024_followup_sequence/migration.sql, prisma/migrations/0025_chat_model_gpt4o/migration.sql, web/src/pages/Funnel.tsx, web/src/pages/Dashboard.tsx, web/src/pages/Settings.tsx, web/src/App.tsx, web/src/components/Layout.tsx, web/src/components/ui.tsx, web/src/components/inbox/WhatsAppInbox.tsx, web/src/components/inbox/ContactProfilePanel.tsx, web/src/components/wpp/WppInstancesManager.tsx, web/src/components/ai/AiAssistantPanel.tsx
 Propósito: funil curto no contato que já existe, radar, retomada e a IA que já responde.
 
 ## API pública
@@ -25,6 +25,8 @@ Propósito: funil curto no contato que já existe, radar, retomada e a IA que j�
 - A IA já para com `[ESCALADO]`. O botão Assumir só grava `mode: human`. Devolver volta para `auto`.
 - Conexão oficial é a instância `business` que já existia. QR continua na sessão WAHA. Não há segundo motor.
 - Passo sem fluxo não dispara. Não encurtar o intervalo 45–120 s do fluxo. O 1º passo não sai se a pessoa falou por último.
+- O funil mostra 20 cards por coluna e pede o motivo antes de marcar Perdido. A aba Conexão oficial avisa que o número no ar é o do QR.
+- O atendimento usa `gpt-4o`. Quem ainda estava em `gpt-4o-mini` migra na 0025. O áudio continua no Whisper.
 
 ## Como testar
 - `npx tsx --test api/src/services/contactStage.test.ts api/src/services/coldFollowUp.test.ts`

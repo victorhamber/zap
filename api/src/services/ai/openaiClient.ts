@@ -205,7 +205,7 @@ export async function extractKnowledge(params: {
   }
 }
 
-// gpt-4o-mini tem 128k de contexto. 8000 chars (~2k tokens) cortava metade de
+// gpt-4o tem 128k de contexto. 8000 chars (~2k tokens) cortava metade de
 // prompts de venda elaborados justamente na parte final (FAQ, fechamento). Um
 // teto maior custa centavos e deixa o prompt inteiro chegar ao modelo.
 const MAX_SYSTEM_PROMPT_CHARS = 24000;

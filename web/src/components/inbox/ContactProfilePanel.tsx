@@ -100,6 +100,7 @@ export function ContactProfilePanel({
   const [notes, setNotes] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [aiMode, setAiMode] = useState<"auto" | "human">("auto");
+  const [askLostReason, setAskLostReason] = useState(false);
 
   const contactKey = chat.isGroup ? chat.id : chat.phone || chat.id;
 
@@ -400,9 +401,10 @@ export function ContactProfilePanel({
                     disabled={saving}
                     onClick={() => {
                       if (step.id === "perdido") {
-                        setProfile((current) => (current ? { ...current, stage: "perdido" } : current));
+                        setAskLostReason(true);
                         return;
                       }
+                      setAskLostReason(false);
                       void saveContact({ stage: step.id });
                     }}
                     className={`rounded-lg px-2 py-1.5 text-xs ${
@@ -414,19 +416,27 @@ export function ContactProfilePanel({
                 );
               })}
             </div>
-            {(profile?.stage ?? "novo") === "perdido" && (
-              <select
-                value={profile?.lostReason ?? profile?.contact?.lostReason ?? ""}
-                onChange={(e) => void saveContact({ stage: "perdido", lostReason: e.target.value })}
-                className="mt-2 w-full rounded-lg bg-[#2a3942] px-2 py-1.5 text-xs text-[#e9edef]"
-              >
-                <option value="">Motivo</option>
+            {askLostReason && (
+              <div className="mt-2 flex flex-wrap gap-1">
                 {LOST_REASONS.map((reason) => (
-                  <option key={reason.id} value={reason.id}>
+                  <button
+                    key={reason.id}
+                    type="button"
+                    onClick={() => {
+                      setAskLostReason(false);
+                      void saveContact({ stage: "perdido", lostReason: reason.id });
+                    }}
+                    className="rounded-md bg-[#2a3942] px-2 py-1 text-[11px] text-[#e9edef]"
+                  >
                     {reason.label}
-                  </option>
+                  </button>
                 ))}
-              </select>
+              </div>
+            )}
+            {!askLostReason && (profile?.lostReason || profile?.contact?.lostReason) && (profile?.stage ?? profile?.contact?.stage) === "perdido" && (
+              <p className="mt-2 text-xs text-[#8696a0]">
+                {LOST_REASONS.find((reason) => reason.id === (profile?.lostReason ?? profile?.contact?.lostReason))?.label}
+              </p>
             )}
             {profile?.productName && (
               <p className="mt-2 text-xs text-[#8696a0]">Produto: {profile.productName}</p>

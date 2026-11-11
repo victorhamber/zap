@@ -40,6 +40,7 @@ type AiSettings = {
   officialLinks: OfficialLink[];
   mediaResponses: AiMediaResponse[];
   openaiApiKeyMasked: string | null;
+  modelChat?: string;
   hasOpenaiApiKey: boolean;
   encryptionReady?: boolean;
   replyDelaySec: number;
@@ -560,6 +561,9 @@ export function AiAssistantPanel() {
           Cole aqui a chave OpenAI desta instância — cada usuário usa a sua. Ela fica criptografada no
           banco e não é compartilhada entre instâncias. Não precisa configurar nada no EasyPanel além do
           login do Zap.
+        </p>
+        <p className="text-sm text-zinc-300">
+          Modelo do atendimento: <span className="font-medium text-white">{settings.modelChat || "gpt-4o"}</span>
         </p>
         <p className="text-sm text-zinc-500">
           Chave atual:{" "}
