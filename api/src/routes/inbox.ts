@@ -109,6 +109,7 @@ type InboxChatRow = {
   unreadCount: number;
   isGroup: boolean;
   kind: string;
+  lastFromMe?: boolean;
   contact: ReturnType<typeof contactToJson> | null;
 };
 
@@ -591,10 +592,29 @@ export async function inboxRoutes(app: FastifyInstance) {
 
   app.put("/api/contacts/:phone", async (req, reply) => {
     const phone = decodeURIComponent((req.params as { phone: string }).phone);
-    const body = req.body as { name?: string; email?: string; notes?: string; tagIds?: string[] };
+    const body = req.body as {
+      name?: string;
+      email?: string;
+      notes?: string;
+      tagIds?: string[];
+      stage?: string;
+    };
     try {
       const contact = await upsertContact(phone, body);
-      return { ok: true, contact: contact ? contactToJson(contact) : null };
+      if (body.stage && contact) {
+        const { isFunnelStage, setContactStage } = await import("../services/contactStage.js");
+        if (!isFunnelStage(body.stage)) {
+          return reply.status(400).send({ ok: false, error: "Etapa inválida" });
+        }
+        await setContactStage(phone, body.stage, "manual");
+      }
+      const fresh = contact
+        ? await prisma?.contact.findUnique({
+            where: { id: contact.id },
+            include: { tags: { include: { tag: true } } }
+          })
+        : null;
+      return { ok: true, contact: fresh ? contactToJson(fresh) : null };
     } catch (e: any) {
       return reply.status(400).send({ ok: false, error: e?.message ?? String(e) });
     }
@@ -674,6 +694,28 @@ export async function inboxRoutes(app: FastifyInstance) {
       const message = e instanceof Error ? e.message : String(e);
       return reply.status(400).send({ ok: false, error: message });
     }
+  });
+
+  app.get("/api/inbox/mode", async (req) => {
+    const chatId = String((req.query as { chatId?: string }).chatId ?? "").trim();
+    if (!chatId) return { mode: "auto" as const };
+    const { getChatState } = await import("../services/ai/chatState.js");
+    const session = await wpp.getActiveWppSessionName();
+    const state = await getChatState(session, chatId);
+    return { mode: state?.mode === "human" ? ("human" as const) : ("auto" as const) };
+  });
+
+  app.post("/api/inbox/mode", async (req, reply) => {
+    const body = req.body as { chatId?: string; mode?: string };
+    const chatId = (body.chatId ?? "").trim();
+    if (!chatId || (body.mode !== "auto" && body.mode !== "human")) {
+      return reply.status(400).send({ ok: false, error: "Informe chatId e mode auto ou human" });
+    }
+    const { setChatModeAuto, setChatModeHuman } = await import("../services/ai/chatState.js");
+    const session = await wpp.getActiveWppSessionName();
+    if (body.mode === "human") await setChatModeHuman(session, chatId);
+    else await setChatModeAuto(session, chatId);
+    return { ok: true, mode: body.mode };
   });
 
   app.get("/api/flows/enabled", async () => {

@@ -212,6 +212,12 @@ export async function webhookRoutes(app: FastifyInstance) {
       result
     );
 
+    if (externalSuffix === "approved" && vars.phone) {
+      void import("../services/contactStage.js")
+        .then((m) => m.notePurchase(String(vars.phone)))
+        .catch(() => {});
+    }
+
     return { ...result, event, triggerType: hotmartTrigger.triggerType };
   });
 

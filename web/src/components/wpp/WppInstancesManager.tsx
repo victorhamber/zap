@@ -82,7 +82,7 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
       setMsg(
         newIntegration === "business"
           ? `Instância "${name}" criada. Configure a API oficial Meta abaixo.`
-          : `Instância "${name}" criada. Vá em Conexão / QR para escanear o QR.`
+          : `Instância "${name}" criada. Vá em QR (WAHA) para escanear o QR.`
       );
       await load();
       if (newIntegration === "business") setConfiguring(name);
@@ -230,7 +230,7 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
                   ? "API oficial Meta (Cloud API)"
                   : activeInstance.onServer
                     ? "WAHA — sessão no servidor"
-                    : "Cadastrada no painel — conecte em Conexão / QR"}
+                    : "Cadastrada no painel — leia o QR na aba QR (WAHA)"}
               </p>
             </div>
           </div>
@@ -242,7 +242,7 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
           <div>
             <h2 className="text-base font-semibold text-white">Suas instâncias</h2>
             <p className="text-xs text-zinc-500 mt-0.5">
-              Baileys (QR) ou API oficial Meta — credenciais por instância
+              QR (WAHA) ou API oficial da Meta — uma credencial por número
             </p>
           </div>
           <button
@@ -277,7 +277,9 @@ export function WppInstancesManager({ onActivated }: { onActivated?: () => void 
               </div>
             </div>
             <div>
-              <label className="block text-xs text-zinc-500 mb-2">Tipo de conexão</label>
+              <label className="block text-xs text-zinc-500 mb-2">
+                Tipo de conexão — QR no servidor ou API oficial da Meta
+              </label>
               <div className="flex flex-wrap gap-3 text-sm">
                 <label className="flex items-center gap-2 text-zinc-300">
                   <input

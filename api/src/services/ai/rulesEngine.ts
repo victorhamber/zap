@@ -8,6 +8,7 @@ export function buildSystemPrompt(params: {
   officialLinks: OfficialLink[];
   clientName?: string | null;
   leadTags?: string[];
+  funnelStage?: string | null;
 }): string {
   const clientNameBlock = params.clientName?.trim()
     ? `Nome cadastrado no CRM: ${params.clientName.trim()}`
@@ -33,7 +34,13 @@ export function buildSystemPrompt(params: {
     "- O significado de cada tag está descrito no Contexto do produto.",
     "- Adapte tom e oferta à fase do lead conforme as tags.",
     "- Não ofereça novamente produtos ou etapas incompatíveis com as tags (ex.: não ofereça teste pago a quem já tem tag de teste pago ou comprador).",
-    "- As tags têm prioridade sobre suposições genéricas."
+    "- As tags têm prioridade sobre suposições genéricas.",
+    `Etapa do funil: ${params.funnelStage?.trim() || "Novo"}`,
+    "- Novo: a pessoa acabou de chegar. Qualifique antes de oferecer.",
+    "- Em conversa: continue de onde a conversa parou.",
+    "- Comprou: não ofereça a compra de novo. Ajude no acesso.",
+    "- Perdido: seja breve e não insista.",
+    "- Se a pessoa pedir um humano, termine a resposta com [ESCALADO]."
   ].join("\n");
 
   const conversationRules = [

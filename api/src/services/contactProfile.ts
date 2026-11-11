@@ -18,6 +18,7 @@ export type ContactProfile = {
   name: string | null;
   email: string | null;
   notes: string | null;
+  stage: string | null;
   isGroup: boolean;
   contact: ReturnType<typeof contactToJson> | null;
   groups: ContactProfileGroup[];
@@ -56,6 +57,7 @@ export async function getContactProfile(params: {
       name: null,
       email: null,
       notes: null,
+      stage: null,
       isGroup: true,
       contact: null,
       groups: [],
@@ -82,6 +84,7 @@ export async function getContactProfile(params: {
     name: contact?.name ?? null,
     email: contact?.email ?? null,
     notes: contact?.notes ?? null,
+    stage: contact?.stage ?? "novo",
     isGroup: false,
     contact: contact ? contactToJson(contact) : null,
     groups: [],

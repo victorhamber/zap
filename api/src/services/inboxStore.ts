@@ -1199,6 +1199,13 @@ export async function saveInboxMessage(params: {
     const { enqueueAiPipeline } = await import("./ai/enqueue.js");
     enqueueAiPipeline(saved);
 
+    if (!params.fromMe && !isGroupLikeJid(chatId)) {
+      const phone = chatId.replace(/@.*/, "").replace(/\D/g, "");
+      void import("./contactStage.js")
+        .then((m) => m.noteInbound(phone))
+        .catch(() => {});
+    }
+
     return saved;
   } catch (err) {
     if (isPrismaUniqueConflict(err) && waMessageId) return null;
@@ -1289,7 +1296,8 @@ export async function listStoredChatSummaries(): Promise<NormalizedChat[]> {
           ? ("group" as const)
           : ("direct" as const),
       // 1 = há inbound recente sem "lido" local — reabre card após "Apagar conversa".
-      unreadCount: latest.fromMe ? 0 : 1
+      unreadCount: latest.fromMe ? 0 : 1,
+      lastFromMe: latest.fromMe
     });
   }
 

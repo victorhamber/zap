@@ -10,14 +10,14 @@ type Tab = "instances" | "connect" | "ai" | "email";
 const TABS: { id: Tab; label: string; desc: string; icon: IconName }[] = [
   {
     id: "instances",
-    label: "Instâncias",
-    desc: "Números e sessões do WhatsApp conectadas ao painel.",
+    label: "Conexão oficial",
+    desc: "API oficial da Meta (Cloud API). O QR fica na aba ao lado.",
     icon: "inbox"
   },
   {
     id: "connect",
-    label: "Conexão / QR",
-    desc: "Vincule o aparelho lendo o QR Code.",
+    label: "QR (WAHA)",
+    desc: "Vincule o celular lendo o QR da sessão no servidor.",
     icon: "chat"
   },
   {
@@ -43,7 +43,7 @@ export function Settings() {
     <div className="max-w-3xl space-y-6">
       <PageHeader
         title="Configurações"
-        subtitle="Gerencie a instância ativa, conecte o WhatsApp, configure o assistente de IA e o envio de e-mails."
+        subtitle="Duas formas de conectar: a API oficial da Meta, ou o QR da sessão WAHA. A IA e o e-mail ficam nas abas ao lado."
       />
 
       <div>

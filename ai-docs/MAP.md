@@ -1,4 +1,4 @@
-# MAP — zap-review · 2026-11-10 · 199 arquivos · 42348 linhas
+# MAP — zap-review · 2026-11-10 · 205 arquivos · 42944 linhas
 > Gerado por ai-docs/tools/map_repo.py — NÃO editar. Use isto em vez de ler o código inteiro: ache o arquivo/símbolo aqui e abra só o trecho.
 Stack: node
 Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, build:web, start; api/src/index.ts; api/src/services/whatsapp/index.ts
@@ -22,7 +22,7 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 ## api/src/
 - bootstrap.ts [89L] — bootstrapDatabase()
 - env.ts [117L] URL interna do Zap na rede Docker. O WAHA chama o webhook por aqui. Ex: http://z — defaultWhatsAppSession()
-- index.ts [136L]
+- index.ts [138L]
 - prisma.ts [6L]
 - queue.ts [177L] — getRedisConnection(), getFlowQueue(), sanitizeQueueJobId(), enqueueFlowJob(), getFlowStartQueue(), enqueueFlowRunStart(), getAiQueue(), aiReplyJobId(), enqueueAiLearnJob(), enqueueAiReplyJob(), cancelAiReplyJob(), getAiQueueCounts()
 - seed.ts [45L] — main()
@@ -39,24 +39,28 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 ## api/src/routes/
 - ai.ts [226L] — aiRoutes()
 - auth.ts [98L] Janela e teto de tentativas de login por IP. */ — loginThrottle(), registerFailedLogin(), authRoutes()
+- crm.ts [49L] — crmRoutes()
 - dashboard.ts [171L] Chave YYYY-MM-DD no fuso do servidor. Usar toISOString() aqui jogaria os — startOfToday(), daysAgo(), localDayKey(), last7DayKeys(), bucketByDay(), dashboardRoutes()
 - flows.ts [299L] — flowRoutes()
-- inbox.ts [697L] — sortQuickReplies(), normalizeQuickReply(), parseQuickReplies(), sanitizeQuickRepliesForSave(), preferMergedChatId(), mergeInboxChatRows(), dedupeInboxChatRows(), inboxRoutes()
+- inbox.ts [739L] — sortQuickReplies(), normalizeQuickReply(), parseQuickReplies(), sanitizeQuickRepliesForSave(), preferMergedChatId(), mergeInboxChatRows(), dedupeInboxChatRows(), inboxRoutes()
 - media.ts [47L] — mediaRoutes()
 - runs.ts [31L] — runRoutes()
 - settings.ts [349L] — settingsRoutes()
-- webhooks.ts [620L] — triggerInboundFlows(), whatsappWebhookAuthorized(), rejectWebhook(), webhookRoutes()
+- webhooks.ts [626L] — triggerInboundFlows(), whatsappWebhookAuthorized(), rejectWebhook(), webhookRoutes()
 - wpp.ts [372L] — buildKeepSessionNames(), listServerSessionNames(), wppRoutes()
 
 ## api/src/services/
 - adminUser.ts [33L] Sincroniza admin do .env; ao mudar a senha, invalida JWTs emitidos antes. */ — syncAdminUserFromEnv()
 - broadcastFlowTrigger.ts [100L] — normalizeContactPhone(), queueBroadcastRun(), dispatchBroadcastFlow()
+- coldFollowUp.ts [58L] Contato em "Em conversa" cuja última mensagem é dele e já passou do silêncio — runColdFollowUps()
 - contactAvatar.ts [27L] sem foto */ — getContactAvatarUrl()
-- contactProfile.ts [100L] — inboxSession(), getContactProfile(), getContactSharedGroups()
-- contacts.ts [257L] — toStoragePhone(), findContactByPhoneLoose(), getContactTagNames(), upsertContact(), listContactsWithTags(), normalizeContactEmail(), contactToJson(), isWeakContactName(), ensureContact(), ensureTagsByNames(), addContactTagsByNames(), removeContactTagsByNames()
+- contactProfile.ts [103L] — inboxSession(), getContactProfile(), getContactSharedGroups()
+- contactStage.test.ts [23L]
+- contactStage.ts [75L] Inbound só tira de Novo. Compra sempre vai para Comprou. Manual aceita qualquer  — isFunnelStage(), nextStage(), setContactStage(), noteInbound(), notePurchase(), stageLabelForPhone()
+- contacts.ts [256L] — toStoragePhone(), findContactByPhoneLoose(), getContactTagNames(), upsertContact(), listContactsWithTags(), normalizeContactEmail(), contactToJson(), isWeakContactName(), ensureContact(), ensureTagsByNames(), addContactTagsByNames(), removeContactTagsByNames()
 - flowDispatch.ts [42L] Enfileira o início de um fluxo com cadência global humanizada (anti-spam). — queueFlowRunStart()
 - flowRoundRobin.ts [46L] Próximo índice de ramo (0..branchCount-1) em round robin global por fluxo + nó. — getRedisClient(), reserveRoundRobinBranch()
-- flowScheduler.ts [91L] Recupera execuções presas em delay/agendamento quando o worker BullMQ não proces — processDueScheduledJobs(), startFlowScheduler(), stopFlowScheduler()
+- flowScheduler.ts [94L] Recupera execuções presas em delay/agendamento quando o worker BullMQ não proces — processDueScheduledJobs(), startFlowScheduler(), stopFlowScheduler()
 - flowStagger.ts [85L] Intervalo aleatório entre min e max (segundos), com leve variação extra. */ — getRedisClient(), humanGapMs(), getGlobalDispatchStaggerConfig(), reserveStaggeredStartDelay()
 - flowStartRecovery.ts [59L] Jobs aguardando além desse tempo são retomados pelo scheduler (worker offline).  — recoverOverdueFlowStarts()
 - flowStartWorker.ts [35L] Processa a fila zap-flow-starts (inícios de fluxo com cadência). */ — startFlowStartWorker()
@@ -64,8 +68,8 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 - flowVariables.ts [68L] E-mail válido para Mustache / Resend. */ — normalizeFlowEmail(), enrichFlowVariables(), persistContactFromFlowVariables()
 - groupsFlowTrigger.ts [210L] — normalizeGroupId(), readTriggerGroupsData(), getTriggerGroupsFromFlow(), dispatchGroupsFlow(), countActiveGroupsRuns(), ensureGroupsFlowRunning(), groupsFlowHasScheduleNodes(), restartGroupsFlow()
 - inbox.test.ts [166L] Cenário do bug: a Evolution marcou um contato direto como isGroup.
-- inbox.ts [1331L] — readChatKey(), markChatReadLocally(), isChatReadLocally(), markInboxChatAsRead(), extractWaId(), isValidWaId(), chatIdToPhone(), isPhoneLikeText(), resolveChatId(), detectKind(), coerceDisplayText(), pickChatDisplayName(), +32
-- inboxStore.ts [1584L] — isButtonPlaceholderBody(), isPrismaUniqueConflict(), digitsOnly(), chatIdVariants(), messageSyncJidCandidates(), chatIdVariantsResolved(), resolveAllChatIdsForContact(), preferPrimaryChatId(), canonicalizeChatId(), findPrimaryChatIdForPhone(), findPrimaryChatIdForContact(), getSessionName(), +45
+- inbox.ts [1335L] — readChatKey(), markChatReadLocally(), isChatReadLocally(), markInboxChatAsRead(), extractWaId(), isValidWaId(), chatIdToPhone(), isPhoneLikeText(), resolveChatId(), detectKind(), coerceDisplayText(), pickChatDisplayName(), +32
+- inboxStore.ts [1592L] — isButtonPlaceholderBody(), isPrismaUniqueConflict(), digitsOnly(), chatIdVariants(), messageSyncJidCandidates(), chatIdVariantsResolved(), resolveAllChatIdsForContact(), preferPrimaryChatId(), canonicalizeChatId(), findPrimaryChatIdForPhone(), findPrimaryChatIdForContact(), getSessionName(), +45
 - inboxSync.ts [56L] — syncRecentMessagesFromWpp()
 - inboxTemplateRepair.ts [91L] Reprocessa mensagens antigas gravadas com o texto genérico de template/botão — maskMissingParameters(), repairTemplatePlaceholders()
 - mediaConvert.ts [50L] WhatsApp PTT exige OGG/Opus — gravação do navegador vem em WebM. */ — convertWebmDataUrlToOgg(), persistInboundMedia()
@@ -87,7 +91,7 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 
 ## api/src/services/ai/
 - chatState.test.ts [12L]
-- chatState.ts [216L] — resolveCanonicalChatId(), findChatState(), getChatState(), setChatModeHuman(), resolveChatModeForInbound(), setPendingReply(), clearPendingReply(), saveConversationMemory(), saveConversationSummary(), expectedReplyJobId(), logAiEvent(), countDailyReplies()
+- chatState.ts [226L] — resolveCanonicalChatId(), findChatState(), getChatState(), setChatModeAuto(), setChatModeHuman(), resolveChatModeForInbound(), setPendingReply(), clearPendingReply(), saveConversationMemory(), saveConversationSummary(), expectedReplyJobId(), logAiEvent(), +1
 - conversationMemory.ts [195L] "manual" (painel) e "webhook" (celular) são o atendente humano — rotular — speakerLabel(), formatTs(), formatHistoryLine(), dedupeHistoryRows(), fetchChatHistoryRows(), refreshConversationMemory(), buildChatContextForReply()
 - crypto.ts [14L] — encryptApiKey(), decryptApiKey(), maskApiKey()
 - enqueue.ts [336L] — modalityAllowed(), lockKey(), enqueueAiPipeline(), runEnqueueSerialized(), retryAiPipelineForContact(), drainNewerInboundForReply(), finishReplyScheduling(), isLikelyAiOrFlowEcho(), runEnqueue()
@@ -104,10 +108,10 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 - mediaResponses.ts [117L] Sanitiza a lista recebida do painel para gravar (gera id, remove linhas vazias). — normalizeMediaResponsesForSave(), parseMediaResponses(), usableMediaResponses(), buildMediaResponsesBlock(), extractMediaResponseMarker(), stripMediaResponseMarker(), findMediaResponse()
 - openaiClient.ts [292L] — OpenAiApiError, isOpenAiRateLimitError(), parseRetryAfterMs(), sleep(), openaiFetch(), openaiChat(), openaiVision(), openaiTranscribe(), extractKnowledge(), generateReply()
 - purge.ts [34L] Remove memória e conhecimento da IA para um contato (todos os chatId variantes). — purgeAiForContact(), purgeAiForSession()
-- replyContext.ts [213L] — resolveChatIdVariants(), resolveLeadTagsForAi(), buildChatHistoryForAi(), fetchKnowledgeSnippetsForAi(), hasManualReplyAfterInbound(), hasAiReplyAfterInbound(), collectInboundBatchForReply(), getRecentAiReplies()
-- replyService.ts [633L] — aiOutboundTimestamp(), sendAiChatText(), dispatchMediaResponse(), resolveClientNameForAi(), parseOfficialLinks(), processReplyJob(), simulateReply()
+- replyContext.ts [223L] — resolveChatIdVariants(), resolveLeadStageForAi(), resolveLeadTagsForAi(), buildChatHistoryForAi(), fetchKnowledgeSnippetsForAi(), hasManualReplyAfterInbound(), hasAiReplyAfterInbound(), collectInboundBatchForReply(), getRecentAiReplies()
+- replyService.ts [637L] — aiOutboundTimestamp(), sendAiChatText(), dispatchMediaResponse(), resolveClientNameForAi(), parseOfficialLinks(), processReplyJob(), simulateReply()
 - rulesEngine.test.ts [159L]
-- rulesEngine.ts [244L] — buildSystemPrompt(), validateReplyAgainstRules(), injectOfficialLinksHint(), normalizeReplyText(), stripDismissiveClosing(), normalizePersonName(), sanitizeReplyClientName(), isRepetitiveReply()
+- rulesEngine.ts [251L] — buildSystemPrompt(), validateReplyAgainstRules(), injectOfficialLinksHint(), normalizeReplyText(), stripDismissiveClosing(), normalizePersonName(), sanitizeReplyClientName(), isRepetitiveReply()
 - settings.ts [279L] — getActiveSessionName(), parseOfficialLinks(), toDto(), loadSettingsRow(), getAiSettings(), resolveOpenAiApiKey(), saveAiSettings()
 - stats.ts [108L] — getAiStats()
 - tagGate.test.ts [19L]
@@ -158,7 +162,7 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 - wppconnect-config-fix.sh [47L] Cole ESTE BLOCO INTEIRO no console EasyPanel do serviço wppconnect (aba Console 
 
 ## prisma/
-- schema.prisma [254L]
+- schema.prisma [262L]
 
 ## prisma/migrations/
 - migration_lock.toml [3L]
@@ -229,6 +233,9 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 ## prisma/migrations/0022_contact_email/
 - migration.sql [3L]
 
+## prisma/migrations/0023_contact_stage/
+- migration.sql [7L]
+
 ## web/
 - eslint.config.js [12L]
 - index.html [16L]
@@ -239,7 +246,7 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 - vite.config.ts [36L]
 
 ## web/src/
-- App.tsx [81L] Páginas pesadas em chunks separados — só baixam quando abertas. — RouteFallback(), PrivateRoute(), App()
+- App.tsx [83L] Páginas pesadas em chunks separados — só baixam quando abertas. — RouteFallback(), PrivateRoute(), App()
 - main.tsx [11L]
 - styles.css [339L] Design tokens
 - vite-env.d.ts [3L] <reference types="vite/client" />
@@ -248,8 +255,8 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 - client.ts [99L] — getToken(), setToken(), clearToken(), sanitizeErrorMessage(), api(), filenameFromContentDisposition(), downloadApiFile()
 
 ## web/src/components/
-- Layout.tsx [172L] — isActive(), Layout()
-- ui.tsx [430L] Primitivos de UI do painel. — Icon(), Card(), CardHeader(), buttonClass(), Button(), LinkButton(), Badge(), SearchInput(), PageHeader(), Skeleton(), EmptyState(), ErrorNotice()
+- Layout.tsx [173L] — isActive(), Layout()
+- ui.tsx [435L] Primitivos de UI do painel. — Icon(), Card(), CardHeader(), buttonClass(), Button(), LinkButton(), Badge(), SearchInput(), PageHeader(), Skeleton(), EmptyState(), ErrorNotice()
 
 ## web/src/components/ai/
 - AiAssistantPanel.tsx [1339L] — AiAssistantPanel(), StatCard(), TagSelectModal()
@@ -271,7 +278,7 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 - nodeMeta.ts [209L] — paletteDragType(), hotmartWebhookUrl(), customWebhookUrl(), buildWaMeLink(), defaultNodeData()
 
 ## web/src/components/inbox/
-- ContactProfilePanel.tsx [438L] — formatPhoneDisplay(), ContactProfilePanel()
+- ContactProfilePanel.tsx [515L] — formatPhoneDisplay(), ContactProfilePanel()
 - ForwardMessageModal.tsx [323L] — isBase64Blob(), mediaUrlFromMessage(), captionFromMessage(), messageToForwardPayload(), chatLabel(), ForwardMessageModal()
 - InboxComposer.tsx [508L] — readFileAsDataUrl(), blobToDataUrl(), uploadDataUrl(), pickAudioMimeType(), IconPlus(), IconSmile(), IconMic(), IconSend(), IconTrash(), InboxComposer()
 - LinkifyText.tsx [67L] — normalizeHref(), splitTrailingPunctuation()
@@ -280,18 +287,19 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 - WaAudioPlayer.tsx [212L] — formatDuration(), formatSpeed()
 - WaMediaViewer.tsx [101L]
 - WhatsAppAvatar.tsx [87L] — initials()
-- WhatsAppInbox.tsx [1854L] — chatKindLabel(), chatMatchesTab(), sanitizeChatName(), canonicalBrazilPhone(), formatPhoneDisplay(), sessionInitials(), IconRefresh(), IconSettings(), IconPlay(), usePageVisible(), isBase64Blob(), mediaUrlFromMessage(), +17
+- WhatsAppInbox.tsx [1890L] — isRadarChat(), chatKindLabel(), chatMatchesTab(), sanitizeChatName(), canonicalBrazilPhone(), formatPhoneDisplay(), sessionInitials(), IconRefresh(), IconSettings(), IconPlay(), usePageVisible(), isBase64Blob(), +18
 - useMicWaveform.ts [70L] Níveis de amplitude do microfone (0–1) atualizados via AnalyserNode + rAF. */ — emptyLevels(), useMicWaveform()
 
 ## web/src/components/wpp/
 - WppConnectPanel.tsx [577L] — WppConnectPanel()
-- WppInstancesManager.tsx [491L] — WppInstancesManager()
+- WppInstancesManager.tsx [493L] — WppInstancesManager()
 
 ## web/src/pages/
 - Dashboard.tsx [623L] — formatEventTime(), formatDay(), StatCard(), BarChart(), ChartSkeleton(), DistributionList(), Dashboard()
 - FlowEditor.tsx [790L] — summaryFor(), toReactFlowNodes(), toReactFlowEdges(), cloneNodeConfig(), FlowEditor()
 - FlowRuns.tsx [269L] — statusBadge(), formatDateTime(), FlowRuns()
 - FlowsList.tsx [254L] — webhookShortcutForFlow(), formatUpdatedAt(), FlowsList()
+- Funnel.tsx [155L] — Funnel()
 - Login.tsx [113L] — Login()
 - MediaLibrary.tsx [442L] — formatBytes(), formatDate(), MediaLibrary()
 - Settings.tsx [95L] — Settings()

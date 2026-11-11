@@ -41,6 +41,7 @@ import {
   hasAiReplyAfterInbound,
   hasManualReplyAfterInbound,
   refreshConversationMemory,
+  resolveLeadStageForAi,
   resolveLeadTagsForAi
 } from "./replyContext.js";
 import type { OfficialLink } from "../../types/ai.js";
@@ -309,6 +310,7 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
   const mediaBlock = buildMediaResponsesBlock(mediaResponses);
   const clientName = await resolveClientNameForAi(payload.chatId);
   const leadTags = await resolveLeadTagsForAi(payload.chatId);
+  const funnelStage = await resolveLeadStageForAi(payload.chatId);
   const systemPrompt =
     buildSystemPrompt({
       productContext: settingsRow.productContext,
@@ -317,7 +319,8 @@ export async function processReplyJob(payload: AiReplyJobPayload): Promise<void>
       rulesForbidden: settingsRow.rulesForbidden,
       officialLinks,
       clientName,
-      leadTags
+      leadTags,
+      funnelStage
     }) +
     `\n\nLinks disponíveis: ${injectOfficialLinksHint(officialLinks)}` +
     (mediaBlock ? `\n\n${mediaBlock}` : "");
@@ -577,7 +580,8 @@ export async function simulateReply(params: {
       rulesForbidden: settings.rulesForbidden,
       officialLinks: settings.officialLinks,
       clientName: simClientName,
-      leadTags: await resolveLeadTagsForAi(params.chatId)
+      leadTags: await resolveLeadTagsForAi(params.chatId),
+      funnelStage: await resolveLeadStageForAi(params.chatId)
     }) + (mediaBlock ? `\n\n${mediaBlock}` : "");
 
   const chatHistory = await buildChatHistoryForAi(params.session, params.chatId, {

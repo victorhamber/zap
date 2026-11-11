@@ -21,6 +21,16 @@ export async function getChatState(session: string, chatId: string) {
   return findChatState(session, chatId);
 }
 
+export async function setChatModeAuto(session: string, chatId: string): Promise<void> {
+  if (!prisma) return;
+  const canonical = await resolveCanonicalChatId(session, chatId);
+  await prisma.instanceAiChatState.upsert({
+    where: { session_chatId: { session, chatId: canonical } },
+    create: { session, chatId: canonical, mode: "auto" },
+    update: { mode: "auto", lastHumanAt: null }
+  });
+}
+
 export async function setChatModeHuman(session: string, chatId: string): Promise<void> {
   if (!prisma) return;
   const canonical = await resolveCanonicalChatId(session, chatId);

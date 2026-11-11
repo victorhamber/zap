@@ -10,6 +10,16 @@ export async function resolveChatIdVariants(session: string, chatId: string): Pr
   return resolveAllChatIdsForContact(session, chatId);
 }
 
+export async function resolveLeadStageForAi(chatId: string): Promise<string> {
+  try {
+    const { stageLabelForPhone } = await import("../contactStage.js");
+    return await stageLabelForPhone(phoneFromChatId(chatId));
+  } catch (err) {
+    console.warn("[ai] resolveLeadStageForAi failed", err);
+    return "Novo";
+  }
+}
+
 export async function resolveLeadTagsForAi(chatId: string): Promise<string[]> {
   try {
     return await getContactTagNames(phoneFromChatId(chatId));

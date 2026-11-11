@@ -9,7 +9,7 @@ function toStoragePhone(phone: string): string {
 
 type ContactWithTags = Awaited<ReturnType<typeof listContactsWithTags>>[number];
 
-async function findContactByPhoneLoose(phone: string): Promise<ContactWithTags | null> {
+export async function findContactByPhoneLoose(phone: string): Promise<ContactWithTags | null> {
   if (!prisma) return null;
 
   const keys = expandPhoneLookupKeys(toStoragePhone(phone));
@@ -134,6 +134,7 @@ export function contactToJson(
     name: c.name,
     email: c.email,
     notes: c.notes,
+    stage: c.stage,
     tags: c.tags.map((ct) => ({
       id: ct.tag.id,
       name: ct.tag.name,
@@ -252,5 +253,3 @@ export async function removeContactTagsByNames(phone: string, tagNames: string[]
     where: { contactId: contact.id, tagId: { in: tags.map((t) => t.id) } }
   });
 }
-
-export { findContactByPhoneLoose };

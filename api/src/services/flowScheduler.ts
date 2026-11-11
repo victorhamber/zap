@@ -77,6 +77,9 @@ export function startFlowScheduler(): void {
   timer = setInterval(() => {
     void processDueScheduledJobs();
     void recoverOverdueFlowStarts();
+    void import("./coldFollowUp.js")
+      .then((m) => m.runColdFollowUps())
+      .catch((err) => console.warn("[follow-up]", err));
   }, POLL_INTERVAL_MS);
 
   console.log(`[flowScheduler] Polling a cada ${POLL_INTERVAL_MS / 1000}s para delays vencidos`);

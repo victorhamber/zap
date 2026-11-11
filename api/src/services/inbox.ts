@@ -98,6 +98,8 @@ export type NormalizedChat = {
   isGroup: boolean;
   kind: ChatKind;
   unreadCount: number;
+  /** true quando a última mensagem da conversa foi enviada por este número. */
+  lastFromMe: boolean;
 };
 
 export type NormalizedMessage = {
@@ -440,7 +442,8 @@ function parseChatItem(item: unknown, session?: string): NormalizedChat | null {
     timestamp: ts,
     isGroup,
     kind,
-    unreadCount: Number(o.unreadCount ?? o.unread ?? 0) || 0
+    unreadCount: Number(o.unreadCount ?? o.unread ?? 0) || 0,
+    lastFromMe: lastMsgFromMe
   };
 }
 
@@ -729,7 +732,8 @@ export function normalizeGroups(raw: unknown): NormalizedChat[] {
         timestamp: 0,
         isGroup: true,
         kind: id.includes("@newsletter") ? "community" : "group",
-        unreadCount: 0
+        unreadCount: 0,
+        lastFromMe: false
       });
       continue;
     }

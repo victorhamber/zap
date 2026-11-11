@@ -10,8 +10,16 @@ type ContactInfo = {
   name: string | null;
   email?: string | null;
   notes?: string | null;
+  stage?: string | null;
   tags: Tag[];
 };
+
+const FUNNEL_STEPS = [
+  { id: "novo", label: "Novo" },
+  { id: "em_conversa", label: "Em conversa" },
+  { id: "comprou", label: "Comprou" },
+  { id: "perdido", label: "Perdido" }
+] as const;
 
 type ProfileGroup = { id: string; name: string };
 
@@ -21,6 +29,7 @@ type Profile = {
   name: string | null;
   email: string | null;
   notes: string | null;
+  stage: string | null;
   isGroup: boolean;
   contact: ContactInfo | null;
   groups: ProfileGroup[];
@@ -57,6 +66,7 @@ type Props = {
   onDeleteConversation: () => void;
   onRemoveFromCrm: () => void;
   onOpenGroup: (groupId: string, groupName: string) => void;
+  docked?: boolean;
 };
 
 export function ContactProfilePanel({
@@ -66,7 +76,8 @@ export function ContactProfilePanel({
   onContactUpdated,
   onDeleteConversation,
   onRemoveFromCrm,
-  onOpenGroup
+  onOpenGroup,
+  docked = false
 }: Props) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -77,6 +88,7 @@ export function ContactProfilePanel({
   const [email, setEmail] = useState("");
   const [notes, setNotes] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [aiMode, setAiMode] = useState<"auto" | "human">("auto");
 
   const contactKey = chat.isGroup ? chat.id : chat.phone || chat.id;
 
@@ -99,6 +111,12 @@ export function ContactProfilePanel({
       setName(r.profile.name ?? chat.name ?? "");
       setEmail(r.profile.email ?? r.profile.contact?.email ?? "");
       setNotes(r.profile.notes ?? "");
+      if (!chat.isGroup) {
+        const mode = await api<{ mode?: string }>(
+          `/api/inbox/mode?chatId=${encodeURIComponent(chat.id)}`
+        );
+        setAiMode(mode.mode === "human" ? "human" : "auto");
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Erro ao carregar perfil");
     } finally {
@@ -137,6 +155,7 @@ export function ContactProfilePanel({
     email?: string;
     notes?: string;
     tagIds?: string[];
+    stage?: string;
   }) {
     if (chat.isGroup) return;
     setSaving(true);
@@ -150,7 +169,8 @@ export function ContactProfilePanel({
             ...(patch.name !== undefined ? { name: patch.name.trim() || undefined } : {}),
             ...(patch.email !== undefined ? { email: patch.email.trim() || undefined } : {}),
             ...(patch.notes !== undefined ? { notes: patch.notes.trim() || undefined } : {}),
-            ...(patch.tagIds !== undefined ? { tagIds: patch.tagIds } : {})
+            ...(patch.tagIds !== undefined ? { tagIds: patch.tagIds } : {}),
+            ...(patch.stage !== undefined ? { stage: patch.stage } : {})
           })
         }
       );
@@ -163,6 +183,7 @@ export function ContactProfilePanel({
                 name: r.contact.name,
                 email: r.contact.email ?? null,
                 notes: r.contact.notes ?? null,
+                stage: r.contact.stage ?? p.stage,
                 contact: r.contact
               }
             : p
@@ -248,8 +269,15 @@ export function ContactProfilePanel({
   const displayName = name.trim() || chat.name || formatPhoneDisplay(chat.phone);
 
   return (
-    <aside className="absolute inset-y-0 right-0 z-40 w-full max-w-[400px] bg-[#111b21] border-l border-[#2a3942] shadow-2xl flex flex-col animate-in slide-in-from-right duration-200">
+    <aside
+      className={
+        docked
+          ? "flex h-full w-full flex-col border-l border-[#2a3942] bg-[#111b21]"
+          : "absolute inset-y-0 right-0 z-40 flex w-full max-w-[400px] flex-col border-l border-[#2a3942] bg-[#111b21] shadow-2xl"
+      }
+    >
       <header className="h-[52px] px-3 flex items-center gap-3 bg-[#202c33] shrink-0">
+        {!docked && (
         <button
           type="button"
           onClick={onClose}
@@ -260,6 +288,7 @@ export function ContactProfilePanel({
             <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
           </svg>
         </button>
+        )}
         <span className="font-medium text-[#e9edef]">
           {chat.isGroup ? "Info do grupo" : "Info do contato"}
         </span>
@@ -340,6 +369,54 @@ export function ContactProfilePanel({
               className="w-full rounded-lg bg-[#2a3942] px-3 py-2 text-sm text-[#e9edef] border-0 resize-none focus:ring-1 focus:ring-[#00a884]/50 outline-none"
             />
             {saving && <p className="text-[11px] text-[#8696a0] mt-1">Salvando…</p>}
+          </section>
+        )}
+
+        {!loading && !chat.isGroup && (
+          <section className="px-4 py-4 border-b border-[#2a3942]/60">
+            <h3 className="text-xs uppercase tracking-wide text-[#00a884] mb-2">Funil</h3>
+            <div className="grid grid-cols-2 gap-2">
+              {FUNNEL_STEPS.map((step) => {
+                const on = (profile?.stage ?? profile?.contact?.stage ?? "novo") === step.id;
+                return (
+                  <button
+                    key={step.id}
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void saveContact({ stage: step.id })}
+                    className={`rounded-lg px-2 py-1.5 text-xs ${
+                      on ? "bg-[#00a884] text-[#111b21]" : "bg-[#2a3942] text-[#e9edef]"
+                    }`}
+                  >
+                    {step.label}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {!loading && (
+          <section className="px-4 py-4 border-b border-[#2a3942]/60">
+            <h3 className="text-xs uppercase tracking-wide text-[#00a884] mb-2">IA desta conversa</h3>
+            <p className="mb-2 text-[11px] text-[#8696a0]">
+              {aiMode === "human"
+                ? "Você assumiu. A IA não responde até devolver."
+                : "A IA responde. Ela para sozinha quando a pessoa pede um humano."}
+            </p>
+            <button
+              type="button"
+              className="rounded-lg bg-[#2a3942] px-3 py-1.5 text-xs text-[#e9edef]"
+              onClick={() => {
+                const next = aiMode === "human" ? "auto" : "human";
+                void api("/api/inbox/mode", {
+                  method: "POST",
+                  body: JSON.stringify({ chatId: chat.id, mode: next })
+                }).then(() => setAiMode(next));
+              }}
+            >
+              {aiMode === "human" ? "Devolver para a IA" : "Assumir conversa"}
+            </button>
           </section>
         )}
 

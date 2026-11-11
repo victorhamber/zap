@@ -14,6 +14,7 @@ const FlowEditor = lazy(() =>
   import("./pages/FlowEditor").then((m) => ({ default: m.FlowEditor }))
 );
 const WhatsApp = lazy(() => import("./pages/WhatsApp").then((m) => ({ default: m.WhatsApp })));
+const Funnel = lazy(() => import("./pages/Funnel").then((m) => ({ default: m.Funnel })));
 const Settings = lazy(() => import("./pages/Settings").then((m) => ({ default: m.Settings })));
 const MediaLibrary = lazy(() =>
   import("./pages/MediaLibrary").then((m) => ({ default: m.MediaLibrary }))
@@ -69,6 +70,7 @@ export function App() {
             <Route path="/flows/:id/runs" element={<FlowRuns />} />
             <Route path="/runs" element={<FlowRuns />} />
             <Route path="/whatsapp" element={<WhatsApp />} />
+            <Route path="/funil" element={<Funnel />} />
             <Route path="/media" element={<MediaLibrary />} />
             <Route path="/settings" element={<Settings />} />
           </Route>

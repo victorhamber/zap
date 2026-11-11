@@ -13,7 +13,7 @@ import { TemplateMessageBody, hasTemplateButtons, isOpaqueInteractiveBody } from
 
 type Tag = { id: string; name: string; color: string };
 type ChatKind = "direct" | "group" | "community";
-type ChatTab = "all" | "direct" | "group";
+type ChatTab = "all" | "direct" | "group" | "radar";
 
 type ContactInfo = {
   id: string;
@@ -32,6 +32,7 @@ type Chat = {
   isGroup: boolean;
   kind: ChatKind;
   unreadCount: number;
+  lastFromMe?: boolean;
   contact: ContactInfo | null;
 };
 
@@ -49,8 +50,19 @@ type FlowOption = { id: string; name: string; inboundTags: string[] };
 const TAB_LABELS: Record<ChatTab, string> = {
   all: "Todas",
   direct: "Conversas",
-  group: "Grupos"
+  group: "Grupos",
+  radar: "Radar"
 };
+
+const RADAR_SILENCE_MS = 2 * 60 * 60 * 1000;
+
+function isRadarChat(chat: Chat): boolean {
+  return (
+    chat.kind === "direct" &&
+    chat.lastFromMe === false &&
+    Date.now() - chat.timestamp > RADAR_SILENCE_MS
+  );
+}
 
 function chatKindLabel(kind: ChatKind): string {
   if (kind === "direct") return "Conversas";
@@ -58,6 +70,7 @@ function chatKindLabel(kind: ChatKind): string {
 }
 
 function chatMatchesTab(kind: ChatKind, tab: ChatTab): boolean {
+  if (tab === "radar") return false;
   if (tab === "all") return true;
   if (tab === "direct") return kind === "direct";
   return kind === "group" || kind === "community";
@@ -801,7 +814,9 @@ export function WhatsAppInbox() {
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return chats.filter((c) => {
-      if (!chatMatchesTab(c.kind, chatTab)) return false;
+      if (chatTab === "radar") {
+        if (!isRadarChat(c)) return false;
+      } else if (!chatMatchesTab(c.kind, chatTab)) return false;
       if (filterTagId && !c.contact?.tags.some((t) => t.id === filterTagId)) return false;
       if (!q) return true;
       const tagStr = c.contact?.tags.map((t) => t.name).join(" ") ?? "";
@@ -818,7 +833,8 @@ export function WhatsAppInbox() {
     () => ({
       all: chats.length,
       direct: chats.filter((c) => c.kind === "direct").length,
-      group: chats.filter((c) => c.kind === "group" || c.kind === "community").length
+      group: chats.filter((c) => c.kind === "group" || c.kind === "community").length,
+      radar: chats.filter((c) => isRadarChat(c)).length
     }),
     [chats]
   );
@@ -1365,7 +1381,9 @@ export function WhatsAppInbox() {
           )}
           {!loadingChats && filtered.length === 0 && (
             <div className="p-4 text-sm text-[#8696a0] space-y-2">
-              {filterTagId && chats.length > 0 ? (
+              {chatTab === "radar" ? (
+                <p>Nenhuma conversa direta esperando resposta há mais de 2 horas.</p>
+              ) : filterTagId && chats.length > 0 ? (
                 <p>Nenhuma conversa com esta tag nesta aba.</p>
               ) : waConnected ? (
                 <>
@@ -1817,19 +1835,37 @@ export function WhatsAppInbox() {
             />
 
             {showContactProfile && (
-              <ContactProfilePanel
-                chat={selected}
-                allTags={tags}
-                onClose={() => setShowContactProfile(false)}
-                onContactUpdated={handleProfileContactUpdated}
-                onDeleteConversation={handleProfileDeleteConversation}
-                onRemoveFromCrm={handleProfileRemoveFromCrm}
-                onOpenGroup={handleOpenGroupFromProfile}
-              />
+              <div className="lg:hidden">
+                <ContactProfilePanel
+                  chat={selected}
+                  allTags={tags}
+                  onClose={() => setShowContactProfile(false)}
+                  onContactUpdated={handleProfileContactUpdated}
+                  onDeleteConversation={handleProfileDeleteConversation}
+                  onRemoveFromCrm={handleProfileRemoveFromCrm}
+                  onOpenGroup={handleOpenGroupFromProfile}
+                />
+              </div>
             )}
           </div>
         )}
       </section>
+
+      {selected && (
+        <div className="hidden h-full w-[340px] shrink-0 lg:flex">
+          <ContactProfilePanel
+            key={selected.id}
+            docked
+            chat={selected}
+            allTags={tags}
+            onClose={() => setShowContactProfile(false)}
+            onContactUpdated={handleProfileContactUpdated}
+            onDeleteConversation={handleProfileDeleteConversation}
+            onRemoveFromCrm={handleProfileRemoveFromCrm}
+            onOpenGroup={handleOpenGroupFromProfile}
+          />
+        </div>
+      )}
 
       {forwardMessage && (
         <ForwardMessageModal

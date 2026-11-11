@@ -34,6 +34,11 @@ const ICON_PATHS: Record<string, ReactNode> = {
       <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.9-.9L3 20.5l1.6-4.7A8.4 8.4 0 0 1 3.5 11 8.4 8.4 0 0 1 12 2.6a8.4 8.4 0 0 1 9 8.9Z" />
     </>
   ),
+  funnel: (
+    <>
+      <path d="M4 4h16l-6 8v6l-4 2v-8L4 4Z" />
+    </>
+  ),
   media: (
     <>
       <rect x="3" y="4" width="18" height="16" rx="2.5" />
