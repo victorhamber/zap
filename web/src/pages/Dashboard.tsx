@@ -107,7 +107,7 @@ function formatDay(iso: string): string {
 
 function BarChart({
   data,
-  from = "#34d399",
+  from = "#10b981",
   to = "#059669"
 }: {
   data: { date: string; count: number }[];
@@ -117,7 +117,7 @@ function BarChart({
   const max = Math.max(1, ...data.map((d) => d.count));
 
   return (
-    <div className="flex h-40 items-end gap-1.5">
+    <div className="flex h-40 items-end gap-2">
       {data.map((d) => (
         <div
           key={d.date}
@@ -125,26 +125,26 @@ function BarChart({
           title={`${formatDay(d.date)} — ${d.count}`}
         >
           <span
-            className={`text-[11px] font-medium tabular-nums transition ${
-              d.count ? "text-zinc-400 group-hover:text-brand-300" : "text-transparent"
+            className={`text-[11px] font-medium tabular-nums transition-colors ${
+              d.count ? "text-zinc-400 group-hover:text-emerald-300" : "text-transparent"
             }`}
           >
             {d.count || "0"}
           </span>
           <div className="flex h-24 w-full items-end justify-center">
             <div
-              className="zap-bar w-full max-w-[34px]"
+              className="zap-bar w-full max-w-[32px]"
               style={
                 {
                   height: `${Math.max(3, (d.count / max) * 100)}%`,
-                  opacity: d.count ? 1 : 0.18,
+                  opacity: d.count ? 1 : 0.15,
                   "--bar-top": from,
                   "--bar-bottom": to
                 } as React.CSSProperties
               }
             />
           </div>
-          <span className="w-full truncate text-center text-[10px] capitalize text-zinc-600">
+          <span className="w-full truncate text-center text-[10px] capitalize text-zinc-500">
             {formatDay(d.date)}
           </span>
         </div>
@@ -280,14 +280,14 @@ export function Dashboard() {
       : 0;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageHeader
         title="Dashboard"
-        subtitle="Quem está no funil, o que a operação fez hoje e se o WhatsApp está no ar."
+        subtitle="Métricas do funil em tempo real, volume de mensagens e saúde da automação."
         actions={
           <Link
             to="/runs"
-            className="inline-flex items-center gap-1.5 text-sm text-brand-400 transition hover:text-brand-300"
+            className="inline-flex items-center gap-1.5 text-xs md:text-sm font-medium text-emerald-400 transition-colors hover:text-emerald-300"
           >
             Ver execuções
             <Icon name="chevronRight" className="h-4 w-4" />
@@ -298,26 +298,34 @@ export function Dashboard() {
       {error && <ErrorNotice>{error}</ErrorNotice>}
 
       {wpp.label !== "Verificando…" && !wpp.connected && (
-        <Link
-          to="/settings"
-          className="flex items-center justify-between gap-4 rounded-2xl border border-amber-400/40 bg-amber-500/10 px-5 py-4"
-        >
-          <div>
-            <p className="text-sm font-medium text-amber-50">WhatsApp desconectado</p>
-            <p className="mt-1 text-sm text-amber-100">Leia o QR para as conversas voltarem.</p>
+        <div className="flex items-center justify-between gap-4 rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm">
+          <div className="flex items-center gap-3">
+            <span className="relative flex h-2.5 w-2.5 shrink-0">
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-400"></span>
+            </span>
+            <div>
+              <p className="font-medium text-amber-200">WhatsApp desconectado</p>
+              <p className="text-xs text-amber-300/80">Escaneie o QR Code na aba de configurações para reativar o atendimento.</p>
+            </div>
           </div>
-          <span className="shrink-0 text-sm font-medium text-amber-50">Abrir QR</span>
-        </Link>
-      )}
-
-      <section>
-        <div className="mb-3 flex items-baseline justify-between gap-3">
-          <h2 className="text-base font-medium text-white">Funil</h2>
-          <Link to="/funil" className="text-sm text-brand-300 hover:text-brand-200">
-            Abrir funil
+          <Link
+            to="/settings"
+            className="shrink-0 rounded-lg border border-amber-500/30 bg-amber-500/20 px-3 py-1.5 text-xs font-medium text-amber-200 transition-colors hover:bg-amber-500/30"
+          >
+            Abrir QR
           </Link>
         </div>
-        <div className="grid grid-cols-2 overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--surface-1)] sm:grid-cols-5">
+      )}
+
+      {/* Funil */}
+      <section>
+        <div className="mb-2.5 flex items-baseline justify-between gap-3">
+          <h2 className="text-sm font-semibold tracking-tight text-zinc-200">Visão Geral do Funil</h2>
+          <Link to="/funil" className="text-xs font-medium text-emerald-400 transition-colors hover:text-emerald-300">
+            Abrir funil →
+          </Link>
+        </div>
+        <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--surface-1)] shadow-xs sm:grid-cols-5">
           {(
             [
               ["novo", "Novo", "/funil"],
@@ -331,34 +339,49 @@ export function Dashboard() {
               key={key}
               to={to}
               title={key === "radar" ? "Esperando resposta há mais de 2 horas" : undefined}
-              className="border-[var(--line)] px-4 py-4 hover:bg-[var(--surface-2)] max-sm:odd:border-r max-sm:[&:nth-child(-n+4)]:border-b sm:border-r sm:last:border-r-0"
+              className="border-[var(--line)] px-4 py-3.5 transition-colors hover:bg-[var(--surface-2)]/60 max-sm:odd:border-r max-sm:[&:nth-child(-n+4)]:border-b sm:border-r sm:last:border-r-0"
             >
-              <p className="text-2xl font-semibold tabular-nums text-white">
+              <p className="text-2xl font-bold tracking-tight tabular-nums text-zinc-100">
                 {loading ? "—" : (stats?.funnel?.[key] ?? 0)}
               </p>
-              <p className="mt-1 text-xs text-zinc-300">{label}</p>
+              <p className="mt-1 text-xs text-zinc-400 font-medium">{label}</p>
             </Link>
           ))}
         </div>
       </section>
 
-      <p className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-zinc-300">
-        <Link to="/flows" className="hover:text-white">
-          <span className="font-medium text-white">{stats?.flows.active ?? 0}</span> fluxos ativos
+      {/* Indicadores rápidos */}
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-5">
+        <Link
+          to="/flows"
+          className="rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3.5 py-2.5 shadow-xs transition-colors hover:border-[var(--line-strong)] hover:bg-[var(--surface-2)]/50"
+        >
+          <span className="text-xs text-zinc-400">Fluxos ativos</span>
+          <p className="mt-1 text-lg font-semibold tabular-nums text-zinc-100">{stats?.flows.active ?? 0}</p>
         </Link>
-        <Link to="/runs" className="hover:text-white">
-          <span className="font-medium text-white">{stats?.runs.today ?? 0}</span> execuções hoje
+        <Link
+          to="/runs"
+          className="rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3.5 py-2.5 shadow-xs transition-colors hover:border-[var(--line-strong)] hover:bg-[var(--surface-2)]/50"
+        >
+          <span className="text-xs text-zinc-400">Execuções hoje</span>
+          <p className="mt-1 text-lg font-semibold tabular-nums text-zinc-100">{stats?.runs.today ?? 0}</p>
         </Link>
-        <Link to="/whatsapp" className="hover:text-white">
-          <span className="font-medium text-white">{stats?.messages.sentToday ?? 0}</span> enviadas hoje
+        <Link
+          to="/whatsapp"
+          className="rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3.5 py-2.5 shadow-xs transition-colors hover:border-[var(--line-strong)] hover:bg-[var(--surface-2)]/50"
+        >
+          <span className="text-xs text-zinc-400">Enviadas hoje</span>
+          <p className="mt-1 text-lg font-semibold tabular-nums text-zinc-100">{stats?.messages.sentToday ?? 0}</p>
         </Link>
-        <span>
-          <span className="font-medium text-white">{successRate}%</span> concluídas
-        </span>
-        <span>
-          <span className="font-medium text-white">{stats?.contacts ?? 0}</span> contatos
-        </span>
-      </p>
+        <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3.5 py-2.5 shadow-xs">
+          <span className="text-xs text-zinc-400">Taxa de sucesso</span>
+          <p className="mt-1 text-lg font-semibold tabular-nums text-emerald-400">{successRate}%</p>
+        </div>
+        <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3.5 py-2.5 shadow-xs">
+          <span className="text-xs text-zinc-400">Base de contatos</span>
+          <p className="mt-1 text-lg font-semibold tabular-nums text-zinc-100">{stats?.contacts ?? 0}</p>
+        </div>
+      </div>
 
       {/* Gráficos */}
       <section className="grid grid-cols-1 gap-5 lg:grid-cols-2">
@@ -431,27 +454,39 @@ export function Dashboard() {
 
       {/* Assistente IA */}
       {ai && (
-        <section className="space-y-5">
-          <p className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-zinc-300">
-            <span><span className="font-medium text-white">{ai.repliesToday}</span> respostas hoje</span>
-            <span><span className="font-medium text-white">{ai.knowledgeItems}</span> aprendizados</span>
-            <span><span className="font-medium text-white">{ai.errorsRecent}</span> erros em 24 h</span>
-            <span><span className="font-medium text-white">{ai.queuePending}</span> na fila</span>
-          </p>
+        <section className="space-y-4">
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+            <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3.5 py-2.5 shadow-xs">
+              <span className="text-xs text-zinc-400">Respostas hoje</span>
+              <p className="mt-1 text-lg font-semibold tabular-nums text-zinc-100">{ai.repliesToday}</p>
+            </div>
+            <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3.5 py-2.5 shadow-xs">
+              <span className="text-xs text-zinc-400">Aprendizados</span>
+              <p className="mt-1 text-lg font-semibold tabular-nums text-zinc-100">{ai.knowledgeItems}</p>
+            </div>
+            <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3.5 py-2.5 shadow-xs">
+              <span className="text-xs text-zinc-400">Erros em 24h</span>
+              <p className="mt-1 text-lg font-semibold tabular-nums text-zinc-100">{ai.errorsRecent}</p>
+            </div>
+            <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3.5 py-2.5 shadow-xs">
+              <span className="text-xs text-zinc-400">Na fila</span>
+              <p className="mt-1 text-lg font-semibold tabular-nums text-zinc-100">{ai.queuePending}</p>
+            </div>
+          </div>
 
           <Card>
             <CardHeader
               title="Atividade do assistente"
-              subtitle="O que a IA fez recentemente"
+              subtitle="Últimas ações executadas pela inteligência artificial"
               action={
-                <Link to="/settings" className="text-xs text-brand-400 transition hover:text-brand-300">
+                <Link to="/settings" className="text-xs font-medium text-emerald-400 transition-colors hover:text-emerald-300">
                   Configurar IA
                 </Link>
               }
             />
             <div className="mt-4 space-y-1.5">
               {aiEvents.length === 0 ? (
-                <p className="py-4 text-sm text-zinc-600">Nenhuma atividade recente da IA.</p>
+                <p className="py-4 text-xs text-zinc-500">Nenhuma atividade recente da IA.</p>
               ) : (
                 aiEvents.map((ev) => (
                   <div
@@ -466,7 +501,7 @@ export function Dashboard() {
                         {ev.detail}
                       </span>
                     )}
-                    <span className="ml-auto shrink-0 text-xs tabular-nums text-zinc-600">
+                    <span className="ml-auto shrink-0 text-xs tabular-nums text-zinc-500">
                       {formatEventTime(ev.createdAt)}
                     </span>
                   </div>
@@ -481,36 +516,36 @@ export function Dashboard() {
       <Card>
         <CardHeader
           title="Fluxos mais executados"
-          subtitle="Ranking geral"
+          subtitle="Ranking de execuções acumuladas"
           action={
             <Link
               to="/flows"
-              className="text-xs text-brand-400 transition hover:text-brand-300"
+              className="text-xs font-medium text-emerald-400 transition-colors hover:text-emerald-300"
             >
               Gerenciar fluxos
             </Link>
           }
         />
-        <div className="mt-5 space-y-2">
+        <div className="mt-4 space-y-2">
           {loading && (
             <>
-              <Skeleton className="h-16 rounded-xl" />
-              <Skeleton className="h-16 rounded-xl" />
+              <Skeleton className="h-14 rounded-lg" />
+              <Skeleton className="h-14 rounded-lg" />
             </>
           )}
           {stats?.topFlows.map((f, i) => (
             <Link
               key={f.flowId}
               to={`/flows/${f.flowId}/runs`}
-              className="group flex items-center justify-between gap-4 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/60 px-4 py-3 transition hover:border-[var(--line-strong)] hover:bg-[var(--surface-2)]"
+              className="group flex items-center justify-between gap-4 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 px-3.5 py-2.5 transition-colors hover:border-[var(--line-strong)] hover:bg-[var(--surface-2)]"
             >
-              <div className="flex min-w-0 items-center gap-3.5">
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-3)] text-xs font-semibold tabular-nums text-zinc-400">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[var(--surface-3)] text-xs font-medium tabular-nums text-zinc-400">
                   {i + 1}
                 </span>
                 <div className="min-w-0">
-                  <div className="truncate text-sm font-medium text-zinc-100">{f.name}</div>
-                  <div className="mt-0.5 flex items-center gap-2 text-xs text-zinc-500">
+                  <div className="truncate text-xs md:text-sm font-medium text-zinc-100">{f.name}</div>
+                  <div className="mt-0.5 flex items-center gap-2 text-[11px] text-zinc-400">
                     <Badge tone={f.enabled ? "success" : "neutral"} dot>
                       {f.enabled ? "Ativo" : "Inativo"}
                     </Badge>
@@ -520,7 +555,7 @@ export function Dashboard() {
               </div>
               <Icon
                 name="chevronRight"
-                className="h-4 w-4 shrink-0 text-zinc-600 transition group-hover:translate-x-0.5 group-hover:text-brand-400"
+                className="h-4 w-4 shrink-0 text-zinc-500 transition-transform group-hover:translate-x-0.5 group-hover:text-emerald-400"
               />
             </Link>
           ))}

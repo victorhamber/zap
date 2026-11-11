@@ -1,4 +1,4 @@
-# MAP — zap-review · 2026-11-11 · 212 arquivos · 43768 linhas
+# MAP — Atualização Zap · 2026-11-11 · 212 arquivos · 43920 linhas
 > Gerado por ai-docs/tools/map_repo.py — NÃO editar. Use isto em vez de ler o código inteiro: ache o arquivo/símbolo aqui e abra só o trecho.
 Stack: node
 Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, build:web, start; api/src/index.ts; api/src/services/whatsapp/index.ts
@@ -261,14 +261,14 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 ## web/src/
 - App.tsx [83L] Páginas pesadas em chunks separados — só baixam quando abertas. — RouteFallback(), PrivateRoute(), App()
 - main.tsx [11L]
-- styles.css [339L] Design tokens
+- styles.css [334L] Design tokens
 - vite-env.d.ts [3L] <reference types="vite/client" />
 
 ## web/src/api/
 - client.ts [99L] — getToken(), setToken(), clearToken(), sanitizeErrorMessage(), api(), filenameFromContentDisposition(), downloadApiFile()
 
 ## web/src/components/
-- Layout.tsx [173L] — isActive(), Layout()
+- Layout.tsx [203L] — isActive(), Layout()
 - ui.tsx [435L] Primitivos de UI do painel. — Icon(), Card(), CardHeader(), buttonClass(), Button(), LinkButton(), Badge(), SearchInput(), PageHeader(), Skeleton(), EmptyState(), ErrorNotice()
 
 ## web/src/components/ai/
@@ -304,18 +304,18 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 - useMicWaveform.ts [70L] Níveis de amplitude do microfone (0–1) atualizados via AnalyserNode + rAF. */ — emptyLevels(), useMicWaveform()
 
 ## web/src/components/wpp/
-- WppConnectPanel.tsx [577L] — WppConnectPanel()
-- WppInstancesManager.tsx [497L] — WppInstancesManager()
+- WppConnectPanel.tsx [580L] — WppConnectPanel()
+- WppInstancesManager.tsx [499L] — WppInstancesManager()
 
 ## web/src/pages/
-- Dashboard.tsx [539L] — formatEventTime(), formatDay(), BarChart(), ChartSkeleton(), DistributionList(), Dashboard()
+- Dashboard.tsx [574L] — formatEventTime(), formatDay(), BarChart(), ChartSkeleton(), DistributionList(), Dashboard()
 - FlowEditor.tsx [795L] — summaryFor(), toReactFlowNodes(), toReactFlowEdges(), cloneNodeConfig(), FlowEditor()
 - FlowRuns.tsx [269L] — statusBadge(), formatDateTime(), FlowRuns()
 - FlowsList.tsx [254L] — webhookShortcutForFlow(), formatUpdatedAt(), FlowsList()
-- Funnel.tsx [254L] — Funnel()
-- Login.tsx [113L] — Login()
+- Funnel.tsx [334L] — Funnel()
+- Login.tsx [117L] — Login()
 - MediaLibrary.tsx [442L] — formatBytes(), formatDate(), MediaLibrary()
-- Settings.tsx [95L] — Settings()
+- Settings.tsx [98L] — Settings()
 - WhatsApp.tsx [6L] — WhatsApp()
 
 ## web/src/types/

@@ -200,15 +200,15 @@ export function FlowsList() {
                     type="button"
                     onClick={() => void copyWebhook(f)}
                     title={`Copiar URL — ${webhook.label}`}
-                    className="group mt-3 inline-flex max-w-full items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-2.5 py-1.5 text-left transition hover:border-brand-500/30"
+                    className="group mt-2.5 inline-flex max-w-full items-center gap-2 rounded-md border border-[var(--line)] bg-[var(--surface-2)]/60 px-2.5 py-1 text-left transition-colors hover:border-emerald-500/40 hover:bg-[var(--surface-2)]"
                   >
                     <Icon
                       name={copiedId === f.id ? "check" : "copy"}
                       className={`h-3.5 w-3.5 shrink-0 ${
-                        copiedId === f.id ? "text-brand-400" : "text-zinc-500"
+                        copiedId === f.id ? "text-emerald-400" : "text-zinc-400"
                       }`}
                     />
-                    <code className="truncate font-mono text-[11px] text-zinc-400">
+                    <code className="truncate font-mono text-[11px] text-zinc-300">
                       {copiedId === f.id
                         ? "URL do webhook copiada!"
                         : webhook.path}

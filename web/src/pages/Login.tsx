@@ -34,28 +34,32 @@ export function Login() {
   }
 
   return (
-    <div className="relative flex min-h-full items-center justify-center overflow-hidden p-6">
-      {/* halo de fundo */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute left-1/2 top-0 h-[520px] w-[720px] -translate-x-1/2 -translate-y-1/3 rounded-full bg-brand-500/10 blur-[120px]"
-      />
-
-      <div className="zap-enter relative w-full max-w-[400px]">
+    <div className="relative flex min-h-full items-center justify-center p-6">
+      <div className="zap-enter relative w-full max-w-[380px]">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-400 to-brand-600 text-2xl font-bold text-zinc-950 shadow-xl shadow-emerald-500/25">
-            Z
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl border border-white/10 bg-zinc-900 text-emerald-400 shadow-md">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="h-6 w-6"
+            >
+              <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z" />
+            </svg>
           </div>
-          <h1 className="text-[26px] font-semibold tracking-tight text-white">Zap Automação</h1>
-          <p className="mt-1.5 text-sm text-zinc-500">WhatsApp, inbox e fluxos visuais</p>
+          <h1 className="text-xl font-semibold tracking-tight text-zinc-100">Zap Workspace</h1>
+          <p className="mt-1 text-xs text-zinc-400">Automações, CRM e atendimento WhatsApp</p>
         </div>
 
         <form
           onSubmit={submit}
-          className="rounded-2xl border border-[var(--line)] bg-[var(--surface-1)]/90 p-6 shadow-2xl shadow-black/50 backdrop-blur-xl"
+          className="rounded-xl border border-[var(--line)] bg-[var(--surface-1)] p-6 shadow-xl shadow-black/40"
         >
           {error && (
-            <div className="mb-5">
+            <div className="mb-4">
               <ErrorNotice>{error}</ErrorNotice>
             </div>
           )}
@@ -89,7 +93,7 @@ export function Login() {
           <button
             type="submit"
             disabled={loading}
-            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-brand-500 text-sm font-semibold text-zinc-950 transition hover:bg-brand-400 active:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 text-sm font-medium text-white shadow-xs transition-colors hover:bg-emerald-500 active:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? (
               <>
@@ -97,14 +101,14 @@ export function Login() {
                 Entrando…
               </>
             ) : (
-              "Entrar"
+              "Acessar painel"
             )}
           </button>
         </form>
 
-        <p className="mt-5 text-center text-xs leading-relaxed text-zinc-600">
-          Credenciais definidas em <span className="text-zinc-500">ADMIN_EMAIL</span> e{" "}
-          <span className="text-zinc-500">ADMIN_PASSWORD</span> no EasyPanel.
+        <p className="mt-5 text-center text-xs leading-relaxed text-zinc-500">
+          Credenciais definidas em <span className="font-mono text-zinc-400">ADMIN_EMAIL</span> e{" "}
+          <span className="font-mono text-zinc-400">ADMIN_PASSWORD</span>.
         </p>
       </div>
     </div>

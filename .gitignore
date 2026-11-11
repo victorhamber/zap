@@ -20,4 +20,5 @@ n8n-templates/
 .DS_Store
 Thumbs.db
 .cursor/
+.claude/
 

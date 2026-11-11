@@ -428,40 +428,43 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
 
   const noticeClass =
     noticeKind === "connected"
-      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
       : noticeKind === "no_device"
-        ? "border-amber-500/40 bg-amber-500/10 text-amber-50"
+        ? "border-amber-500/30 bg-amber-500/10 text-amber-200"
         : noticeKind === "warn"
-          ? "border-red-500/35 bg-red-500/10 text-red-100"
+          ? "border-rose-500/30 bg-rose-500/10 text-rose-200"
           : noticeKind === "checking"
-            ? "border-zinc-600 bg-zinc-900/80 text-zinc-300"
+            ? "border-[var(--line-strong)] bg-[var(--surface-2)] text-zinc-300"
             : noticeKind === "info"
-              ? "border-sky-500/30 bg-sky-500/10 text-sky-100"
-              : "border-zinc-700 bg-zinc-900/50 text-zinc-400";
+              ? "border-sky-500/30 bg-sky-500/10 text-sky-200"
+              : "border-[var(--line)] bg-[var(--surface-2)]/50 text-zinc-400";
 
   return (
-    <div className={compact ? "" : "rounded-2xl border border-zinc-800 bg-zinc-950/60 p-5 shadow-sm"}>
+    <div className={compact ? "" : "rounded-xl border border-[var(--line)] bg-[var(--surface-1)] p-5 shadow-xs"}>
       {!compact && (
         <div className="mb-5">
-          <h2 className="text-lg font-semibold text-white">Conexão WhatsApp</h2>
-          <p className="text-sm text-zinc-400 mt-1">
-            Vincule o aparelho da instância ativa. Depois use o menu WhatsApp para conversar.
+          <h2 className="text-base font-semibold tracking-tight text-zinc-100">Conexão WhatsApp (WAHA)</h2>
+          <p className="text-xs text-zinc-400 mt-0.5">
+            Vincule o aparelho da instância ativa para envio de fluxos e atendimento em tempo real.
           </p>
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="text-zinc-500">Sessão:</span>
-        <code className="text-zinc-300">{settings?.wppSession ?? "…"}</code>
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-zinc-500 font-medium">Sessão:</span>
+        <code className="rounded bg-[var(--surface-2)] px-1.5 py-0.5 font-mono text-zinc-300 border border-[var(--line)]">
+          {settings?.wppSession ?? "…"}
+        </code>
         <span
-          className={`ml-2 rounded-full px-2.5 py-0.5 text-xs font-medium ${
+          className={`ml-2 inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-medium border ${
             isConnected
-              ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/25"
+              ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/20"
               : noticeKind === "no_device"
-                ? "bg-amber-500/15 text-amber-200 border border-amber-500/30"
-                : "bg-zinc-800 text-zinc-400 border border-zinc-700"
+                ? "bg-amber-500/10 text-amber-300 border-amber-500/20"
+                : "bg-zinc-800 text-zinc-400 border-zinc-700"
           }`}
         >
+          <span className="h-1.5 w-1.5 rounded-full bg-current" />
           {isConnected
             ? "Conectado"
             : noticeKind === "checking"
@@ -470,8 +473,8 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
         </span>
       </div>
 
-      <div className={`mt-4 rounded-xl border px-4 py-3 text-sm ${noticeClass}`}>
-        <p className="font-medium leading-snug">
+      <div className={`mt-3.5 rounded-lg border px-3.5 py-2.5 text-xs ${noticeClass}`}>
+        <p className="font-medium leading-relaxed">
           {isBusinessInstance
             ? "Instância API oficial Meta — sem QR Code. Configure credenciais em Instâncias → API Meta e o webhook no painel da Meta."
             : noticeText}
@@ -488,10 +491,10 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
 
       {qrImage && !isConnected && !isBusinessInstance && (
         <div className="mt-5 flex flex-col items-center">
-          <div className="rounded-2xl bg-white p-3 shadow-lg">
-            <img src={qrImage} alt="QR Code WhatsApp" className="h-56 w-56 object-contain" />
+          <div className="rounded-xl border border-white/20 bg-white p-3 shadow-md">
+            <img src={qrImage} alt="QR Code WhatsApp" className="h-52 w-52 object-contain" />
           </div>
-          <p className="mt-3 text-xs text-zinc-500 text-center max-w-sm">
+          <p className="mt-2.5 text-xs text-zinc-400 text-center max-w-sm">
             No celular: WhatsApp → Aparelhos conectados → Conectar aparelho. Escaneie o código acima.
           </p>
         </div>
@@ -503,7 +506,7 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
             type="button"
             disabled={loading}
             onClick={connect}
-            className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 disabled:opacity-50"
+            className="rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-medium text-white shadow-xs transition-colors hover:bg-emerald-500 active:bg-emerald-700 disabled:opacity-50"
           >
             {loading ? "Aguarde…" : qrImage ? "Gerar novo QR" : "Conectar / Mostrar QR"}
           </button>
@@ -513,7 +516,7 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
             type="button"
             disabled={loading}
             onClick={refreshQrNow}
-            className="rounded-xl border border-zinc-700 px-4 py-2 text-sm hover:bg-zinc-900 disabled:opacity-50"
+            className="rounded-lg border border-[var(--line-strong)] bg-[var(--surface-2)] px-3.5 py-2 text-xs font-medium text-zinc-200 transition-colors hover:bg-[var(--surface-3)] hover:text-white disabled:opacity-50"
           >
             Atualizar QR
           </button>
@@ -523,7 +526,7 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
             type="button"
             disabled={loading}
             onClick={connect}
-            className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-500 disabled:opacity-50"
+            className="rounded-lg bg-sky-600 px-3.5 py-2 text-xs font-medium text-white shadow-xs transition-colors hover:bg-sky-500 disabled:opacity-50"
           >
             Sincronizar API oficial
           </button>
@@ -532,7 +535,7 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
           type="button"
           disabled={loading}
           onClick={() => verifyConnection(true)}
-          className="rounded-xl border border-emerald-700/50 bg-emerald-950/30 px-4 py-2 text-sm text-emerald-200 hover:bg-emerald-950/50 disabled:opacity-50"
+          className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-2 text-xs font-medium text-emerald-300 transition-colors hover:bg-emerald-500/20 disabled:opacity-50"
         >
           {loading && noticeKind === "checking" ? "Verificando…" : "Verificar status"}
         </button>
@@ -541,7 +544,7 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
             type="button"
             disabled={loading}
             onClick={syncWebhook}
-            className="rounded-xl border border-sky-800/50 bg-sky-950/30 px-4 py-2 text-sm text-sky-200 hover:bg-sky-950/50 disabled:opacity-50"
+            className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-3.5 py-2 text-xs font-medium text-sky-200 transition-colors hover:bg-sky-500/20 disabled:opacity-50"
             title="Use após deploy ou se mensagens recebidas não aparecem no inbox"
           >
             Atualizar webhook
@@ -551,7 +554,7 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
           type="button"
           disabled={loading}
           onClick={closeSession}
-          className="rounded-xl border border-zinc-700 px-4 py-2 text-sm hover:bg-zinc-900 disabled:opacity-50"
+          className="rounded-lg border border-[var(--line-strong)] bg-[var(--surface-2)] px-3.5 py-2 text-xs font-medium text-zinc-300 transition-colors hover:bg-[var(--surface-3)] hover:text-white disabled:opacity-50"
         >
           Fechar sessão
         </button>
@@ -559,16 +562,16 @@ export function WppConnectPanel({ compact = false }: { compact?: boolean }) {
           type="button"
           disabled={loading}
           onClick={logoutSession}
-          className="rounded-xl border border-red-900/50 px-4 py-2 text-sm text-red-300 hover:bg-red-950/40 disabled:opacity-50"
+          className="rounded-lg border border-rose-500/25 bg-rose-500/10 px-3.5 py-2 text-xs font-medium text-rose-300 transition-colors hover:bg-rose-500/20 hover:border-rose-500/40 disabled:opacity-50"
         >
           Desconectar
         </button>
       </div>
 
       {!compact && isConnected && (
-        <p className="mt-4 text-xs text-zinc-500">
+        <p className="mt-3.5 text-xs text-zinc-500">
           Se mensagens novas não aparecerem no menu WhatsApp, use{" "}
-          <strong className="text-zinc-400">Atualizar webhook</strong> e envie um teste do celular.
+          <strong className="text-zinc-400 font-medium">Atualizar webhook</strong> e envie um teste do celular.
         </p>
       )}
     </div>

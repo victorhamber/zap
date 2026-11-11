@@ -1240,10 +1240,10 @@ function StatCard(props: {
         : "text-white";
 
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-2.5">
-      <p className="text-[11px] uppercase tracking-wide text-zinc-500">{props.label}</p>
-      <p className={`text-2xl font-semibold tabular-nums mt-0.5 ${valueClass}`}>{props.value}</p>
-      <p className="text-[11px] text-zinc-600 mt-1 leading-snug">{props.hint}</p>
+    <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 py-2.5 shadow-xs">
+      <p className="text-xs text-zinc-400 font-medium">{props.label}</p>
+      <p className={`text-xl font-bold tracking-tight tabular-nums mt-0.5 ${valueClass}`}>{props.value}</p>
+      <p className="text-[11px] text-zinc-500 mt-0.5 leading-snug">{props.hint}</p>
     </div>
   );
 }

@@ -197,11 +197,11 @@ export function Card({
 }) {
   return (
     <div
-      className={`rounded-2xl border border-[var(--line)] bg-[var(--surface-1)] shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_10px_30px_-18px_rgba(0,0,0,0.9)] ${
+      className={`rounded-xl border border-[var(--line)] bg-[var(--surface-1)] shadow-[0_1px_2px_rgba(0,0,0,0.35)] ${
         padded ? "p-5" : ""
       } ${
         interactive
-          ? "transition duration-200 hover:border-[var(--line-strong)] hover:bg-[var(--surface-2)]"
+          ? "transition-colors duration-150 hover:border-[var(--line-strong)] hover:bg-[var(--surface-2)]/70"
           : ""
       } ${className}`}
     >
@@ -222,8 +222,8 @@ export function CardHeader({
   return (
     <div className="flex items-start justify-between gap-4">
       <div className="min-w-0">
-        <h2 className="text-sm font-semibold text-zinc-100">{title}</h2>
-        {subtitle && <p className="mt-1 text-xs text-zinc-500">{subtitle}</p>}
+        <h2 className="text-sm font-semibold tracking-tight text-zinc-100">{title}</h2>
+        {subtitle && <p className="mt-0.5 text-xs text-zinc-400 leading-normal">{subtitle}</p>}
       </div>
       {action && <div className="shrink-0">{action}</div>}
     </div>
@@ -239,21 +239,21 @@ type ButtonSize = "sm" | "md";
 
 const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
   primary:
-    "bg-brand-500 text-zinc-950 font-semibold hover:bg-brand-400 active:bg-brand-600 disabled:hover:bg-brand-500",
+    "bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-medium border border-emerald-500/30 shadow-xs disabled:opacity-50 disabled:hover:bg-emerald-600",
   secondary:
-    "border border-[var(--line-strong)] bg-[var(--surface-2)] text-zinc-200 hover:bg-[var(--surface-3)] hover:border-zinc-600",
-  ghost: "text-zinc-400 hover:bg-[var(--surface-2)] hover:text-zinc-100",
+    "border border-[var(--line-strong)] bg-[var(--surface-2)] text-zinc-200 hover:bg-[var(--surface-3)] hover:text-white hover:border-zinc-500/50 shadow-xs font-medium",
+  ghost: "text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-100 font-medium",
   danger:
-    "border border-red-500/30 bg-red-500/5 text-red-300 hover:bg-red-500/15 hover:border-red-500/50"
+    "border border-rose-500/25 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 hover:border-rose-500/40 font-medium"
 };
 
 const BUTTON_SIZES: Record<ButtonSize, string> = {
-  sm: "h-8 px-3 text-xs gap-1.5",
-  md: "h-10 px-4 text-sm gap-2"
+  sm: "h-8 px-2.5 text-xs gap-1.5",
+  md: "h-9 px-3.5 text-sm gap-2"
 };
 
 function buttonClass(variant: ButtonVariant, size: ButtonSize, className = ""): string {
-  return `inline-flex items-center justify-center rounded-xl transition duration-150 disabled:opacity-45 disabled:cursor-not-allowed ${BUTTON_VARIANTS[variant]} ${BUTTON_SIZES[size]} ${className}`;
+  return `inline-flex items-center justify-center rounded-lg font-medium transition-colors duration-150 select-none disabled:opacity-45 disabled:cursor-not-allowed ${BUTTON_VARIANTS[variant]} ${BUTTON_SIZES[size]} ${className}`;
 }
 
 export function Button({
@@ -308,11 +308,11 @@ export function LinkButton({
 type BadgeTone = "neutral" | "success" | "danger" | "warning" | "info";
 
 const BADGE_TONES: Record<BadgeTone, string> = {
-  neutral: "bg-[var(--surface-3)] text-zinc-400 border-[var(--line-strong)]",
-  success: "bg-emerald-500/10 text-emerald-300 border-emerald-500/25",
-  danger: "bg-red-500/10 text-red-300 border-red-500/25",
-  warning: "bg-amber-500/10 text-amber-300 border-amber-500/25",
-  info: "bg-sky-500/10 text-sky-300 border-sky-500/25"
+  neutral: "bg-zinc-800/80 text-zinc-300 border-zinc-700/60",
+  success: "bg-emerald-500/10 text-emerald-300 border-emerald-500/20",
+  danger: "bg-rose-500/10 text-rose-300 border-rose-500/20",
+  warning: "bg-amber-500/10 text-amber-300 border-amber-500/20",
+  info: "bg-sky-500/10 text-sky-300 border-sky-500/20"
 };
 
 export function Badge({
@@ -326,16 +326,16 @@ export function Badge({
 }) {
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${BADGE_TONES[tone]}`}
+      className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium tracking-wide ${BADGE_TONES[tone]}`}
     >
-      {dot && <span className="h-1.5 w-1.5 rounded-full bg-current" />}
+      {dot && <span className="h-1.5 w-1.5 rounded-full bg-current opacity-80" />}
       {children}
     </span>
   );
 }
 
 export const inputClass =
-  "w-full rounded-xl border border-[var(--line-strong)] bg-[var(--surface-2)] px-3.5 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 outline-none transition focus:border-brand-500/60 focus:bg-[var(--surface-3)]";
+  "w-full rounded-lg border border-[var(--line-strong)] bg-[var(--surface-2)]/70 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition focus:border-emerald-500/50 focus:bg-[var(--surface-2)] focus:ring-1 focus:ring-emerald-500/30";
 
 export function SearchInput({
   value,
@@ -352,7 +352,7 @@ export function SearchInput({
     <div className={`relative ${className}`}>
       <Icon
         name="search"
-        className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500"
+        className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500"
       />
       <input
         type="search"
@@ -360,7 +360,7 @@ export function SearchInput({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         aria-label={placeholder}
-        className={`${inputClass} pl-10`}
+        className={`${inputClass} pl-9`}
       />
     </div>
   );
@@ -382,9 +382,9 @@ export function PageHeader({
   return (
     <header className="flex flex-wrap items-start justify-between gap-4">
       <div className="min-w-0">
-        <h1 className="text-2xl font-semibold tracking-tight text-white">{title}</h1>
+        <h1 className="text-xl md:text-2xl font-semibold tracking-tight text-zinc-100">{title}</h1>
         {subtitle && (
-          <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-zinc-400">{subtitle}</p>
+          <p className="mt-1 max-w-2xl text-xs md:text-sm leading-relaxed text-zinc-400">{subtitle}</p>
         )}
       </div>
       {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
@@ -408,15 +408,15 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-[var(--line-strong)] px-6 py-14 text-center">
-      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--surface-2)] text-zinc-500">
-        <Icon name={icon} className="h-6 w-6" />
+    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-[var(--line-strong)] bg-[var(--surface-1)]/40 px-6 py-12 text-center">
+      <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-[var(--line)] bg-[var(--surface-2)] text-zinc-400">
+        <Icon name={icon} className="h-5 w-5" />
       </div>
-      <p className="mt-4 text-sm font-medium text-zinc-300">{title}</p>
+      <p className="mt-3.5 text-sm font-medium text-zinc-200">{title}</p>
       {description && (
-        <p className="mt-1.5 max-w-sm text-sm leading-relaxed text-zinc-500">{description}</p>
+        <p className="mt-1 max-w-sm text-xs leading-relaxed text-zinc-400">{description}</p>
       )}
-      {action && <div className="mt-5">{action}</div>}
+      {action && <div className="mt-4">{action}</div>}
     </div>
   );
 }
@@ -425,9 +425,9 @@ export function ErrorNotice({ children }: { children: ReactNode }) {
   return (
     <div
       role="alert"
-      className="flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200"
+      className="flex items-start gap-2.5 rounded-lg border border-rose-500/25 bg-rose-500/10 px-3.5 py-2.5 text-xs md:text-sm text-rose-200"
     >
-      <Icon name="alert" className="mt-0.5 h-4 w-4 shrink-0" />
+      <Icon name="alert" className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
       <span className="min-w-0">{children}</span>
     </div>
   );

@@ -50,7 +50,7 @@ export function Settings() {
         <div
           role="tablist"
           aria-label="Seções de configuração"
-          className="flex gap-1 rounded-xl border border-[var(--line)] bg-[var(--surface-1)] p-1"
+          className="flex gap-1 rounded-xl border border-[var(--line)] bg-[var(--surface-1)] p-1 shadow-xs"
         >
           {TABS.map((t) => {
             const active = tab === t.id;
@@ -61,19 +61,22 @@ export function Settings() {
                 role="tab"
                 aria-selected={active}
                 onClick={() => setTab(t.id)}
-                className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
+                className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs md:text-sm font-medium transition-colors ${
                   active
-                    ? "bg-brand-500/12 text-brand-300 shadow-[0_0_0_1px_rgba(16,185,129,0.22)_inset]"
-                    : "text-zinc-400 hover:bg-[var(--surface-2)] hover:text-zinc-200"
+                    ? "bg-white/[0.08] text-white shadow-xs"
+                    : "text-zinc-400 hover:bg-white/[0.03] hover:text-zinc-200"
                 }`}
               >
-                <Icon name={t.icon} className="h-4 w-4" />
+                <Icon
+                  name={t.icon}
+                  className={`h-4 w-4 ${active ? "text-emerald-400" : "text-zinc-500"}`}
+                />
                 <span className="truncate">{t.label}</span>
               </button>
             );
           })}
         </div>
-        <p className="mt-2.5 px-1 text-xs text-zinc-500">{current?.desc}</p>
+        <p className="mt-2 px-1 text-xs text-zinc-400 leading-normal">{current?.desc}</p>
       </div>
 
       <div className="zap-enter" key={tab}>

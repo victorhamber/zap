@@ -56,24 +56,39 @@ export function Layout() {
   return (
     <div className={`flex ${isInbox ? "h-screen overflow-hidden" : "min-h-screen"}`}>
       <aside
-        className={`flex shrink-0 flex-col border-r border-[var(--line)] bg-[var(--surface-1)]/80 backdrop-blur-xl transition-[width] duration-200 ease-out ${
-          railOnly ? "w-[76px]" : "w-64"
+        className={`flex shrink-0 flex-col border-r border-[var(--line)] bg-[var(--surface-1)] transition-[width] duration-200 ease-out ${
+          railOnly ? "w-[68px]" : "w-60"
         }`}
       >
         {/* Marca */}
-        <div className={`border-b border-[var(--line)] ${railOnly ? "px-3 py-4" : "px-5 py-5"}`}>
+        <div className={`border-b border-[var(--line)] ${railOnly ? "px-2.5 py-3.5" : "px-4 py-4"}`}>
           <Link
             to="/"
-            className={`flex items-center rounded-xl ${railOnly ? "justify-center" : "gap-3"}`}
+            className={`flex items-center ${railOnly ? "justify-center" : "gap-2.5"}`}
             title="Zap — Automação WhatsApp"
           >
-            <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 text-lg font-bold text-zinc-950 shadow-lg shadow-emerald-500/20">
-              Z
+            <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-zinc-900 text-emerald-400 shadow-xs">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-4 w-4"
+              >
+                <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z" />
+              </svg>
             </span>
             {!railOnly && (
               <span className="min-w-0">
-                <span className="block text-[15px] font-semibold leading-tight text-white">Zap</span>
-                <span className="block text-[11px] leading-tight text-zinc-500">
+                <span className="flex items-center gap-1.5">
+                  <span className="text-sm font-semibold tracking-tight text-zinc-100">Zap</span>
+                  <span className="rounded border border-emerald-500/20 bg-emerald-500/10 px-1 py-0.2 text-[9px] font-medium text-emerald-400">
+                    PRO
+                  </span>
+                </span>
+                <span className="block truncate text-[11px] text-zinc-400">
                   Automação WhatsApp
                 </span>
               </span>
@@ -82,9 +97,9 @@ export function Layout() {
         </div>
 
         {/* Navegação */}
-        <nav className={`flex-1 space-y-1 ${railOnly ? "px-2.5 py-3" : "px-3 py-4"}`}>
+        <nav className={`flex-1 space-y-1 ${railOnly ? "px-2 py-3" : "px-2.5 py-3"}`}>
           {!railOnly && (
-            <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-600">
+            <p className="px-2.5 pb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
               Painel
             </p>
           )}
@@ -96,41 +111,56 @@ export function Layout() {
                 to={l.to}
                 title={railOnly ? l.label : undefined}
                 aria-current={active ? "page" : undefined}
-                className={`group relative flex items-center rounded-xl transition duration-150 ${
-                  railOnly ? "h-11 justify-center" : "gap-3 px-3 py-2.5 text-sm font-medium"
+                className={`group relative flex items-center rounded-lg transition-colors duration-150 ${
+                  railOnly ? "h-10 justify-center" : "gap-2.5 px-2.5 py-2 text-xs md:text-sm font-medium"
                 } ${
                   active
-                    ? "bg-brand-500/10 text-brand-300"
-                    : "text-zinc-400 hover:bg-[var(--surface-2)] hover:text-zinc-100"
+                    ? "bg-white/[0.08] text-white shadow-xs"
+                    : "text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200"
                 }`}
               >
-                {/* marcador da rota ativa */}
-                <span
-                  className={`absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-brand-400 transition-opacity ${
-                    active ? "opacity-100" : "opacity-0"
+                <Icon
+                  name={l.icon}
+                  className={`${railOnly ? "h-5 w-5" : "h-4 w-4"} ${
+                    active ? "text-emerald-400" : "text-zinc-400 group-hover:text-zinc-300"
                   }`}
                 />
-                <Icon name={l.icon} className={railOnly ? "h-[22px] w-[22px]" : "h-[18px] w-[18px]"} />
-                {!railOnly && l.label}
+                {!railOnly && <span>{l.label}</span>}
+                {!railOnly && active && (
+                  <span className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                )}
               </Link>
             );
           })}
         </nav>
 
         {/* Rodapé */}
-        <div className={`space-y-1 border-t border-[var(--line)] ${railOnly ? "p-2.5" : "p-3"}`}>
-          {/* em tela estreita a barra já fica fixa em modo ícone — o botão só confundiria */}
+        <div className={`space-y-1.5 border-t border-[var(--line)] ${railOnly ? "p-2" : "p-3"}`}>
+          {!railOnly && (
+            <div className="mb-2 flex items-center justify-between rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/60 px-2.5 py-2 text-xs">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+                </span>
+                <span className="truncate text-[11px] text-zinc-300">Sistema ativo</span>
+              </div>
+              <Link to="/settings" className="text-[10px] text-zinc-500 transition-colors hover:text-emerald-400">
+                Status
+              </Link>
+            </div>
+          )}
           {!narrow && (
             <button
               type="button"
               onClick={() => setCollapsed((v) => !v)}
               title={collapsed ? "Expandir menu" : "Recolher menu"}
               aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
-              className={`flex w-full items-center rounded-xl text-zinc-500 transition hover:bg-[var(--surface-2)] hover:text-zinc-300 ${
-                collapsed ? "h-11 justify-center" : "gap-3 px-3 py-2.5 text-sm"
+              className={`flex w-full items-center rounded-lg text-zinc-400 transition-colors hover:bg-white/[0.04] hover:text-zinc-200 ${
+                collapsed ? "h-9 justify-center" : "gap-2.5 px-2.5 py-2 text-xs md:text-sm font-medium"
               }`}
             >
-              <Icon name={collapsed ? "chevronRight" : "chevronLeft"} className="h-[18px] w-[18px]" />
+              <Icon name={collapsed ? "chevronRight" : "chevronLeft"} className="h-4 w-4" />
               {!collapsed && "Recolher menu"}
             </button>
           )}
@@ -142,11 +172,11 @@ export function Layout() {
             }}
             title={railOnly ? "Sair" : undefined}
             aria-label="Sair"
-            className={`flex w-full items-center rounded-xl text-zinc-500 transition hover:bg-red-500/10 hover:text-red-300 ${
-              railOnly ? "h-11 justify-center" : "gap-3 px-3 py-2.5 text-sm"
+            className={`flex w-full items-center rounded-lg text-zinc-400 transition-colors hover:bg-rose-500/10 hover:text-rose-300 ${
+              railOnly ? "h-9 justify-center" : "gap-2.5 px-2.5 py-2 text-xs md:text-sm font-medium"
             }`}
           >
-            <Icon name="logout" className="h-[18px] w-[18px]" />
+            <Icon name="logout" className="h-4 w-4" />
             {!railOnly && "Sair"}
           </button>
         </div>

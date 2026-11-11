@@ -132,7 +132,7 @@ export function FlowRuns() {
     <div className="space-y-6">
       <Link
         to={flowId ? "/flows" : "/"}
-        className="inline-flex items-center gap-1.5 text-sm text-zinc-500 transition hover:text-brand-400"
+        className="inline-flex items-center gap-1.5 text-xs md:text-sm text-zinc-400 transition-colors hover:text-emerald-400 font-medium"
       >
         <Icon name="chevronLeft" className="h-4 w-4" />
         {flowId ? "Voltar aos fluxos" : "Voltar ao dashboard"}
@@ -150,9 +150,9 @@ export function FlowRuns() {
         <div className="space-y-2">
           {loading ? (
             <>
-              <Skeleton className="h-[70px] rounded-xl" />
-              <Skeleton className="h-[70px] rounded-xl" />
-              <Skeleton className="h-[70px] rounded-xl" />
+              <Skeleton className="h-[68px] rounded-lg" />
+              <Skeleton className="h-[68px] rounded-lg" />
+              <Skeleton className="h-[68px] rounded-lg" />
             </>
           ) : runs.length === 0 ? (
             <EmptyState
@@ -168,19 +168,19 @@ export function FlowRuns() {
                   key={r.id}
                   type="button"
                   onClick={() => void openRun(r.id)}
-                  className={`w-full rounded-xl border px-4 py-3 text-left transition ${
+                  className={`w-full rounded-lg border px-3.5 py-2.5 text-left transition-colors ${
                     active
-                      ? "border-brand-500/40 bg-brand-500/[0.07]"
-                      : "border-[var(--line)] bg-[var(--surface-1)] hover:border-[var(--line-strong)] hover:bg-[var(--surface-2)]"
+                      ? "border-emerald-500/30 bg-emerald-500/[0.08] shadow-xs"
+                      : "border-[var(--line)] bg-[var(--surface-1)] hover:border-[var(--line-strong)] hover:bg-[var(--surface-2)]/60"
                   }`}
                 >
                   <div className="flex items-center justify-between gap-3">
-                    <span className="truncate font-mono text-sm text-zinc-100">
+                    <span className="truncate font-mono text-xs md:text-sm text-zinc-100 font-medium">
                       {r.contactPhone}
                     </span>
                     {statusBadge(r.status)}
                   </div>
-                  <div className="mt-1.5 text-xs text-zinc-500">{formatDateTime(r.createdAt)}</div>
+                  <div className="mt-1 text-[11px] text-zinc-400">{formatDateTime(r.createdAt)}</div>
                 </button>
               );
             })

@@ -14,37 +14,36 @@
   --color-brand-500: #10b981;
   --color-brand-600: #059669;
 
-  --color-surface-0: #08090c;
-  --color-surface-1: #101216;
-  --color-surface-2: #16191f;
-  --color-surface-3: #1d2128;
+  --color-surface-0: #0a0b0f;
+  --color-surface-1: #111318;
+  --color-surface-2: #171920;
+  --color-surface-3: #1f222a;
 
-  --color-line: #23262e;
-  --color-line-strong: #2f333c;
+  --color-line: rgba(255, 255, 255, 0.08);
+  --color-line-strong: rgba(255, 255, 255, 0.14);
 
-  --radius-card: 1rem;
+  --radius-card: 0.75rem;
 }
 
 :root {
   color-scheme: dark;
-  /* stack do sistema — sem webfont externa para não atrasar o primeiro render */
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
     Arial, sans-serif;
 
-  --surface-0: #08090c;
-  --surface-1: #101216;
-  --surface-2: #16191f;
-  --surface-3: #1d2128;
-  --line: #23262e;
-  --line-strong: #2f333c;
+  --surface-0: #0a0b0f;
+  --surface-1: #111318;
+  --surface-2: #171920;
+  --surface-3: #1f222a;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.14);
   --accent: #10b981;
-  --accent-soft: rgba(16, 185, 129, 0.12);
+  --accent-soft: rgba(16, 185, 129, 0.10);
 
-  --text-1: #f4f4f5;
-  --text-2: #a1a1aa;
-  --text-3: #71717a;
+  --text-1: #f3f4f6;
+  --text-2: #9ca3af;
+  --text-3: #6b7280;
 
-  --ring: 0 0 0 2px var(--surface-0), 0 0 0 4px rgba(16, 185, 129, 0.55);
+  --ring: 0 0 0 1px var(--surface-0), 0 0 0 3px rgba(16, 185, 129, 0.35);
 }
 
 html,
@@ -56,19 +55,15 @@ body,
 body {
   margin: 0;
   background-color: var(--surface-0);
-  /* aurora discreta no topo — dá profundidade sem competir com o conteúdo */
-  background-image:
-    radial-gradient(900px 420px at 15% -12%, rgba(16, 185, 129, 0.13), transparent 60%),
-    radial-gradient(760px 380px at 88% -6%, rgba(56, 189, 248, 0.09), transparent 60%);
-  background-repeat: no-repeat;
-  background-attachment: fixed;
   color: var(--text-1);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  letter-spacing: -0.011em;
 }
 
 ::selection {
-  background: rgba(16, 185, 129, 0.28);
+  background: rgba(16, 185, 129, 0.22);
 }
 
 /* Foco visível consistente — teclado enxerga, mouse não polui.
@@ -87,12 +82,12 @@ body {
 /* Scrollbar do painel (o inbox tem a sua, mais abaixo) */
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--line-strong) transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
 }
 
 *::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 7px;
+  height: 7px;
 }
 
 *::-webkit-scrollbar-track {
@@ -100,14 +95,14 @@ body {
 }
 
 *::-webkit-scrollbar-thumb {
-  background: var(--line-strong);
-  border: 3px solid transparent;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid transparent;
   background-clip: content-box;
   border-radius: 999px;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background: #3f434d;
+  background: rgba(255, 255, 255, 0.22);
   background-clip: content-box;
 }
 
@@ -117,7 +112,7 @@ body {
 @keyframes zap-fade-up {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
@@ -136,10 +131,10 @@ body {
 
 @keyframes zap-pulse-ring {
   0% {
-    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.45);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
   }
   70% {
-    box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+    box-shadow: 0 0 0 5px rgba(16, 185, 129, 0);
   }
   100% {
     box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
@@ -147,7 +142,7 @@ body {
 }
 
 .zap-enter {
-  animation: zap-fade-up 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: zap-fade-up 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .zap-skeleton {
@@ -179,9 +174,9 @@ body {
  * Barras de gráfico (dashboard)
  * ------------------------------------------------------------------ */
 .zap-bar {
-  background: linear-gradient(180deg, var(--bar-top, #34d399), var(--bar-bottom, #059669));
-  border-radius: 6px 6px 2px 2px;
-  transition: filter 0.15s ease, transform 0.15s ease;
+  background: linear-gradient(180deg, var(--bar-top, #10b981), var(--bar-bottom, #059669));
+  border-radius: 3px 3px 0 0;
+  transition: filter 0.15s ease, opacity 0.15s ease;
 }
 
 .zap-bar-group:hover .zap-bar {

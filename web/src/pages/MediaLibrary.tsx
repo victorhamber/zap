@@ -253,7 +253,7 @@ export function MediaLibrary() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex gap-1 rounded-xl border border-[var(--line)] bg-[var(--surface-1)] p-1">
+        <div className="flex gap-1 rounded-xl border border-[var(--line)] bg-[var(--surface-1)] p-1 shadow-xs">
           {(
             [
               { id: "all" as const, label: "Todas" },
@@ -265,10 +265,10 @@ export function MediaLibrary() {
               key={t.id}
               type="button"
               onClick={() => setFilter(t.id)}
-              className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${
+              className={`rounded-lg px-3 py-1.5 text-xs md:text-sm font-medium transition-colors ${
                 filter === t.id
-                  ? "bg-brand-500/12 text-brand-300"
-                  : "text-zinc-400 hover:bg-[var(--surface-2)] hover:text-zinc-200"
+                  ? "bg-white/[0.08] text-white shadow-xs"
+                  : "text-zinc-400 hover:bg-white/[0.03] hover:text-zinc-200"
               }`}
             >
               {t.label}

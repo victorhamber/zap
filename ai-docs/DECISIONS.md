@@ -29,3 +29,9 @@
 - Decisão: chat e visão passam para `gpt-4o`. A transcrição continua `whisper-1`.
 - Alternativas: Claude Sonnet, que é o padrão do Deskcomm quando o provedor é Anthropic. O Zap só tem chave OpenAI.
 - Consequência: a migration 0025 troca as linhas que ainda estavam no mini ou no GPT-4.
+
+## 2026-11-11 — Redesign sóbrio e profissional do frontend
+- Contexto: a interface continha elementos de templates genéricos de IA (aurora neon no body, logo Z com glow saturado, botões fluorescentes, cantos excessivos).
+- Decisão: paleta neutra grafite (#0a0b0f), bordas nítidas de 1px, acento esmeralda sóbrio em botões sólidos e pills de status, cantos de 8px a 12px, marca geométrica sóbria, kanban limpo no funil e indicadores executivos no dashboard.
+- Alternativas: manter gradientes com opacidade menor. Recusado para remover completamente a sensação de mockup de IA.
+- Consequência: estética executiva e limpa (padrão Linear/Supabase), sem poluição visual.
