@@ -2,9 +2,16 @@ import { Queue, Worker, type Job } from "bullmq";
 import { prisma } from "../prisma.js";
 import { env } from "../env.js";
 import { getRedisConnection, sanitizeQueueJobId } from "../queue.js";
-import { sendText } from "./whatsapp/index.js";
+import { sendAudio, sendDocument, sendImage, sendText, sendVideo } from "./whatsapp/index.js";
 import { sendTransactionalEmail } from "./email/resend.js";
-import { emailGapMs, filterGroupIds, groupGapMs, textToEmailHtml } from "./broadcastPlan.js";
+import {
+  emailGapMs,
+  filterGroupIds,
+  groupGapMs,
+  parseBroadcastMedia,
+  textToEmailHtml,
+  type BroadcastMedia
+} from "./broadcastPlan.js";
 
 const QUEUE = "zap-broadcast";
 const MAX_GROUPS = 80;
@@ -14,6 +21,7 @@ export type BroadcastJob = {
   batchId: string;
   text: string;
   subject: string;
+  media: BroadcastMedia | null;
   targets: string[];
   index: number;
 };
@@ -52,14 +60,39 @@ export async function listBroadcastEmails(): Promise<string[]> {
   return out;
 }
 
+async function sendGroupPiece(target: string, text: string, media: BroadcastMedia | null) {
+  if (!media) {
+    await sendText(target, text, { isGroup: true });
+    return;
+  }
+  const file = media.filename || undefined;
+  if (media.kind === "image") {
+    await sendImage(target, media.url, text, { isGroup: true, fileName: file });
+    return;
+  }
+  if (media.kind === "video") {
+    await sendVideo(target, media.url, text, { isGroup: true, fileName: file });
+    return;
+  }
+  if (media.kind === "audio") {
+    await sendAudio(target, media.url, { isGroup: true });
+    if (text) await sendText(target, text, { isGroup: true });
+    return;
+  }
+  await sendDocument(target, media.url, text, file, { isGroup: true });
+}
+
 export async function startBroadcast(input: {
   text: string;
   groupIds: string[];
   email: boolean;
   subject: string;
+  media?: unknown;
 }): Promise<{ groups: number; emails: number }> {
   const text = input.text.trim();
-  if (!text) throw new Error("Escreva a mensagem.");
+  const media = parseBroadcastMedia(input.media);
+  if (input.media && !media) throw new Error("O arquivo precisa ser imagem, vídeo, áudio ou documento com link http.");
+  if (!text && !media) throw new Error("Escreva a mensagem ou escolha um arquivo.");
   if (text.length > 4000) throw new Error("A mensagem passa de 4000 caracteres.");
   const groups = filterGroupIds(input.groupIds);
   if (groups.length > MAX_GROUPS) throw new Error(`No máximo ${MAX_GROUPS} grupos por disparo.`);
@@ -77,13 +110,13 @@ export async function startBroadcast(input: {
   const batchId = String(Date.now());
   if (groups.length > 0) {
     await enqueueBroadcast(
-      { channel: "group", batchId, text, subject: "", targets: groups, index: 0 },
+      { channel: "group", batchId, text, subject: "", media, targets: groups, index: 0 },
       0
     );
   }
   if (emails.length > 0) {
     await enqueueBroadcast(
-      { channel: "email", batchId, text, subject: input.subject.trim(), targets: emails, index: 0 },
+      { channel: "email", batchId, text, subject: input.subject.trim(), media, targets: emails, index: 0 },
       0
     );
   }
@@ -95,12 +128,12 @@ export async function processBroadcastJob(job: BroadcastJob): Promise<void> {
   if (!target) return;
   try {
     if (job.channel === "group") {
-      await sendText(target, job.text, { isGroup: true });
+      await sendGroupPiece(target, job.text, job.media ?? null);
     } else {
       await sendTransactionalEmail({
         to: target,
         subject: job.subject,
-        html: textToEmailHtml(job.text),
+        html: textToEmailHtml(job.text, job.media),
         preheader: job.subject
       });
     }

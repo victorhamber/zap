@@ -22,13 +22,15 @@ export async function broadcastRoutes(app: FastifyInstance) {
       groupIds?: string[];
       email?: boolean;
       subject?: string;
+      media?: unknown;
     };
     try {
       const result = await startBroadcast({
         text: body.text ?? "",
         groupIds: Array.isArray(body.groupIds) ? body.groupIds : [],
         email: body.email === true,
-        subject: body.subject ?? ""
+        subject: body.subject ?? "",
+        media: body.media
       });
       return { ok: true, ...result };
     } catch (err) {

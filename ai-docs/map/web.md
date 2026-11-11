@@ -27,6 +27,9 @@
 - AiProviderModelPicker.tsx [103L] — AiProviderModelPicker()
 - aiCatalog.ts [83L] Catálogo visível no Deskcomm. Só entra em modelChat quem tem apiId da OpenAI. */ — modelLabel(), priceTitle()
 
+## web/src/components/broadcast/
+- BroadcastMediaField.tsx [167L] Arquivo do disparo: envio do computador ou item da biblioteca. */ — BroadcastMediaField(), labelOf(), readFile()
+
 ## web/src/components/email/
 - EmailBlockEditor.tsx [625L] — VarChips(), EmailImageLibrary(), BlockEditor(), blockTitle(), cloneBlock(), EmailBlockEditor()
 - EmailBuilder.tsx [201L] — ToolbarButton(), EmailBuilder()
@@ -62,7 +65,7 @@
 - WppInstancesManager.tsx [499L] — WppInstancesManager()
 
 ## web/src/pages/
-- Broadcast.tsx [163L] — Broadcast()
+- Broadcast.tsx [171L] — Broadcast()
 - Contacts.tsx [319L] — phoneLabel(), Contacts()
 - Dashboard.tsx [574L] — formatEventTime(), formatDay(), BarChart(), ChartSkeleton(), DistributionList(), Dashboard()
 - FlowEditor.tsx [795L] — summaryFor(), toReactFlowNodes(), toReactFlowEdges(), cloneNodeConfig(), FlowEditor()

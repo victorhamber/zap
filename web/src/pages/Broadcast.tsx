@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
+import { BroadcastMediaField, type BroadcastMediaPick } from "../components/broadcast/BroadcastMediaField";
 import { Button, Card, ErrorNotice, PageHeader, SearchInput } from "../components/ui";
 
 type Group = { id: string; name: string };
@@ -10,6 +11,7 @@ export function Broadcast() {
   const [picked, setPicked] = useState<string[]>([]);
   const [query, setQuery] = useState("");
   const [text, setText] = useState("");
+  const [media, setMedia] = useState<BroadcastMediaPick | null>(null);
   const [emailOn, setEmailOn] = useState(false);
   const [subject, setSubject] = useState("");
   const [error, setError] = useState("");
@@ -58,7 +60,8 @@ export function Broadcast() {
           text,
           groupIds: picked,
           email: emailOn,
-          subject
+          subject,
+          media
         })
       });
       const parts = [];
@@ -66,6 +69,7 @@ export function Broadcast() {
       if (r.emails > 0) parts.push(`${r.emails} e-mail(s), cada um com uma pausa diferente`);
       setNotice(parts.join(". ") + ".");
       setText("");
+      setMedia(null);
       setPicked([]);
       setSubject("");
       setEmailOn(false);
@@ -100,6 +104,7 @@ export function Broadcast() {
               className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white"
             />
           </label>
+          <BroadcastMediaField media={media} onChange={setMedia} />
           <label className="flex items-start gap-2 text-sm text-zinc-200">
             <input
               type="checkbox"
@@ -123,7 +128,7 @@ export function Broadcast() {
               />
             </label>
           )}
-          <Button variant="primary" disabled={sending || !text.trim()} onClick={() => void send()}>
+          <Button variant="primary" disabled={sending || (!text.trim() && !media)} onClick={() => void send()}>
             {sending ? "Disparando…" : "Disparar agora"}
           </Button>
           <p className="text-xs text-zinc-500">
@@ -132,7 +137,10 @@ export function Broadcast() {
         </Card>
         <Card className="flex max-h-[70vh] flex-col overflow-hidden p-4">
           <div className="mb-3 flex items-center justify-between gap-2">
-            <p className="text-sm text-zinc-200">Grupos ({picked.length})</p>
+            <p className="text-sm text-zinc-200">
+              Grupos ({groups.length}
+              {picked.length > 0 ? ` · ${picked.length} marcados` : ""})
+            </p>
             <button type="button" className="text-xs text-emerald-400" onClick={toggleVisible}>
               Marcar visíveis
             </button>

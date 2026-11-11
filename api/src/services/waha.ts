@@ -816,23 +816,90 @@ export async function listChatMessages(chatId: string, limit = 40): Promise<unkn
   return Array.isArray(raw) ? raw : [];
 }
 
+function jidOf(value: unknown): string {
+  if (typeof value === "string") {
+    const text = value.trim();
+    return text === "[object Object]" ? "" : text;
+  }
+  if (!value || typeof value !== "object") return "";
+  const o = value as Record<string, unknown>;
+  if (typeof o._serialized === "string" && o._serialized.trim()) return o._serialized.trim();
+  if (o.id) {
+    const nested = jidOf(o.id);
+    if (nested) return nested;
+  }
+  if (o.user != null && o.server != null) return `${String(o.user)}@${String(o.server)}`;
+  return "";
+}
+
+function recordsOf(raw: unknown): Record<string, unknown>[] {
+  if (Array.isArray(raw)) {
+    return raw.filter((item) => item && typeof item === "object") as Record<string, unknown>[];
+  }
+  if (!raw || typeof raw !== "object") return [];
+  const o = raw as Record<string, unknown>;
+  for (const key of ["groups", "chats", "data", "response", "records"]) {
+    if (Array.isArray(o[key])) return recordsOf(o[key]);
+  }
+  if (o.id || o.jid || o.chatId) return [o];
+  const keys = Object.keys(o);
+  if (keys.some((key) => key.endsWith("@g.us"))) {
+    return keys.map((key) => {
+      const value = o[key];
+      const rec = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+      return { ...rec, id: rec.id ?? key };
+    });
+  }
+  return [];
+}
+
+/** Grupos @g.us de um payload do WAHA, seja lista, mapa ou chat. */
+export function collectGroupChats(raw: unknown): Array<{ id: string; name: string }> {
+  const seen = new Set<string>();
+  const out: Array<{ id: string; name: string }> = [];
+  for (const item of recordsOf(raw)) {
+    const id = jidOf(item.id) || jidOf(item.jid) || jidOf(item.chatId);
+    if (!id.endsWith("@g.us") || seen.has(id)) continue;
+    const subject = String(item.subject ?? item.name ?? item.groupName ?? "").trim();
+    seen.add(id);
+    out.push({ id, name: subject || id });
+  }
+  return out;
+}
+
 export async function fetchGroupSubjectMap(): Promise<Map<string, string>> {
   const map = new Map<string, string>();
-  const raw = await listGroups();
-  const list = Array.isArray(raw) ? raw : [];
-  for (const item of list) {
-    if (!item || typeof item !== "object") continue;
-    const o = item as Record<string, unknown>;
-    const id = String(o.id ?? "").trim();
-    const subject = String(o.subject ?? o.name ?? "").trim();
-    if (id && subject) map.set(id, subject);
+  for (const group of collectGroupChats(await listGroups())) {
+    if (group.name && group.name !== group.id) map.set(group.id, group.name);
   }
   return map;
 }
 
 export async function listAllGroups(): Promise<Array<{ id: string; name: string }>> {
-  const map = await fetchGroupSubjectMap();
-  return [...map.entries()].map(([id, name]) => ({ id, name }));
+  const merged = new Map<string, string>();
+  const absorb = (raw: unknown) => {
+    for (const group of collectGroupChats(raw)) {
+      const prev = merged.get(group.id);
+      if (!prev || prev === group.id) merged.set(group.id, group.name || group.id);
+    }
+  };
+  let failed = 0;
+  try {
+    absorb(await listGroups());
+  } catch {
+    failed += 1;
+  }
+  try {
+    absorb(await listChats());
+  } catch {
+    failed += 1;
+  }
+  if (merged.size === 0 && failed === 2) {
+    throw new Error("Não foi possível listar os grupos no WhatsApp.");
+  }
+  return [...merged.entries()]
+    .map(([id, name]) => ({ id, name }))
+    .sort((a, b) => a.name.localeCompare(b.name, "pt"));
 }
 
 export async function fetchGroupsForPhone(

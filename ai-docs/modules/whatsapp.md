@@ -25,7 +25,7 @@ Propósito: único motor WhatsApp do Zap, o WAHA NOWEB.
 - Mensagem direta recebida chama `noteInbound`. Compra Hotmart aprovada chama `notePurchase` com o nome do produto. O funil mora em `modules/crm.md`. O e-mail do fluxo mora em `modules/email.md`.
 - `parseWahaMessage` (`wahaWebhook.ts`) preenche `mediaUrl` com `media.url`. O tipo da mídia segue mimetype, extensão do arquivo e só então `payload.type`. `hasMedia: true` sem nenhum desses vira `document`.
 - Foto de perfil: `GET /api/{sessão}/chats/{id}/picture` devolve JSON `{ url }`, não o arquivo. `getChatPictureDataUrl` baixa essa URL. Grupo sem foto tenta de novo com `?refresh=true` uma vez. `status@broadcast` não entra na lista. Arquivar não apaga chat no WAHA. O sync do histórico não reabre conversa fechada.
-- Mídia de grupo (`@g.us`, canal) grava só a miniatura (`jpegThumbnail`, até 80 KB). O arquivo inteiro só entra no Baixar. Conversa direta baixa sozinha. Baixar pede `downloadMedia=true`, tenta o id cru em `chats/all` e lê `/api/files` no `WAHA_BASE_URL`.
+- Mídia de grupo grava só a miniatura. O arquivo entra no Baixar (`downloadMedia=true`, `/api/files` no `WAHA_BASE_URL`). A lista de grupos junta `/groups` e os chats `@g.us`.
 
 ## Como testar
 - `GET /api/webhooks/waha` → `{ ok: true, provider: "waha" }`.
