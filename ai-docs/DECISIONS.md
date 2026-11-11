@@ -35,3 +35,8 @@
 - Decisão: paleta neutra grafite (#0a0b0f), bordas nítidas de 1px, acento esmeralda sóbrio em botões sólidos e pills de status, cantos de 8px a 12px, marca geométrica sóbria, kanban limpo no funil e indicadores executivos no dashboard.
 - Alternativas: manter gradientes com opacidade menor. Recusado para remover completamente a sensação de mockup de IA.
 - Consequência: estética executiva e limpa (padrão Linear/Supabase), sem poluição visual.
+
+## 2026-11-11 — Opções do Deskcomm sem equipe
+- Contexto: o print do Deskcomm tem empresa e modelo da IA, sugestão para revisar, nota interna, assumir, arquivar, reservar, convidar e transferir.
+- Decisão: a lista de empresas e modelos aparece no assistente. Só um id OpenAI grava em `modelChat` e `modelVision`. O padrão segue `gpt-4o`. Reservar, convidar e transferir não ganham backend.
+- Consequência: aprovar a sugestão manda só o texto. A nota interna não sai no WhatsApp. Arquivar usa o ocultar que já existia.

@@ -310,6 +310,31 @@ export async function inboxRoutes(app: FastifyInstance) {
     }
   });
 
+  app.post("/api/inbox/notes", async (req, reply) => {
+    const body = req.body as { chatId?: string; text?: string };
+    const chatId = (body.chatId ?? "").trim();
+    const text = (body.text ?? "").trim();
+    if (!chatId || !text) return reply.status(400).send({ ok: false, message: "chatId e text obrigatórios" });
+    const { saveInboxMessage } = await import("../services/inboxStore.js");
+    await saveInboxMessage({
+      chatId,
+      body: `Nota interna: ${text}`,
+      fromMe: true,
+      source: "manual",
+      type: "chat"
+    });
+    return { ok: true };
+  });
+
+  app.post("/api/inbox/archive", async (req, reply) => {
+    const body = req.body as { chatId?: string; phone?: string };
+    const chatId = (body.chatId ?? "").trim();
+    if (!chatId) return reply.status(400).send({ ok: false, message: "chatId obrigatório" });
+    const { hideContactFromInbox, getInboxSessionName } = await import("../services/inboxStore.js");
+    await hideContactFromInbox(await getInboxSessionName(), (body.phone ?? "").trim(), chatId);
+    return { ok: true };
+  });
+
   app.post("/api/inbox/messages/download", async (req, reply) => {
     const body = req.body as { messageId?: string };
     const messageId = (body.messageId ?? "").trim();

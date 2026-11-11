@@ -6,6 +6,7 @@ import type { QuickReply, QuickReplyKind } from "../../types/quickReply";
 import { WaAudioPlayer } from "./WaAudioPlayer";
 import { WaMediaViewer } from "./WaMediaViewer";
 import { WhatsAppAvatar } from "./WhatsAppAvatar";
+import { ChatTools } from "./ChatTools";
 import { ForwardMessageModal } from "./ForwardMessageModal";
 import { ContactProfilePanel } from "./ContactProfilePanel";
 import { LinkifyText } from "./LinkifyText";
@@ -241,6 +242,30 @@ const InboxMessageContent = memo(function InboxMessageContent({
             <LinkifyText text={m.body} />
           </p>
         )}
+      </div>
+    );
+  }
+  const previewOnly =
+    Boolean(url) &&
+    looksLikeImage(url ?? "", "") &&
+    (m.type === "video" || m.type === "audio" || m.type === "ptt");
+  if (previewOnly && url) {
+    return (
+      <div className="space-y-2 px-0.5 py-0.5 min-w-[200px]">
+        <img src={url} alt="" className="max-h-64 w-full rounded-md object-cover" />
+        {showCaption && (
+          <p className="text-sm whitespace-pre-wrap px-0.5">
+            <LinkifyText text={m.body} />
+          </p>
+        )}
+        <button
+          type="button"
+          disabled={downloading || !onDownload}
+          onClick={() => onDownload?.(m)}
+          className="rounded-lg bg-[#00a884] px-3 py-1.5 text-xs font-medium text-[#111b21] disabled:opacity-60"
+        >
+          {downloading ? "Baixando…" : "Baixar"}
+        </button>
       </div>
     );
   }
@@ -590,6 +615,7 @@ export function WhatsAppInbox() {
   const [selected, setSelected] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [noteMode, setNoteMode] = useState(false);
   const [tags, setTags] = useState<Tag[]>([]);
   const [flows, setFlows] = useState<FlowOption[]>([]);
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>([]);
@@ -1009,6 +1035,34 @@ export function WhatsAppInbox() {
     const optimisticId = `opt-${Date.now()}`;
     setSendError("");
     setDraft("");
+    if (noteMode) {
+      const optimistic: Message = {
+        id: optimisticId,
+        body: `Nota interna: ${text}`,
+        fromMe: true,
+        timestamp: Date.now(),
+        type: "chat"
+      };
+      setMessages((prev) => [...prev, optimistic]);
+      try {
+        const r = await api<{ ok: boolean; message?: string }>("/api/inbox/notes", {
+          method: "POST",
+          body: JSON.stringify({ chatId: selected.id, text })
+        });
+        if (!r.ok) {
+          setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
+          setDraft(text);
+          setSendError(r.message ?? "Falha ao gravar a nota");
+          return;
+        }
+        void loadMessages(selected, true);
+      } catch (e: unknown) {
+        setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
+        setDraft(text);
+        setSendError(e instanceof Error ? e.message : "Erro ao gravar a nota");
+      }
+      return;
+    }
 
     const optimistic: Message = {
       id: optimisticId,
@@ -1604,6 +1658,32 @@ export function WhatsAppInbox() {
               </button>
             </header>
 
+            <ChatTools
+              key={selected.id}
+              chatId={selected.id}
+              phone={selected.phone}
+              noteMode={noteMode}
+              onNoteMode={setNoteMode}
+              onArchived={() => {
+                setChats((prev) => prev.filter((c) => c.id !== selected.id));
+                setSelected(null);
+              }}
+              onUseSuggestion={(text) => {
+                setNoteMode(false);
+                void api<{ ok: boolean; message?: string }>("/api/inbox/send", {
+                  method: "POST",
+                  body: JSON.stringify({
+                    chatId: selected.id,
+                    message: text,
+                    isGroup: selected.isGroup
+                  })
+                }).then((r) => {
+                  if (!r.ok) setSendError(r.message ?? "Falha ao enviar a sugestão");
+                  else void loadMessages(selected, true);
+                });
+              }}
+            />
+
             {flowNotice && (
               <div className="px-3 py-1.5 bg-[#00a884]/10 border-b border-[#00a884]/30 text-xs text-[#53bdeb]">
                 {flowNotice}
@@ -1882,6 +1962,7 @@ export function WhatsAppInbox() {
             <InboxComposer
               draft={draft}
               onDraftChange={setDraft}
+              placeholder={noteMode ? "Nota interna" : "Mensagem"}
               onSendText={() => void sendMessage()}
               onSendMedia={(type, url, caption, filename) =>
                 sendMedia(type, url, caption, filename)

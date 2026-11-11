@@ -18,7 +18,7 @@ import { parseGraph } from "../engine/graph.js";
 import { asString } from "../utils/jsonPathLite.js";
 import { normalizePhone } from "../utils/phone.js";
 import { addContactTagsByNames, getContactTagNames } from "../services/contacts.js";
-import { downloadInboundMedia, isInboundMediaType } from "../services/wppMedia.js";
+import { downloadInboundMedia, isInboundMediaType, persistGroupPreview } from "../services/wppMedia.js";
 import { isGroupLikeJid } from "../services/waJid.js";
 import {
   parseWppWebhookMessage,
@@ -505,12 +505,15 @@ export async function webhookRoutes(app: FastifyInstance) {
         text: parsed.text,
         raw: parsed.raw
       });
+      const groupPreview = isGroupLikeJid(parsed.chatId)
+        ? await persistGroupPreview(parsed.raw)
+        : null;
       await saveInboxMessage({
         chatId: parsed.chatId,
         body: messageBody,
         fromMe: parsed.fromMe,
         type: parsed.type === "ptt" ? "audio" : parsed.type,
-        mediaUrl: null,
+        mediaUrl: groupPreview,
         waMessageId: parsed.waMessageId,
         timestamp: new Date(parsed.timestamp),
         sessionName,

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, downloadApiFile } from "../../api/client";
+import { AiProviderModelPicker } from "./AiProviderModelPicker";
 
 type Tag = { id: string; name: string; color: string };
 
@@ -41,6 +42,7 @@ type AiSettings = {
   mediaResponses: AiMediaResponse[];
   openaiApiKeyMasked: string | null;
   modelChat?: string;
+  modelVision?: string;
   hasOpenaiApiKey: boolean;
   encryptionReady?: boolean;
   replyDelaySec: number;
@@ -562,9 +564,11 @@ export function AiAssistantPanel() {
           banco e não é compartilhada entre instâncias. Não precisa configurar nada no EasyPanel além do
           login do Zap.
         </p>
-        <p className="text-sm text-zinc-300">
-          Modelo do atendimento: <span className="font-medium text-white">{settings.modelChat || "gpt-4o"}</span>
-        </p>
+        <AiProviderModelPicker
+          modelChat={settings.modelChat || "gpt-4o"}
+          disabled={saving}
+          onPick={(apiId) => void save({ modelChat: apiId, modelVision: apiId })}
+        />
         <p className="text-sm text-zinc-500">
           Chave atual:{" "}
           {settings.openaiApiKeyMasked ?? (

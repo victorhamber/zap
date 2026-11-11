@@ -23,7 +23,9 @@
 - ui.tsx [435L] Primitivos de UI do painel. — Icon(), Card(), CardHeader(), buttonClass(), Button(), LinkButton(), Badge(), SearchInput(), PageHeader(), Skeleton(), EmptyState(), ErrorNotice()
 
 ## web/src/components/ai/
-- AiAssistantPanel.tsx [1343L] — AiAssistantPanel(), StatCard(), TagSelectModal()
+- AiAssistantPanel.tsx [1347L] — AiAssistantPanel(), StatCard(), TagSelectModal()
+- AiProviderModelPicker.tsx [103L] — AiProviderModelPicker()
+- aiCatalog.ts [83L] Catálogo visível no Deskcomm. Só entra em modelChat quem tem apiId da OpenAI. */ — modelLabel(), priceTitle()
 
 ## web/src/components/email/
 - EmailBlockEditor.tsx [438L] — BlockShell(), VarChips(), BlockEditor(), blockTitle(), EmailBlockEditor()
@@ -42,16 +44,17 @@
 - nodeMeta.ts [210L] — paletteDragType(), hotmartWebhookUrl(), customWebhookUrl(), buildWaMeLink(), defaultNodeData()
 
 ## web/src/components/inbox/
+- ChatTools.tsx [198L] — ChatTools()
 - ContactProfilePanel.tsx [578L] — formatPhoneDisplay(), ContactProfilePanel()
 - ForwardMessageModal.tsx [323L] — isBase64Blob(), mediaUrlFromMessage(), captionFromMessage(), messageToForwardPayload(), chatLabel(), ForwardMessageModal()
-- InboxComposer.tsx [508L] — readFileAsDataUrl(), blobToDataUrl(), uploadDataUrl(), pickAudioMimeType(), IconPlus(), IconSmile(), IconMic(), IconSend(), IconTrash(), InboxComposer()
+- InboxComposer.tsx [510L] — readFileAsDataUrl(), blobToDataUrl(), uploadDataUrl(), pickAudioMimeType(), IconPlus(), IconSmile(), IconMic(), IconSend(), IconTrash(), InboxComposer()
 - LinkifyText.tsx [67L] — normalizeHref(), splitTrailingPunctuation()
 - MicWaveform.tsx [37L] Barras verticais estilo WhatsApp Web (ondulações do microfone). */
 - TemplateButtons.tsx [181L] Mensagens de template / botão são gravadas como texto + linhas "▸ Rótulo → url". — parseTemplateBody(), hasTemplateButtons(), isOpaqueInteractiveBody(), normalizeHref()
 - WaAudioPlayer.tsx [212L] — formatDuration(), formatSpeed()
 - WaMediaViewer.tsx [101L]
 - WhatsAppAvatar.tsx [96L] — initials()
-- WhatsAppInbox.tsx [1962L] — isRadarChat(), chatKindLabel(), chatMatchesTab(), sanitizeChatName(), canonicalBrazilPhone(), formatPhoneDisplay(), sessionInitials(), IconRefresh(), IconSettings(), IconPlay(), usePageVisible(), isBase64Blob(), +20
+- WhatsAppInbox.tsx [2043L] — isRadarChat(), chatKindLabel(), chatMatchesTab(), sanitizeChatName(), canonicalBrazilPhone(), formatPhoneDisplay(), sessionInitials(), IconRefresh(), IconSettings(), IconPlay(), usePageVisible(), isBase64Blob(), +20
 - useMicWaveform.ts [70L] Níveis de amplitude do microfone (0–1) atualizados via AnalyserNode + rAF. */ — emptyLevels(), useMicWaveform()
 
 ## web/src/components/wpp/

@@ -1,7 +1,7 @@
 /** Baixa a mídia de uma mensagem já gravada. Grupo não baixa sozinho. */
 import { prisma } from "../prisma.js";
 import { toPublicMediaUrl } from "./uploads.js";
-import { downloadMediaForStoredMessage, isInboundMediaType } from "./wppMedia.js";
+import { downloadMediaForStoredMessage, isInboundMediaType, previewStillNeedsFile } from "./wppMedia.js";
 import { getInboxSessionName, updateInboxMessageMedia } from "./inboxStore.js";
 
 export async function downloadInboxMessageOnDemand(
@@ -17,7 +17,7 @@ export async function downloadInboxMessageOnDemand(
   });
   if (!row) return null;
   const type = row.type === "ptt" ? "audio" : row.type;
-  if (row.mediaUrl) {
+  if (row.mediaUrl && !previewStillNeedsFile(type, row.mediaUrl)) {
     const url = toPublicMediaUrl(row.mediaUrl) ?? row.mediaUrl;
     return { url, type };
   }

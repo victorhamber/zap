@@ -2,7 +2,12 @@ import * as wpp from "./whatsapp/index.js";
 import { buildWppSendTarget } from "./wppSend.js";
 import { getInboxSessionName, saveInboxMessage } from "./inboxStore.js";
 import { parseWahaMessage } from "./wahaWebhook.js";
-import { downloadMediaForStoredMessage, isInboundMediaType, persistRemoteMediaUrl } from "./wppMedia.js";
+import {
+  downloadMediaForStoredMessage,
+  isInboundMediaType,
+  persistGroupPreview,
+  persistRemoteMediaUrl
+} from "./wppMedia.js";
 import { isGroupLikeJid } from "./waJid.js";
 
 const lastSyncByChat = new Map<string, number>();
@@ -43,7 +48,9 @@ export async function syncRecentMessagesFromWpp(
     const mediaType = parsed.type === "ptt" ? "audio" : parsed.type;
     const group = isGroup === true || isGroupLikeJid(target.jid) || isGroupLikeJid(parsed.chatId);
     let mediaUrl: string | null = null;
-    if (!group) {
+    if (group) {
+      mediaUrl = await persistGroupPreview(parsed.raw);
+    } else {
       mediaUrl = parsed.mediaUrl ? await persistRemoteMediaUrl(parsed.mediaUrl) : null;
       if (!mediaUrl && parsed.waMessageId && isInboundMediaType(mediaType)) {
         mediaUrl = await downloadMediaForStoredMessage({

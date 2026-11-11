@@ -27,11 +27,11 @@
 - dashboard.ts [213L] — funnelSnapshot(), countRadar(), startOfToday(), daysAgo(), localDayKey(), last7DayKeys(), bucketByDay(), dashboardRoutes()
 - emailPublic.ts [65L] — page(), emailPublicRoutes()
 - flows.ts [299L] — flowRoutes()
-- inbox.ts [760L] — sortQuickReplies(), normalizeQuickReply(), parseQuickReplies(), sanitizeQuickRepliesForSave(), preferMergedChatId(), mergeInboxChatRows(), dedupeInboxChatRows(), inboxRoutes()
+- inbox.ts [785L] — sortQuickReplies(), normalizeQuickReply(), parseQuickReplies(), sanitizeQuickRepliesForSave(), preferMergedChatId(), mergeInboxChatRows(), dedupeInboxChatRows(), inboxRoutes()
 - media.ts [47L] — mediaRoutes()
 - runs.ts [31L] — runRoutes()
 - settings.ts [360L] — settingsRoutes()
-- webhooks.ts [629L] — triggerInboundFlows(), whatsappWebhookAuthorized(), rejectWebhook(), webhookRoutes()
+- webhooks.ts [632L] — triggerInboundFlows(), whatsappWebhookAuthorized(), rejectWebhook(), webhookRoutes()
 - wpp.ts [372L] — buildKeepSessionNames(), listServerSessionNames(), wppRoutes()
 
 ## api/src/services/
@@ -57,7 +57,7 @@
 - inbox.ts [1336L] — readChatKey(), markChatReadLocally(), isChatReadLocally(), markInboxChatAsRead(), extractWaId(), isValidWaId(), chatIdToPhone(), isPhoneLikeText(), resolveChatId(), detectKind(), coerceDisplayText(), pickChatDisplayName(), +32
 - inboxMediaDownload.ts [35L] Baixa a mídia de uma mensagem já gravada. Grupo não baixa sozinho. */ — downloadInboxMessageOnDemand()
 - inboxStore.ts [1612L] — isButtonPlaceholderBody(), isPrismaUniqueConflict(), digitsOnly(), chatIdVariants(), messageSyncJidCandidates(), chatIdVariantsResolved(), resolveAllChatIdsForContact(), preferPrimaryChatId(), canonicalizeChatId(), findPrimaryChatIdForPhone(), findPrimaryChatIdForContact(), getSessionName(), +45
-- inboxSync.ts [71L] — syncRecentMessagesFromWpp()
+- inboxSync.ts [78L] — syncRecentMessagesFromWpp()
 - inboxTemplateRepair.ts [91L] Reprocessa mensagens antigas gravadas com o texto genérico de template/botão — maskMissingParameters(), repairTemplatePlaceholders()
 - mediaConvert.ts [50L] WhatsApp PTT exige OGG/Opus — gravação do navegador vem em WebM. */ — convertWebmDataUrlToOgg(), persistInboundMedia()
 - mediaLibrary.ts [275L] — getSessionName(), isSafeUploadFilename(), inferKind(), formatBytes(), listMediaLibrary(), clearQuickReplyMedia(), deleteMediaFile(), deleteMediaFiles(), deleteAllMediaFiles()
@@ -69,9 +69,9 @@
 - waLidMap.test.ts [61L]
 - waLidMap.ts [267L] Mapeia @lid interno → telefone real (@s.whatsapp.net). */ — storeKey(), mapFile(), legacyMapFile(), jidCandidates(), pickPhoneJid(), pickLidJid(), applyWaJidMapping(), loadWaLidMap(), persistWaLidMap(), recordWaJidMappingSync(), recordWaJidMapping(), flushWaLidMap(), +6
 - waha.ts [1029L] Cliente HTTP do WAHA. Único motor de WhatsApp do Zap. — baseUrl(), apiKey(), reachableBaseUrl(), webhookUrl(), sessionConfig(), waha(), readBody(), formatWppError(), wahaJson(), normalizeSessionName(), sessionName(), getActiveWppSessionName(), +71
-- wahaWebhook.ts [114L] — asRecord(), textOf(), typeFromMime(), typeFromName(), mediaType(), mediaUrlOf(), preview(), parseWahaMessage(), wahaSessionStatus()
+- wahaWebhook.ts [150L] — asRecord(), textOf(), typeFromMime(), typeFromName(), mediaType(), mediaUrlOf(), bufferFromThumb(), thumbnailDataUrl(), preview(), parseWahaMessage(), wahaSessionStatus()
 - wppHumanize.ts [13L] Pequenos intervalos entre chamadas ao WPP para parecer uso humano (não elimina r — wppHumanDelay()
-- wppMedia.ts [64L] — isInboundMediaType(), persistWahaUrl(), persistRemoteMediaUrl(), downloadMediaForStoredMessage(), downloadInboundMedia()
+- wppMedia.ts [82L] Grava só o jpeg pequeno do WhatsApp. O vídeo/áudio inteiro continua no Baixar. * — isInboundMediaType(), persistWahaUrl(), persistGroupPreview(), previewStillNeedsFile(), persistRemoteMediaUrl(), downloadMediaForStoredMessage(), downloadInboundMedia()
 - wppReconnect.ts [156L] — shouldWatchReconnect(), needsQrScan(), attemptAutoReconnect(), startWppReconnectWatchdog(), tryRestoreSessionAfterDeploy()
 - wppSend.ts [110L] Monta destino para APIs do WPP (número + flags isLid / isGroup). */ — digitsOnly(), resolveChatId(), buildWppSendTarget(), parseWppErrorMessage(), callSendMessage(), sendWppText(), extractWppMessageId(), sendWppApi()
 - wppWebhook.ts [178L] Detecção de payload de mensagem no webhook WPPConnect (não confundir `event` com — touchWppWebhookReceived(), touchWppWebhookSaved(), touchWppWebhookSkipped(), getLastWppWebhookSavedAt(), getLastWppWebhookSkipReason(), getLastWppWebhookAt(), getLastWppWebhookEvent(), normalizeWppWebhookBody(), getWppWebhookEvent(), getWppMessageContentType(), isWppMessageWebhook()

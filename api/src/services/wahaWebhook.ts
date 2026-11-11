@@ -58,6 +58,42 @@ function mediaUrlOf(payload: Record<string, unknown>): string | null {
   return url || null;
 }
 
+const THUMB_MAX_BYTES = 80_000;
+
+function bufferFromThumb(value: unknown): Buffer | null {
+  if (typeof value === "string") {
+    const raw = value.replace(/^data:image\/\w+;base64,/, "").replace(/\s/g, "");
+    if (raw.length < 40) return null;
+    const buf = Buffer.from(raw, "base64");
+    if (buf.length < 32 || buf.length > THUMB_MAX_BYTES) return null;
+    return buf;
+  }
+  if (!value || typeof value !== "object") return null;
+  const data = (value as Record<string, unknown>).data;
+  if (typeof data === "string") return bufferFromThumb(data);
+  if (!Array.isArray(data) || data.length < 32 || data.length > THUMB_MAX_BYTES) return null;
+  return Buffer.from(data as number[]);
+}
+
+/** Miniatura que o WhatsApp já manda no vídeo/imagem. Não é o arquivo inteiro. */
+export function thumbnailDataUrl(payload: Record<string, unknown>): string | null {
+  const media = asRecord(payload.media);
+  const data = asRecord(payload._data);
+  const message = asRecord(data?.Message ?? data?.message);
+  const candidates: unknown[] = [media?.thumbnail, payload.thumbnail];
+  if (message) {
+    for (const key of ["imageMessage", "videoMessage", "stickerMessage", "ptvMessage"]) {
+      const part = asRecord(message[key]);
+      if (part) candidates.push(part.jpegThumbnail, part.JPEGThumbnail);
+    }
+  }
+  for (const candidate of candidates) {
+    const buf = bufferFromThumb(candidate);
+    if (buf) return `data:image/jpeg;base64,${buf.toString("base64")}`;
+  }
+  return null;
+}
+
 function preview(type: string, body: string): string {
   if (body.trim()) return body;
   if (type === "image") return "📷 Imagem";

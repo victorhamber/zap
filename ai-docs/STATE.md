@@ -1,5 +1,5 @@
 # Estado — Zap
 Atualizado: 2026-11-11
-Feito: grupo não grava mídia sozinho; Baixar chama o download de uma mensagem; conversa status some.
-Próximo: deploy no EasyPanel. Abrir a comunidade e clicar em Baixar na imagem.
-Bloqueio: nenhum no código.
+Feito: inbox ganhou a barra do Deskcomm; o assistente lista empresa e modelo, e só grava id OpenAI.
+Próximo: deploy no EasyPanel. A miniatura da comunidade entra ao reabrir o grupo.
+Bloqueio: nenhum no código. Reservar, convidar e transferir seguem sem equipe.

@@ -19,6 +19,7 @@ type Props = {
   quickReplies: QuickReply[];
   onUseQuickReply: (reply: QuickReply) => void | Promise<void>;
   disabled?: boolean;
+  placeholder?: string;
 };
 
 async function readFileAsDataUrl(file: File): Promise<string> {
@@ -128,7 +129,8 @@ export function InboxComposer({
   onSendMedia,
   quickReplies,
   onUseQuickReply,
-  disabled
+  disabled,
+  placeholder = "Mensagem"
 }: Props) {
   const [attachOpen, setAttachOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -442,7 +444,7 @@ export function InboxComposer({
             }}
             rows={1}
             disabled={disabled || uploading}
-            placeholder="Mensagem"
+            placeholder={placeholder}
             className="flex-1 w-full min-h-[24px] resize-none overflow-hidden bg-transparent border-0 text-[15px] leading-snug text-[var(--wa-text-primary)] placeholder:text-[var(--wa-text-secondary)] py-2 focus:outline-none focus:ring-0 disabled:opacity-50"
           />
         </div>

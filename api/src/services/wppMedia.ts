@@ -1,5 +1,6 @@
 import * as wpp from "./whatsapp/index.js";
 import { persistInboundMedia } from "./mediaConvert.js";
+import { thumbnailDataUrl } from "./wahaWebhook.js";
 
 const MEDIA_TYPES = new Set(["image", "video", "audio", "ptt", "sticker", "document"]);
 
@@ -11,6 +12,23 @@ async function persistWahaUrl(url: string): Promise<string | null> {
   const saved = await wpp.saveRemoteMedia(url);
   if (!saved) return null;
   return persistInboundMedia(saved.dataUrl, saved.mime);
+}
+
+/** Grava só o jpeg pequeno do WhatsApp. O vídeo/áudio inteiro continua no Baixar. */
+export async function persistGroupPreview(payload: Record<string, unknown>): Promise<string | null> {
+  const dataUrl = thumbnailDataUrl(payload);
+  if (!dataUrl) return null;
+  try {
+    return await persistInboundMedia(dataUrl, "image/jpeg");
+  } catch {
+    return null;
+  }
+}
+
+export function previewStillNeedsFile(type: string, url: string): boolean {
+  if (type !== "video" && type !== "audio") return false;
+  const path = url.split("?")[0]?.toLowerCase() ?? "";
+  return path.startsWith("data:image/") || /\.(jpe?g|png|webp)$/.test(path);
 }
 
 export async function persistRemoteMediaUrl(url: string): Promise<string | null> {

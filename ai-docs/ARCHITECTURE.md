@@ -8,7 +8,7 @@ Painel único para conversar no WhatsApp e disparar fluxos (Hotmart, grupo, tag,
 | Módulo | Responsabilidade | Doc |
 |---|---|---|
 | whatsapp | Cliente WAHA, QR, webhook, envio | modules/whatsapp.md |
-| inbox | Chats e mensagens no Postgres | (sem módulo ainda; fontes em `api/src/services/inbox*.ts`) |
+| inbox | Lista, conversa e ficha | modules/inbox.md |
 | fluxos | Grafo, executor, filas BullMQ | `api/src/engine/executor.ts`, `api/src/services/flow*.ts` |
 | ia | Resposta e aprendizado OpenAI | `api/src/services/ai/` |
 | painel | React/Vite | `web/src/` |
