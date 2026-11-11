@@ -11,6 +11,20 @@ export const FUNNEL_LABELS: Record<FunnelStage, string> = {
   perdido: "Perdido"
 };
 
+export const LOST_REASONS = ["preco", "sumiu", "ja_tem", "outro"] as const;
+export type LostReason = (typeof LOST_REASONS)[number];
+
+export const LOST_REASON_LABELS: Record<LostReason, string> = {
+  preco: "Preço",
+  sumiu: "Sumiu",
+  ja_tem: "Já tem",
+  outro: "Outro"
+};
+
+export function isLostReason(value: string): value is LostReason {
+  return (LOST_REASONS as readonly string[]).includes(value);
+}
+
 export function isFunnelStage(value: string): value is FunnelStage {
   return (FUNNEL_STAGES as readonly string[]).includes(value);
 }
@@ -31,25 +45,33 @@ export function nextStage(
 export async function setContactStage(
   phone: string,
   target: FunnelStage,
-  reason: "inbound" | "purchase" | "manual"
+  reason: "inbound" | "purchase" | "manual",
+  extra?: { lostReason?: string | null; productName?: string | null }
 ): Promise<void> {
   if (!prisma) return;
   const contact = await ensureContact(phone);
   const move = nextStage(contact.stage, target, reason);
+  const lostReason = extra?.lostReason && isLostReason(extra.lostReason) ? extra.lostReason : null;
+  const productName = extra?.productName?.trim() || null;
   if (!move) {
-    if (reason === "inbound" && contact.followUpFiredAt) {
-      await prisma.contact.update({
-        where: { id: contact.id },
-        data: { followUpFiredAt: null }
-      });
+    const data: { followUpFiredAt?: null; followUpStep?: number; productName?: string; lostReason?: string } = {};
+    if (reason === "inbound" && (contact.followUpFiredAt || contact.followUpStep > 0)) {
+      data.followUpFiredAt = null;
+      data.followUpStep = 0;
     }
+    if (reason === "purchase" && productName) data.productName = productName;
+    if (reason === "manual" && contact.stage === "perdido" && lostReason) data.lostReason = lostReason;
+    if (Object.keys(data).length === 0) return;
+    await prisma.contact.update({ where: { id: contact.id }, data });
     return;
   }
   await prisma.contact.update({
     where: { id: contact.id },
     data: {
       stage: move,
-      ...(reason === "inbound" ? { followUpFiredAt: null } : {})
+      ...(reason === "inbound" ? { followUpFiredAt: null, followUpStep: 0 } : {}),
+      ...(move === "perdido" ? { lostReason } : { lostReason: null }),
+      ...(reason === "purchase" && productName ? { productName } : {})
     }
   });
 }
@@ -60,10 +82,10 @@ export async function noteInbound(phone: string): Promise<void> {
   await setContactStage(digits, "em_conversa", "inbound");
 }
 
-export async function notePurchase(phone: string): Promise<void> {
+export async function notePurchase(phone: string, productName?: string): Promise<void> {
   const digits = phone.replace(/\D/g, "");
   if (digits.length < 10) return;
-  await setContactStage(digits, "comprou", "purchase");
+  await setContactStage(digits, "comprou", "purchase", { productName });
 }
 
 export async function stageLabelForPhone(phone: string): Promise<string> {

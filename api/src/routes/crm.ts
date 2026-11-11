@@ -3,6 +3,7 @@ import { prisma } from "../prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import { contactToJson } from "../services/contacts.js";
 import { FUNNEL_STAGES, FUNNEL_LABELS } from "../services/contactStage.js";
+import { parseFollowUpSteps } from "../services/coldFollowUp.js";
 
 export async function crmRoutes(app: FastifyInstance) {
   app.addHook("preHandler", requireAuth);
@@ -20,7 +21,7 @@ export async function crmRoutes(app: FastifyInstance) {
   });
 
   app.get("/api/crm/follow-up", async () => {
-    if (!prisma) return { hours: 24, flowId: "" };
+    if (!prisma) return { steps: [], flows: [] };
     const settings = await prisma.appSettings.findUnique({ where: { id: "default" } });
     const flows = await prisma.flow.findMany({
       where: { enabled: true },
@@ -28,21 +29,27 @@ export async function crmRoutes(app: FastifyInstance) {
       orderBy: { name: "asc" }
     });
     return {
-      hours: settings?.followUpHours ?? 24,
-      flowId: settings?.followUpFlowId ?? "",
+      steps: parseFollowUpSteps(settings?.followUpSteps, {
+        hours: settings?.followUpHours,
+        flowId: settings?.followUpFlowId
+      }),
       flows
     };
   });
 
   app.put("/api/crm/follow-up", async (req, reply) => {
     if (!prisma) return reply.status(503).send({ error: "Banco indisponível" });
-    const body = req.body as { hours?: number; flowId?: string };
-    const hours = Math.max(0, Math.min(24 * 30, Math.floor(Number(body.hours ?? 24))));
-    const flowId = (body.flowId ?? "").trim();
+    const body = req.body as { steps?: unknown };
+    const steps = parseFollowUpSteps(body.steps);
+    const first = steps[0];
     await prisma.appSettings.update({
       where: { id: "default" },
-      data: { followUpHours: hours, followUpFlowId: flowId || null }
+      data: {
+        followUpSteps: steps,
+        followUpHours: first?.hours ?? 0,
+        followUpFlowId: first?.flowId ?? null
+      }
     });
-    return { ok: true, hours, flowId };
+    return { ok: true, steps };
   });
 }

@@ -598,15 +598,19 @@ export async function inboxRoutes(app: FastifyInstance) {
       notes?: string;
       tagIds?: string[];
       stage?: string;
+      lostReason?: string;
     };
     try {
       const contact = await upsertContact(phone, body);
       if (body.stage && contact) {
-        const { isFunnelStage, setContactStage } = await import("../services/contactStage.js");
+        const { isFunnelStage, isLostReason, setContactStage } = await import("../services/contactStage.js");
         if (!isFunnelStage(body.stage)) {
           return reply.status(400).send({ ok: false, error: "Etapa inválida" });
         }
-        await setContactStage(phone, body.stage, "manual");
+        if (body.stage === "perdido" && !isLostReason(body.lostReason ?? "")) {
+          return reply.status(400).send({ ok: false, error: "Escolha o motivo de perdido" });
+        }
+        await setContactStage(phone, body.stage, "manual", { lostReason: body.lostReason });
       }
       const fresh = contact
         ? await prisma?.contact.findUnique({

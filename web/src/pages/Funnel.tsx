@@ -9,9 +9,25 @@ type BoardContact = {
   phone: string;
   name: string | null;
   stage?: string | null;
+  lostReason?: string | null;
+  productName?: string | null;
   tags: Tag[];
 };
 type FlowOpt = { id: string; name: string };
+type FollowStep = { hours: number; flowId: string };
+
+const LOST_REASONS = [
+  { id: "preco", label: "Preço" },
+  { id: "sumiu", label: "Sumiu" },
+  { id: "ja_tem", label: "Já tem" },
+  { id: "outro", label: "Outro" }
+];
+
+const EMPTY_STEPS: FollowStep[] = [
+  { hours: 24, flowId: "" },
+  { hours: 72, flowId: "" },
+  { hours: 168, flowId: "" }
+];
 
 const FALLBACK_STAGES: Stage[] = [
   { id: "novo", label: "Novo" },
@@ -23,8 +39,7 @@ const FALLBACK_STAGES: Stage[] = [
 export function Funnel() {
   const [stages, setStages] = useState<Stage[]>(FALLBACK_STAGES);
   const [contacts, setContacts] = useState<BoardContact[]>([]);
-  const [hours, setHours] = useState(24);
-  const [flowId, setFlowId] = useState("");
+  const [steps, setSteps] = useState<FollowStep[]>(EMPTY_STEPS);
   const [flows, setFlows] = useState<FlowOpt[]>([]);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState("");
@@ -33,11 +48,9 @@ export function Funnel() {
     const board = await api<{ stages?: Stage[]; contacts?: BoardContact[] }>("/api/crm/board");
     if (board.stages?.length) setStages(board.stages);
     setContacts(board.contacts ?? []);
-    const follow = await api<{ hours?: number; flowId?: string; flows?: FlowOpt[] }>(
-      "/api/crm/follow-up"
-    );
-    setHours(follow.hours ?? 24);
-    setFlowId(follow.flowId ?? "");
+    const follow = await api<{ steps?: FollowStep[]; flows?: FlowOpt[] }>("/api/crm/follow-up");
+    const loaded = follow.steps ?? [];
+    setSteps(EMPTY_STEPS.map((fallback, index) => loaded[index] ?? fallback));
     setFlows(follow.flows ?? []);
   }
 
@@ -47,73 +60,92 @@ export function Funnel() {
     );
   }, []);
 
-  async function move(phone: string, stage: string) {
+  async function move(phone: string, stage: string, lostReason?: string) {
     setError("");
+    if (stage === "perdido" && !lostReason) {
+      setContacts((prev) => prev.map((c) => (c.phone === phone ? { ...c, stage, lostReason: c.lostReason || "" } : c)));
+      return;
+    }
     await api(`/api/contacts/${encodeURIComponent(phone)}`, {
       method: "PUT",
-      body: JSON.stringify({ stage })
+      body: JSON.stringify({ stage, ...(lostReason ? { lostReason } : {}) })
     });
-    setContacts((prev) => prev.map((c) => (c.phone === phone ? { ...c, stage } : c)));
+    setContacts((prev) => prev.map((c) => (c.phone === phone ? { ...c, stage, lostReason: lostReason ?? null } : c)));
   }
 
   async function saveFollowUp() {
     setError("");
     setSaved("");
+    const active = steps.filter((step) => step.flowId && step.hours >= 1);
     await api("/api/crm/follow-up", {
       method: "PUT",
-      body: JSON.stringify({ hours, flowId })
+      body: JSON.stringify({ steps: active })
     });
-    setSaved(hours < 1 || !flowId ? "Retomada desligada." : "Retomada salva.");
+    setSaved(active.length === 0 ? "Retomada desligada." : "Retomada salva.");
   }
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Funil"
-        subtitle="Novo, em conversa, comprou ou perdido. A compra na Hotmart move para Comprou. Quem fica em conversa sem falar recebe o fluxo escolhido."
+        subtitle="Novo, em conversa, comprou ou perdido. A compra na Hotmart move para Comprou e guarda o produto. A retomada manda até três fluxos e para quando a pessoa responde."
       />
 
       {error && <p className="text-sm text-red-300">{error}</p>}
 
       <Card>
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="text-sm text-zinc-300">
-            Horas em silêncio
-            <input
-              type="number"
-              min={0}
-              max={720}
-              value={hours}
-              onChange={(e) => setHours(Number(e.target.value))}
-              className="mt-1 block w-28 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
-            />
-          </label>
-          <label className="min-w-[16rem] flex-1 text-sm text-zinc-300">
-            Fluxo da retomada
-            <select
-              value={flowId}
-              onChange={(e) => setFlowId(e.target.value)}
-              className="mt-1 block w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
+        <div className="space-y-3">
+          {steps.map((step, index) => (
+            <div key={index} className="flex flex-wrap items-end gap-3">
+              <label className="text-sm text-zinc-300">
+                {index + 1}º passo, horas
+                <input
+                  type="number"
+                  min={1}
+                  max={720}
+                  value={step.hours}
+                  onChange={(e) =>
+                    setSteps((prev) =>
+                      prev.map((item, i) => (i === index ? { ...item, hours: Number(e.target.value) } : item))
+                    )
+                  }
+                  className="mt-1 block w-28 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
+                />
+              </label>
+              <label className="min-w-[16rem] flex-1 text-sm text-zinc-300">
+                Fluxo
+                <select
+                  value={step.flowId}
+                  onChange={(e) =>
+                    setSteps((prev) =>
+                      prev.map((item, i) => (i === index ? { ...item, flowId: e.target.value } : item))
+                    )
+                  }
+                  className="mt-1 block w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
+                >
+                  <option value="">Não enviar</option>
+                  {flows.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          ))}
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => void saveFollowUp().catch((e: unknown) => setError(e instanceof Error ? e.message : "Erro ao salvar"))}
+              className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-zinc-950"
             >
-              <option value="">Não retomar</option>
-              {flows.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            type="button"
-            onClick={() => void saveFollowUp().catch((e: unknown) => setError(e instanceof Error ? e.message : "Erro ao salvar"))}
-            className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-zinc-950"
-          >
-            Salvar retomada
-          </button>
-          {saved && <span className="text-sm text-emerald-300">{saved}</span>}
+              Salvar retomada
+            </button>
+            {saved && <span className="text-sm text-emerald-300">{saved}</span>}
+          </div>
         </div>
         <p className="mt-3 text-xs text-zinc-500">
-          Zero horas ou nenhum fluxo desliga a retomada. Ela só dispara para quem está em conversa e ainda não respondeu.
+          O 1º passo conta a partir da nossa última mensagem. Os seguintes contam a partir do passo anterior. Uma resposta da pessoa zera a sequência. Passo sem fluxo não entra.
         </p>
       </Card>
 
@@ -131,9 +163,12 @@ export function Funnel() {
                   <li key={c.id} className="rounded-xl bg-zinc-900/80 p-3">
                     <p className="truncate text-sm text-white">{c.name || c.phone}</p>
                     <p className="truncate text-xs text-zinc-500">{c.phone}</p>
+                    {c.stage === "comprou" && c.productName && (
+                      <p className="truncate text-xs text-emerald-300">{c.productName}</p>
+                    )}
                     <select
                       value={c.stage || "novo"}
-                      onChange={(e) => void move(c.phone, e.target.value)}
+                      onChange={(e) => void move(c.phone, e.target.value, e.target.value === "perdido" ? c.lostReason || undefined : undefined)}
                       className="mt-2 w-full rounded-lg border-0 bg-zinc-800 px-2 py-1 text-xs text-zinc-200"
                     >
                       {stages.map((s) => (
@@ -142,6 +177,20 @@ export function Funnel() {
                         </option>
                       ))}
                     </select>
+                    {(c.stage || "novo") === "perdido" && (
+                      <select
+                        value={c.lostReason || ""}
+                        onChange={(e) => void move(c.phone, "perdido", e.target.value)}
+                        className="mt-2 w-full rounded-lg border-0 bg-zinc-800 px-2 py-1 text-xs text-zinc-200"
+                      >
+                        <option value="">Motivo</option>
+                        {LOST_REASONS.map((reason) => (
+                          <option key={reason.id} value={reason.id}>
+                            {reason.label}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </li>
                 ))}
               </ul>

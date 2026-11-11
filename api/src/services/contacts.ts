@@ -135,6 +135,8 @@ export function contactToJson(
     email: c.email,
     notes: c.notes,
     stage: c.stage,
+    lostReason: c.lostReason,
+    productName: c.productName,
     tags: c.tags.map((ct) => ({
       id: ct.tag.id,
       name: ct.tag.name,

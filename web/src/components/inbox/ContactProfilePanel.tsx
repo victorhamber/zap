@@ -11,6 +11,8 @@ type ContactInfo = {
   email?: string | null;
   notes?: string | null;
   stage?: string | null;
+  lostReason?: string | null;
+  productName?: string | null;
   tags: Tag[];
 };
 
@@ -19,6 +21,13 @@ const FUNNEL_STEPS = [
   { id: "em_conversa", label: "Em conversa" },
   { id: "comprou", label: "Comprou" },
   { id: "perdido", label: "Perdido" }
+] as const;
+
+const LOST_REASONS = [
+  { id: "preco", label: "Preço" },
+  { id: "sumiu", label: "Sumiu" },
+  { id: "ja_tem", label: "Já tem" },
+  { id: "outro", label: "Outro" }
 ] as const;
 
 type ProfileGroup = { id: string; name: string };
@@ -30,6 +39,8 @@ type Profile = {
   email: string | null;
   notes: string | null;
   stage: string | null;
+  lostReason: string | null;
+  productName: string | null;
   isGroup: boolean;
   contact: ContactInfo | null;
   groups: ProfileGroup[];
@@ -156,6 +167,7 @@ export function ContactProfilePanel({
     notes?: string;
     tagIds?: string[];
     stage?: string;
+    lostReason?: string;
   }) {
     if (chat.isGroup) return;
     setSaving(true);
@@ -170,7 +182,8 @@ export function ContactProfilePanel({
             ...(patch.email !== undefined ? { email: patch.email.trim() || undefined } : {}),
             ...(patch.notes !== undefined ? { notes: patch.notes.trim() || undefined } : {}),
             ...(patch.tagIds !== undefined ? { tagIds: patch.tagIds } : {}),
-            ...(patch.stage !== undefined ? { stage: patch.stage } : {})
+            ...(patch.stage !== undefined ? { stage: patch.stage } : {}),
+            ...(patch.lostReason !== undefined ? { lostReason: patch.lostReason } : {})
           })
         }
       );
@@ -184,6 +197,8 @@ export function ContactProfilePanel({
                 email: r.contact.email ?? null,
                 notes: r.contact.notes ?? null,
                 stage: r.contact.stage ?? p.stage,
+                lostReason: r.contact.lostReason ?? null,
+                productName: r.contact.productName ?? p.productName,
                 contact: r.contact
               }
             : p
@@ -383,7 +398,13 @@ export function ContactProfilePanel({
                     key={step.id}
                     type="button"
                     disabled={saving}
-                    onClick={() => void saveContact({ stage: step.id })}
+                    onClick={() => {
+                      if (step.id === "perdido") {
+                        setProfile((current) => (current ? { ...current, stage: "perdido" } : current));
+                        return;
+                      }
+                      void saveContact({ stage: step.id });
+                    }}
                     className={`rounded-lg px-2 py-1.5 text-xs ${
                       on ? "bg-[#00a884] text-[#111b21]" : "bg-[#2a3942] text-[#e9edef]"
                     }`}
@@ -393,6 +414,23 @@ export function ContactProfilePanel({
                 );
               })}
             </div>
+            {(profile?.stage ?? "novo") === "perdido" && (
+              <select
+                value={profile?.lostReason ?? profile?.contact?.lostReason ?? ""}
+                onChange={(e) => void saveContact({ stage: "perdido", lostReason: e.target.value })}
+                className="mt-2 w-full rounded-lg bg-[#2a3942] px-2 py-1.5 text-xs text-[#e9edef]"
+              >
+                <option value="">Motivo</option>
+                {LOST_REASONS.map((reason) => (
+                  <option key={reason.id} value={reason.id}>
+                    {reason.label}
+                  </option>
+                ))}
+              </select>
+            )}
+            {profile?.productName && (
+              <p className="mt-2 text-xs text-[#8696a0]">Produto: {profile.productName}</p>
+            )}
           </section>
         )}
 

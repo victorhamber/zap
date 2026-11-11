@@ -32,6 +32,7 @@ type DashboardStats = {
     dailySent: { date: string; count: number }[];
   };
   scheduled: { pending: number };
+  funnel?: { novo: number; em_conversa: number; comprou: number; perdido: number; radar: number };
   topFlows: { flowId: string; name: string; enabled: boolean; count: number }[];
 };
 
@@ -418,6 +419,14 @@ export function Dashboard() {
           icon="clock"
           loading={loading}
         />
+      </section>
+
+      <section className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+        <StatCard label="Novo" value={stats?.funnel?.novo ?? 0} hint="Acabaram de chegar" to="/funil" icon="users" loading={loading} />
+        <StatCard label="Em conversa" value={stats?.funnel?.em_conversa ?? 0} hint="Ainda no papo" to="/funil" icon="chat" tone="sky" loading={loading} />
+        <StatCard label="Comprou" value={stats?.funnel?.comprou ?? 0} hint="Compra aprovada" to="/funil" icon="check" tone="brand" loading={loading} />
+        <StatCard label="Perdido" value={stats?.funnel?.perdido ?? 0} hint="Saíram do funil" to="/funil" icon="alert" loading={loading} />
+        <StatCard label="Radar" value={stats?.funnel?.radar ?? 0} hint="Esperando resposta há mais de 2 horas" to="/whatsapp" icon="clock" tone="amber" loading={loading} />
       </section>
 
       {/* Gráficos */}

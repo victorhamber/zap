@@ -1,4 +1,4 @@
-# MAP — zap-review · 2026-11-10 · 205 arquivos · 42944 linhas
+# MAP — zap-review · 2026-11-10 · 207 arquivos · 43275 linhas
 > Gerado por ai-docs/tools/map_repo.py — NÃO editar. Use isto em vez de ler o código inteiro: ache o arquivo/símbolo aqui e abra só o trecho.
 Stack: node
 Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, build:web, start; api/src/index.ts; api/src/services/whatsapp/index.ts
@@ -39,10 +39,10 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 ## api/src/routes/
 - ai.ts [226L] — aiRoutes()
 - auth.ts [98L] Janela e teto de tentativas de login por IP. */ — loginThrottle(), registerFailedLogin(), authRoutes()
-- crm.ts [49L] — crmRoutes()
-- dashboard.ts [171L] Chave YYYY-MM-DD no fuso do servidor. Usar toISOString() aqui jogaria os — startOfToday(), daysAgo(), localDayKey(), last7DayKeys(), bucketByDay(), dashboardRoutes()
+- crm.ts [56L] — crmRoutes()
+- dashboard.ts [213L] — funnelSnapshot(), countRadar(), startOfToday(), daysAgo(), localDayKey(), last7DayKeys(), bucketByDay(), dashboardRoutes()
 - flows.ts [299L] — flowRoutes()
-- inbox.ts [739L] — sortQuickReplies(), normalizeQuickReply(), parseQuickReplies(), sanitizeQuickRepliesForSave(), preferMergedChatId(), mergeInboxChatRows(), dedupeInboxChatRows(), inboxRoutes()
+- inbox.ts [743L] — sortQuickReplies(), normalizeQuickReply(), parseQuickReplies(), sanitizeQuickRepliesForSave(), preferMergedChatId(), mergeInboxChatRows(), dedupeInboxChatRows(), inboxRoutes()
 - media.ts [47L] — mediaRoutes()
 - runs.ts [31L] — runRoutes()
 - settings.ts [349L] — settingsRoutes()
@@ -52,12 +52,13 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 ## api/src/services/
 - adminUser.ts [33L] Sincroniza admin do .env; ao mudar a senha, invalida JWTs emitidos antes. */ — syncAdminUserFromEnv()
 - broadcastFlowTrigger.ts [100L] — normalizeContactPhone(), queueBroadcastRun(), dispatchBroadcastFlow()
-- coldFollowUp.ts [58L] Contato em "Em conversa" cuja última mensagem é dele e já passou do silêncio — runColdFollowUps()
+- coldFollowUp.test.ts [74L]
+- coldFollowUp.ts [121L] — parseFollowUpSteps(), nextFollowUp(), runColdFollowUps()
 - contactAvatar.ts [27L] sem foto */ — getContactAvatarUrl()
-- contactProfile.ts [103L] — inboxSession(), getContactProfile(), getContactSharedGroups()
+- contactProfile.ts [109L] — inboxSession(), getContactProfile(), getContactSharedGroups()
 - contactStage.test.ts [23L]
-- contactStage.ts [75L] Inbound só tira de Novo. Compra sempre vai para Comprou. Manual aceita qualquer  — isFunnelStage(), nextStage(), setContactStage(), noteInbound(), notePurchase(), stageLabelForPhone()
-- contacts.ts [256L] — toStoragePhone(), findContactByPhoneLoose(), getContactTagNames(), upsertContact(), listContactsWithTags(), normalizeContactEmail(), contactToJson(), isWeakContactName(), ensureContact(), ensureTagsByNames(), addContactTagsByNames(), removeContactTagsByNames()
+- contactStage.ts [97L] — isLostReason(), isFunnelStage(), nextStage(), setContactStage(), noteInbound(), notePurchase(), stageLabelForPhone()
+- contacts.ts [258L] — toStoragePhone(), findContactByPhoneLoose(), getContactTagNames(), upsertContact(), listContactsWithTags(), normalizeContactEmail(), contactToJson(), isWeakContactName(), ensureContact(), ensureTagsByNames(), addContactTagsByNames(), removeContactTagsByNames()
 - flowDispatch.ts [42L] Enfileira o início de um fluxo com cadência global humanizada (anti-spam). — queueFlowRunStart()
 - flowRoundRobin.ts [46L] Próximo índice de ramo (0..branchCount-1) em round robin global por fluxo + nó. — getRedisClient(), reserveRoundRobinBranch()
 - flowScheduler.ts [94L] Recupera execuções presas em delay/agendamento quando o worker BullMQ não proces — processDueScheduledJobs(), startFlowScheduler(), stopFlowScheduler()
@@ -162,7 +163,7 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 - wppconnect-config-fix.sh [47L] Cole ESTE BLOCO INTEIRO no console EasyPanel do serviço wppconnect (aba Console 
 
 ## prisma/
-- schema.prisma [262L]
+- schema.prisma [270L]
 
 ## prisma/migrations/
 - migration_lock.toml [3L]
@@ -236,6 +237,9 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 ## prisma/migrations/0023_contact_stage/
 - migration.sql [7L]
 
+## prisma/migrations/0024_followup_sequence/
+- migration.sql [7L]
+
 ## web/
 - eslint.config.js [12L]
 - index.html [16L]
@@ -278,7 +282,7 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 - nodeMeta.ts [209L] — paletteDragType(), hotmartWebhookUrl(), customWebhookUrl(), buildWaMeLink(), defaultNodeData()
 
 ## web/src/components/inbox/
-- ContactProfilePanel.tsx [515L] — formatPhoneDisplay(), ContactProfilePanel()
+- ContactProfilePanel.tsx [553L] — formatPhoneDisplay(), ContactProfilePanel()
 - ForwardMessageModal.tsx [323L] — isBase64Blob(), mediaUrlFromMessage(), captionFromMessage(), messageToForwardPayload(), chatLabel(), ForwardMessageModal()
 - InboxComposer.tsx [508L] — readFileAsDataUrl(), blobToDataUrl(), uploadDataUrl(), pickAudioMimeType(), IconPlus(), IconSmile(), IconMic(), IconSend(), IconTrash(), InboxComposer()
 - LinkifyText.tsx [67L] — normalizeHref(), splitTrailingPunctuation()
@@ -295,11 +299,11 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 - WppInstancesManager.tsx [493L] — WppInstancesManager()
 
 ## web/src/pages/
-- Dashboard.tsx [623L] — formatEventTime(), formatDay(), StatCard(), BarChart(), ChartSkeleton(), DistributionList(), Dashboard()
+- Dashboard.tsx [632L] — formatEventTime(), formatDay(), StatCard(), BarChart(), ChartSkeleton(), DistributionList(), Dashboard()
 - FlowEditor.tsx [790L] — summaryFor(), toReactFlowNodes(), toReactFlowEdges(), cloneNodeConfig(), FlowEditor()
 - FlowRuns.tsx [269L] — statusBadge(), formatDateTime(), FlowRuns()
 - FlowsList.tsx [254L] — webhookShortcutForFlow(), formatUpdatedAt(), FlowsList()
-- Funnel.tsx [155L] — Funnel()
+- Funnel.tsx [204L] — Funnel()
 - Login.tsx [113L] — Login()
 - MediaLibrary.tsx [442L] — formatBytes(), formatDate(), MediaLibrary()
 - Settings.tsx [95L] — Settings()

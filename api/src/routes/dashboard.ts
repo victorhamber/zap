@@ -1,6 +1,44 @@
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../prisma.js";
 import { requireAuth } from "../middleware/auth.js";
+import { getActiveWppSessionName } from "../services/whatsapp/index.js";
+
+const RADAR_SILENCE_MS = 2 * 60 * 60 * 1000;
+
+async function funnelSnapshot() {
+  const empty = { novo: 0, em_conversa: 0, comprou: 0, perdido: 0, radar: 0 };
+  if (!prisma) return empty;
+  const groups = await prisma.contact.groupBy({ by: ["stage"], _count: { _all: true } });
+  for (const group of groups) {
+    if (group.stage === "novo") empty.novo = group._count._all;
+    else if (group.stage === "em_conversa") empty.em_conversa = group._count._all;
+    else if (group.stage === "comprou") empty.comprou = group._count._all;
+    else if (group.stage === "perdido") empty.perdido = group._count._all;
+  }
+  empty.radar = await countRadar();
+  return empty;
+}
+
+async function countRadar(): Promise<number> {
+  if (!prisma) return 0;
+  const session = await getActiveWppSessionName().catch(() => "");
+  if (!session) return 0;
+  const cutoff = new Date(Date.now() - RADAR_SILENCE_MS);
+  const rows = await prisma.$queryRaw<{ count: number }[]>`
+    SELECT COUNT(*)::int AS count
+    FROM (
+      SELECT DISTINCT ON ("chatId") "fromMe", "timestamp"
+      FROM "InboxMessage"
+      WHERE "session" = ${session}
+        AND "chatId" NOT LIKE '%@g.us'
+        AND "chatId" NOT LIKE '%@newsletter%'
+      ORDER BY "chatId", "timestamp" DESC
+    ) latest
+    WHERE latest."fromMe" = false
+      AND latest."timestamp" < ${cutoff}
+  `;
+  return Number(rows[0]?.count ?? 0);
+}
 
 function startOfToday(): Date {
   const d = new Date();
@@ -69,7 +107,8 @@ export async function dashboardRoutes(app: FastifyInstance) {
           dailySent: last7DayKeys().map((date) => ({ date, count: 0 }))
         },
         scheduled: { pending: 0 },
-        topFlows: []
+        topFlows: [],
+        funnel: { novo: 0, em_conversa: 0, comprou: 0, perdido: 0, radar: 0 }
       };
     }
 
@@ -92,7 +131,8 @@ export async function dashboardRoutes(app: FastifyInstance) {
       messagesReceivedToday,
       scheduledPending,
       topFlowGroups,
-      allFlows
+      allFlows,
+      funnel
     ] = await Promise.all([
       prisma.flow.count(),
       prisma.flow.count({ where: { enabled: true } }),
@@ -122,7 +162,8 @@ export async function dashboardRoutes(app: FastifyInstance) {
         orderBy: { _count: { flowId: "desc" } },
         take: 5
       }),
-      prisma.flow.findMany({ select: { id: true, name: true, enabled: true } })
+      prisma.flow.findMany({ select: { id: true, name: true, enabled: true } }),
+      funnelSnapshot()
     ]);
 
     const flowMap = new Map(allFlows.map((f) => [f.id, f]));
@@ -156,6 +197,7 @@ export async function dashboardRoutes(app: FastifyInstance) {
         dailySent: bucketByDay(weekMessages.map((m) => ({ at: m.timestamp })))
       },
       scheduled: { pending: scheduledPending },
+      funnel,
       topFlows: topFlowGroups.map((g) => {
         const flow = flowMap.get(g.flowId);
         return {

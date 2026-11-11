@@ -34,10 +34,12 @@ model AppSettings {
   /** Remetente verificado no Resend (ex.: ola@seudominio.com). */
   emailFrom            String?
   emailFromName        String?
-  /** Horas de silêncio antes de retomar um contato em "em_conversa". 0 desliga. */
+  /** Horas de silêncio antes de retomar um contato em "em_conversa". 0 desliga. Espelha o 1º passo. */
   followUpHours        Int       @default(24)
-  /** Fluxo disparado nessa retomada. Vazio = não dispara. */
+  /** Fluxo disparado nessa retomada. Vazio = não dispara. Espelha o 1º passo. */
   followUpFlowId       String?
+  /** Até 3 passos: [{ hours, flowId }]. Cada um espera as horas depois do anterior. */
+  followUpSteps        Json      @default("[]")
   updatedAt            DateTime  @updatedAt
 }
 
@@ -235,7 +237,13 @@ model Contact {
   notes     String?
   /** novo | em_conversa | comprou | perdido */
   stage     String       @default("novo")
-  /** Quando a retomada por silêncio já disparou para a última mensagem recebida. */
+  /** preco | sumiu | ja_tem | outro. Só vale em perdido. */
+  lostReason String?
+  /** Nome do produto na última compra Hotmart aprovada. */
+  productName String?
+  /** Quantos passos da retomada já saíram neste silêncio. */
+  followUpStep Int        @default(0)
+  /** Quando o último passo da retomada foi enfileirado. */
   followUpFiredAt DateTime?
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt

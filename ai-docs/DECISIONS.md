@@ -17,3 +17,9 @@
 - Decisão: quatro etapas no `Contact`. Radar e retomada leem a última mensagem. A ficha fica aberta no desktop. A aba Conexão oficial é a instância Meta que já existia.
 - Alternativas: copiar o RAG, o time e o multi-tenant do Deskcomm. Recusado.
 - Consequência: Hotmart aprovada vai para Comprou. Mensagem recebida só tira de Novo. Retomada só em Em conversa.
+
+## 2026-11-10 — Retomada em até três passos
+- Contexto: um único fluxo não cobre a 2ª e a 3ª mensagem. O card de Comprou não dizia o produto, e Perdido não tinha motivo.
+- Decisão: três passos com horas e fluxo. A sequência começa quando a última mensagem foi nossa e zera quando a pessoa responde. Compra grava `productName`. Perdido exige `preco`, `sumiu`, `ja_tem` ou `outro`.
+- Alternativas: modelo de mensagem da API oficial da Meta. Fica para quando o número sair do QR.
+- Consequência: o Dashboard mostra as quatro etapas e o radar. O intervalo 45–120 s do fluxo não muda.
