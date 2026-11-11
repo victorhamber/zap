@@ -8,7 +8,6 @@ import {
   EmptyState,
   ErrorNotice,
   Icon,
-  type IconName,
   PageHeader,
   Skeleton
 } from "../components/ui";
@@ -104,72 +103,6 @@ function formatDay(iso: string): string {
     weekday: "short",
     day: "2-digit"
   });
-}
-
-/* ------------------------------------------------------------------ */
-
-function StatCard({
-  label,
-  value,
-  hint,
-  to,
-  icon,
-  tone = "neutral",
-  loading
-}: {
-  label: string;
-  value: string | number;
-  hint?: string;
-  to?: string;
-  icon: IconName;
-  tone?: "neutral" | "brand" | "sky" | "amber";
-  loading?: boolean;
-}) {
-  const toneClass = {
-    neutral: "text-zinc-400 bg-[var(--surface-2)]",
-    brand: "text-brand-300 bg-brand-500/10",
-    sky: "text-sky-300 bg-sky-500/10",
-    amber: "text-amber-300 bg-amber-500/10"
-  }[tone];
-
-  const inner = (
-    <>
-      <div className="flex items-start justify-between gap-3">
-        <span className="text-xs font-medium text-zinc-500">{label}</span>
-        <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${toneClass}`}>
-          <Icon name={icon} className="h-4 w-4" />
-        </span>
-      </div>
-      {loading ? (
-        <Skeleton className="mt-3 h-7 w-20" />
-      ) : (
-        <div className="mt-2 text-[26px] font-semibold leading-none tracking-tight text-white">
-          {value}
-        </div>
-      )}
-      {hint &&
-        (loading ? (
-          <Skeleton className="mt-3 h-3 w-28" />
-        ) : (
-          <div className="mt-2.5 text-xs text-zinc-500">{hint}</div>
-        ))}
-    </>
-  );
-
-  const base =
-    "rounded-2xl border border-[var(--line)] bg-[var(--surface-1)] p-4 shadow-[0_10px_30px_-18px_rgba(0,0,0,0.9)]";
-
-  if (to) {
-    return (
-      <Link
-        to={to}
-        className={`${base} block transition duration-200 hover:-translate-y-0.5 hover:border-brand-500/30 hover:bg-[var(--surface-2)]`}
-      >
-        {inner}
-      </Link>
-    );
-  }
-  return <div className={base}>{inner}</div>;
 }
 
 function BarChart({
@@ -350,7 +283,7 @@ export function Dashboard() {
     <div className="space-y-8">
       <PageHeader
         title="Dashboard"
-        subtitle="Visão geral das automações, envios e engajamento dos últimos 7 dias."
+        subtitle="Quem está no funil, o que a operação fez hoje e se o WhatsApp está no ar."
         actions={
           <Link
             to="/runs"
@@ -364,70 +297,68 @@ export function Dashboard() {
 
       {error && <ErrorNotice>{error}</ErrorNotice>}
 
-      {/* Métricas principais */}
-      <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard
-          label="Fluxos ativos"
-          value={stats?.flows.active ?? 0}
-          hint={`${stats?.flows.total ?? 0} no total`}
-          to="/flows"
-          icon="flow"
-          tone="brand"
-          loading={loading}
-        />
-        <StatCard
-          label="WhatsApp"
-          value={wpp.label}
-          hint="Status da conexão"
-          to="/whatsapp"
-          icon="chat"
-          tone={wpp.connected ? "brand" : "neutral"}
-        />
-        <StatCard
-          label="Execuções hoje"
-          value={stats?.runs.today ?? 0}
-          hint={`${stats?.runs.last7Days ?? 0} nos últimos 7 dias`}
-          icon="activity"
-          tone="sky"
-          loading={loading}
-        />
-        <StatCard
-          label="Taxa de sucesso"
-          value={`${successRate}%`}
-          hint={`${stats?.runs.total ?? 0} execuções no total`}
-          icon="check"
-          tone={successRate >= 80 ? "brand" : "amber"}
-          loading={loading}
-        />
+      {wpp.label !== "Verificando…" && !wpp.connected && (
+        <Link
+          to="/settings"
+          className="flex items-center justify-between gap-4 rounded-2xl border border-amber-400/40 bg-amber-500/10 px-5 py-4"
+        >
+          <div>
+            <p className="text-sm font-medium text-amber-50">WhatsApp desconectado</p>
+            <p className="mt-1 text-sm text-amber-100">Leia o QR para as conversas voltarem.</p>
+          </div>
+          <span className="shrink-0 text-sm font-medium text-amber-50">Abrir QR</span>
+        </Link>
+      )}
+
+      <section>
+        <div className="mb-3 flex items-baseline justify-between gap-3">
+          <h2 className="text-base font-medium text-white">Funil</h2>
+          <Link to="/funil" className="text-sm text-brand-300 hover:text-brand-200">
+            Abrir funil
+          </Link>
+        </div>
+        <div className="grid grid-cols-2 overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--surface-1)] sm:grid-cols-5">
+          {(
+            [
+              ["novo", "Novo", "/funil"],
+              ["em_conversa", "Em conversa", "/funil"],
+              ["comprou", "Comprou", "/funil"],
+              ["perdido", "Perdido", "/funil"],
+              ["radar", "Radar", "/whatsapp"]
+            ] as const
+          ).map(([key, label, to]) => (
+            <Link
+              key={key}
+              to={to}
+              title={key === "radar" ? "Esperando resposta há mais de 2 horas" : undefined}
+              className="border-[var(--line)] px-4 py-4 hover:bg-[var(--surface-2)] max-sm:odd:border-r max-sm:[&:nth-child(-n+4)]:border-b sm:border-r sm:last:border-r-0"
+            >
+              <p className="text-2xl font-semibold tabular-nums text-white">
+                {loading ? "—" : (stats?.funnel?.[key] ?? 0)}
+              </p>
+              <p className="mt-1 text-xs text-zinc-300">{label}</p>
+            </Link>
+          ))}
+        </div>
       </section>
 
-      <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="Contatos" value={stats?.contacts ?? 0} hint="Base CRM" icon="users" loading={loading} />
-        <StatCard label="Tags" value={stats?.tags ?? 0} hint="Segmentação" icon="tag" loading={loading} />
-        <StatCard
-          label="Enviadas hoje"
-          value={stats?.messages.sentToday ?? 0}
-          hint={`${stats?.messages.receivedToday ?? 0} recebidas hoje`}
-          to="/whatsapp"
-          icon="send"
-          loading={loading}
-        />
-        <StatCard
-          label="Agendamentos"
-          value={stats?.scheduled.pending ?? 0}
-          hint="Passos aguardando no fluxo"
-          icon="clock"
-          loading={loading}
-        />
-      </section>
-
-      <section className="grid grid-cols-2 gap-4 lg:grid-cols-5">
-        <StatCard label="Novo" value={stats?.funnel?.novo ?? 0} hint="Acabaram de chegar" to="/funil" icon="users" loading={loading} />
-        <StatCard label="Em conversa" value={stats?.funnel?.em_conversa ?? 0} hint="Ainda no papo" to="/funil" icon="chat" tone="sky" loading={loading} />
-        <StatCard label="Comprou" value={stats?.funnel?.comprou ?? 0} hint="Compra aprovada" to="/funil" icon="check" tone="brand" loading={loading} />
-        <StatCard label="Perdido" value={stats?.funnel?.perdido ?? 0} hint="Saíram do funil" to="/funil" icon="alert" loading={loading} />
-        <StatCard label="Radar" value={stats?.funnel?.radar ?? 0} hint="Esperando resposta há mais de 2 horas" to="/whatsapp" icon="clock" tone="amber" loading={loading} />
-      </section>
+      <p className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-zinc-300">
+        <Link to="/flows" className="hover:text-white">
+          <span className="font-medium text-white">{stats?.flows.active ?? 0}</span> fluxos ativos
+        </Link>
+        <Link to="/runs" className="hover:text-white">
+          <span className="font-medium text-white">{stats?.runs.today ?? 0}</span> execuções hoje
+        </Link>
+        <Link to="/whatsapp" className="hover:text-white">
+          <span className="font-medium text-white">{stats?.messages.sentToday ?? 0}</span> enviadas hoje
+        </Link>
+        <span>
+          <span className="font-medium text-white">{successRate}%</span> concluídas
+        </span>
+        <span>
+          <span className="font-medium text-white">{stats?.contacts ?? 0}</span> contatos
+        </span>
+      </p>
 
       {/* Gráficos */}
       <section className="grid grid-cols-1 gap-5 lg:grid-cols-2">
@@ -501,36 +432,12 @@ export function Dashboard() {
       {/* Assistente IA */}
       {ai && (
         <section className="space-y-5">
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            <StatCard
-              label="Respostas da IA hoje"
-              value={ai.repliesToday}
-              hint="Mensagens enviadas pelo assistente"
-              icon="spark"
-              tone="brand"
-            />
-            <StatCard
-              label="Aprendizados"
-              value={ai.knowledgeItems}
-              hint="Itens na base de conhecimento"
-              icon="activity"
-              tone="sky"
-            />
-            <StatCard
-              label="Erros (24h)"
-              value={ai.errorsRecent}
-              hint={ai.errorsRecent > 0 ? "Verifique o assistente" : "Tudo certo"}
-              icon="alert"
-              tone={ai.errorsRecent > 0 ? "amber" : "neutral"}
-            />
-            <StatCard
-              label="Na fila"
-              value={ai.queuePending}
-              hint="Respostas/aprendizados pendentes"
-              icon="clock"
-              tone="neutral"
-            />
-          </div>
+          <p className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-zinc-300">
+            <span><span className="font-medium text-white">{ai.repliesToday}</span> respostas hoje</span>
+            <span><span className="font-medium text-white">{ai.knowledgeItems}</span> aprendizados</span>
+            <span><span className="font-medium text-white">{ai.errorsRecent}</span> erros em 24 h</span>
+            <span><span className="font-medium text-white">{ai.queuePending}</span> na fila</span>
+          </p>
 
           <Card>
             <CardHeader

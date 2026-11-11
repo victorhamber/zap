@@ -1,4 +1,4 @@
-# MAP — zap-review · 2026-11-10 · 208 arquivos · 43352 linhas
+# MAP — zap-review · 2026-11-11 · 208 arquivos · 43254 linhas
 > Gerado por ai-docs/tools/map_repo.py — NÃO editar. Use isto em vez de ler o código inteiro: ache o arquivo/símbolo aqui e abra só o trecho.
 Stack: node
 Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, build:web, start; api/src/index.ts; api/src/services/whatsapp/index.ts
@@ -294,7 +294,7 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 - WaAudioPlayer.tsx [212L] — formatDuration(), formatSpeed()
 - WaMediaViewer.tsx [101L]
 - WhatsAppAvatar.tsx [87L] — initials()
-- WhatsAppInbox.tsx [1890L] — isRadarChat(), chatKindLabel(), chatMatchesTab(), sanitizeChatName(), canonicalBrazilPhone(), formatPhoneDisplay(), sessionInitials(), IconRefresh(), IconSettings(), IconPlay(), usePageVisible(), isBase64Blob(), +18
+- WhatsAppInbox.tsx [1880L] — isRadarChat(), chatKindLabel(), chatMatchesTab(), sanitizeChatName(), canonicalBrazilPhone(), formatPhoneDisplay(), sessionInitials(), IconRefresh(), IconSettings(), IconPlay(), usePageVisible(), isBase64Blob(), +18
 - useMicWaveform.ts [70L] Níveis de amplitude do microfone (0–1) atualizados via AnalyserNode + rAF. */ — emptyLevels(), useMicWaveform()
 
 ## web/src/components/wpp/
@@ -302,8 +302,8 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 - WppInstancesManager.tsx [497L] — WppInstancesManager()
 
 ## web/src/pages/
-- Dashboard.tsx [632L] — formatEventTime(), formatDay(), StatCard(), BarChart(), ChartSkeleton(), DistributionList(), Dashboard()
-- FlowEditor.tsx [790L] — summaryFor(), toReactFlowNodes(), toReactFlowEdges(), cloneNodeConfig(), FlowEditor()
+- Dashboard.tsx [539L] — formatEventTime(), formatDay(), BarChart(), ChartSkeleton(), DistributionList(), Dashboard()
+- FlowEditor.tsx [795L] — summaryFor(), toReactFlowNodes(), toReactFlowEdges(), cloneNodeConfig(), FlowEditor()
 - FlowRuns.tsx [269L] — statusBadge(), formatDateTime(), FlowRuns()
 - FlowsList.tsx [254L] — webhookShortcutForFlow(), formatUpdatedAt(), FlowsList()
 - Funnel.tsx [254L] — Funnel()

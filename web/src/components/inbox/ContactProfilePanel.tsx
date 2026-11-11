@@ -292,7 +292,7 @@ export function ContactProfilePanel({
           : "absolute inset-y-0 right-0 z-40 flex w-full max-w-[400px] flex-col border-l border-[#2a3942] bg-[#111b21] shadow-2xl"
       }
     >
-      <header className="h-[52px] px-3 flex items-center gap-3 bg-[#202c33] shrink-0">
+      <header className="flex h-[60px] items-center gap-3 bg-[#202c33] px-3 shrink-0">
         {!docked && (
         <button
           type="button"

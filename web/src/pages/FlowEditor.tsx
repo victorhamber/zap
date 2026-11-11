@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   ReactFlow,
+  Background,
+  BackgroundVariant,
   Panel,
   addEdge,
   useEdgesState,
@@ -546,7 +548,7 @@ export function FlowEditor() {
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-zinc-950 text-white">
-      <header className="shrink-0 flex items-center gap-3 border-b border-zinc-800/80 bg-zinc-950/95 px-3 py-2 backdrop-blur">
+      <header className="shrink-0 flex flex-wrap items-center gap-2 border-b border-zinc-800 bg-zinc-950 px-3 py-2">
         <Link
           to="/flows"
           className="shrink-0 rounded-lg px-2 py-1.5 text-sm text-zinc-400 hover:bg-zinc-900 hover:text-white"
@@ -596,26 +598,28 @@ export function FlowEditor() {
             Reiniciar grupos
           </button>
         )}
-        <input
-          placeholder="Tel. teste"
-          value={testPhone}
-          onChange={(e) => setTestPhone(e.target.value)}
-          className="w-32 shrink-0 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm"
-        />
-        <button
-          type="button"
-          onClick={testFlow}
-          className="shrink-0 rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-900"
-        >
-          Testar
-        </button>
-        <button
-          type="button"
-          onClick={save}
-          className="shrink-0 rounded-lg bg-emerald-500 px-4 py-1.5 text-sm font-semibold text-zinc-950 hover:bg-emerald-400"
-        >
-          Salvar
-        </button>
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          <input
+            placeholder="Tel. teste"
+            value={testPhone}
+            onChange={(e) => setTestPhone(e.target.value)}
+            className="w-32 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm"
+          />
+          <button
+            type="button"
+            onClick={testFlow}
+            className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-900"
+          >
+            Testar
+          </button>
+          <button
+            type="button"
+            onClick={save}
+            className="rounded-lg bg-emerald-500 px-4 py-1.5 text-sm font-semibold text-zinc-950 hover:bg-emerald-400"
+          >
+            Salvar
+          </button>
+        </div>
       </header>
 
       {status && (
@@ -624,7 +628,7 @@ export function FlowEditor() {
 
       <div className="relative flex-1 min-h-0">
         {paletteOpen && (
-          <aside className="absolute left-3 top-3 bottom-3 z-20 w-[min(360px,42vw)] flex flex-col rounded-xl border border-zinc-800/90 bg-zinc-950/95 shadow-2xl backdrop-blur pointer-events-auto">
+          <aside className="absolute bottom-3 left-3 top-3 z-20 flex w-[min(320px,40vw)] flex-col rounded-2xl border border-zinc-800 bg-zinc-950 shadow-[0_16px_40px_-20px_rgba(0,0,0,0.8)] pointer-events-auto">
             <div className="border-b border-zinc-800 px-3 py-2.5 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-zinc-400">Blocos</span>
@@ -649,7 +653,7 @@ export function FlowEditor() {
               )}
               {filteredPalette.map((group) => (
                 <div key={group.id}>
-                  <div className="px-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                  <div className="px-1 pb-1.5 text-xs text-zinc-400">
                     {group.label}
                   </div>
                   <div className="grid grid-cols-2 gap-1.5">
@@ -733,6 +737,7 @@ export function FlowEditor() {
             className="flow-editor-canvas"
             proOptions={{ hideAttribution: true }}
           >
+            <Background variant={BackgroundVariant.Dots} gap={22} size={1.1} color="#3f3f46" />
             <FlowZoomToolbar panelOpen={panelOpen} />
             <Panel position="top-right" className="!m-3 pointer-events-none">
               {selectedEdgeId && (
@@ -772,7 +777,7 @@ export function FlowEditor() {
         {selectedNode && (
           <aside
             data-flow-properties
-            className="absolute right-0 top-0 bottom-0 z-30 w-full max-w-md border-l border-zinc-800 bg-zinc-950/98 shadow-[-8px_0_32px_rgba(0,0,0,0.45)] backdrop-blur pointer-events-auto"
+            className="absolute bottom-0 right-0 top-0 z-30 w-full max-w-md border-l border-zinc-800 bg-zinc-950 shadow-[-12px_0_32px_-16px_rgba(0,0,0,0.7)] pointer-events-auto"
           >
             <FlowNodeProperties
               selectedNode={selectedNode}
