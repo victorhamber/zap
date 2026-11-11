@@ -1,0 +1,28 @@
+# email
+Fontes: api/src/services/email/resend.ts, api/src/services/email/deliverability.ts, api/src/services/email/deliverability.test.ts, api/src/routes/emailPublic.ts, api/src/routes/settings.ts, api/src/engine/executor.ts, api/src/index.ts, api/src/types/flow.ts, prisma/schema.prisma, prisma/migrations/0026_email_deliverability/migration.sql, web/src/components/email/EmailSettingsPanel.tsx, web/src/components/email/EmailEditorModal.tsx, web/src/components/email/EmailBlockEditor.tsx, web/src/components/email/emailBlocks.ts, web/src/components/flow/FlowNodeProperties.tsx, web/src/components/flow/nodeMeta.ts
+Propósito: e-mail de fluxo pela Resend, com o que a caixa exige para não tratar como spam.
+
+## API pública
+- `sendTransactionalEmail` manda HTML e texto, Reply-To, `List-Unsubscribe` e o POST de um clique.
+- `GET/POST /api/email/unsubscribe?t=` é público. Grava o endereço em `EmailSuppression` e o próximo envio ignora.
+- `GET /api/settings/email/domain` lê SPF, DKIM e DMARC do domínio do From na Resend.
+- `PUT /api/settings/email` também grava Reply-To padrão e o endereço do rodapé.
+
+## Depende de / Usado por
+- Depende: Resend, `APP_PUBLIC_URL`, `JWT_SECRET` (assina o link de cancelar).
+- Usado por: nó `send_email` do fluxo e a aba E-mail nas configurações.
+
+## Fluxo
+1. O editor grava HTML e a linha de pré-visualização no nó.
+2. O envio espera a fila que já existia, consulta o cancelamento e só então chama a Resend.
+3. O rodapé leva nome, From, endereço (se preenchido) e o link de cancelar.
+
+## Invariantes e armadilhas
+- SPF, DKIM e DMARC são do DNS do domínio. O Zap só mostra o que a Resend já verificou. DMARC a Resend não cria.
+- Trocar `JWT_SECRET` invalida links de cancelar já enviados. Os novos e-mails saem com link novo.
+- Quem cancelou não recebe de novo. O passo do fluxo segue, com log de que o envio foi ignorado.
+- O intervalo entre e-mails continua o que já estava em `EMAIL_DISPATCH_MIN_SEC` / `MAX_SEC`.
+
+## Como testar
+- `npx tsx --test api/src/services/email/deliverability.test.ts`
+- `npx tsc -p api/tsconfig.json --noEmit` e `npx tsc -p web/tsconfig.json --noEmit`

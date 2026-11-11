@@ -1,5 +1,5 @@
 # Estado — Zap
 Atualizado: 2026-11-11
-Feito: dashboard em faixa de funil, conversa com lista 320 e ficha 300, editor com paleta sólida e canvas pontilhado.
-Próximo: escanear o QR no painel, em QR (WAHA). A sessão `victorhamber` segue em `SCAN_QR_CODE`.
-Bloqueio: nenhum no código. O celular ainda não leu esse QR.
+Feito: e-mail sai com texto, cancelar em um clique e rodapé; o editor mostra a caixa ao lado; SPF/DKIM/DMARC se conferem na aba E-mail.
+Próximo: preencher o endereço do rodapé e conferir o domínio na Resend. O QR da sessão `victorhamber` continua pendente.
+Bloqueio: nenhum no código. DMARC, se faltar, é registro TXT no DNS do domínio.

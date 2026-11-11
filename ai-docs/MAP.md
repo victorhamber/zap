@@ -1,4 +1,4 @@
-# MAP — zap-review · 2026-11-11 · 208 arquivos · 43254 linhas
+# MAP — zap-review · 2026-11-11 · 212 arquivos · 43768 linhas
 > Gerado por ai-docs/tools/map_repo.py — NÃO editar. Use isto em vez de ler o código inteiro: ache o arquivo/símbolo aqui e abra só o trecho.
 Stack: node
 Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, build:web, start; api/src/index.ts; api/src/services/whatsapp/index.ts
@@ -22,14 +22,14 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 ## api/src/
 - bootstrap.ts [89L] — bootstrapDatabase()
 - env.ts [117L] URL interna do Zap na rede Docker. O WAHA chama o webhook por aqui. Ex: http://z — defaultWhatsAppSession()
-- index.ts [138L]
+- index.ts [140L]
 - prisma.ts [6L]
 - queue.ts [177L] — getRedisConnection(), getFlowQueue(), sanitizeQueueJobId(), enqueueFlowJob(), getFlowStartQueue(), enqueueFlowRunStart(), getAiQueue(), aiReplyJobId(), enqueueAiLearnJob(), enqueueAiReplyJob(), cancelAiReplyJob(), getAiQueueCounts()
 - seed.ts [45L] — main()
 - worker.ts [132L] — main()
 
 ## api/src/engine/
-- executor.ts [1522L] — delayToMs(), render(), sleepMs(), isRetriableSendError(), sendWithRetries(), sendMediaWithRetries(), persistFlowOutboundMessage(), resolveFlowTriggerType(), resolveSendTarget(), resolveHotmartOfferCode(), resolveHotmartPurchaseId(), extractHotmartVariables(), +17
+- executor.ts [1530L] — delayToMs(), render(), sleepMs(), isRetriableSendError(), sendWithRetries(), sendMediaWithRetries(), persistFlowOutboundMessage(), resolveFlowTriggerType(), resolveSendTarget(), resolveHotmartOfferCode(), resolveHotmartPurchaseId(), extractHotmartVariables(), +17
 - graph.test.ts [32L]
 - graph.ts [124L] — parseGraph(), findTriggerNode(), findFlowTriggerNode(), getFirstActionAfterTrigger(), getLinearNextNodeIds(), getNextNodeId(), getNextNodeIdByHandle(), getNode(), defaultHotmartGraph()
 
@@ -41,11 +41,12 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 - auth.ts [98L] Janela e teto de tentativas de login por IP. */ — loginThrottle(), registerFailedLogin(), authRoutes()
 - crm.ts [56L] — crmRoutes()
 - dashboard.ts [213L] — funnelSnapshot(), countRadar(), startOfToday(), daysAgo(), localDayKey(), last7DayKeys(), bucketByDay(), dashboardRoutes()
+- emailPublic.ts [65L] — page(), emailPublicRoutes()
 - flows.ts [299L] — flowRoutes()
 - inbox.ts [743L] — sortQuickReplies(), normalizeQuickReply(), parseQuickReplies(), sanitizeQuickRepliesForSave(), preferMergedChatId(), mergeInboxChatRows(), dedupeInboxChatRows(), inboxRoutes()
 - media.ts [47L] — mediaRoutes()
 - runs.ts [31L] — runRoutes()
-- settings.ts [349L] — settingsRoutes()
+- settings.ts [360L] — settingsRoutes()
 - webhooks.ts [626L] — triggerInboundFlows(), whatsappWebhookAuthorized(), rejectWebhook(), webhookRoutes()
 - wpp.ts [372L] — buildKeepSessionNames(), listServerSessionNames(), wppRoutes()
 
@@ -119,7 +120,9 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 - tagGate.ts [26L] Sem tags configuradas = todos elegíveis (filtro só quando a lista tem IDs). — contactHasLearnTags(), phoneFromChatId(), isGroupChatId()
 
 ## api/src/services/email/
-- resend.ts [173L] — getSettingsRow(), getEmailSettingsDto(), saveEmailSettings(), loadResendClient(), formatFrom(), sendTransactionalEmail(), sendTestEmail(), wrapEmailHtml()
+- deliverability.test.ts [66L]
+- deliverability.ts [174L] — escapeHtml(), decodeEntities(), htmlToPlainText(), signUnsubscribeToken(), readUnsubscribeToken(), unsubscribeUrl(), wrapEmailHtml(), recordState(), summarizeResendDomains()
+- resend.ts [212L] — getSettingsRow(), getEmailSettingsDto(), saveEmailSettings(), loadResendClient(), formatFrom(), sendTransactionalEmail(), sendTestEmail(), inspectSendingDomain()
 
 ## api/src/services/whatsapp/
 - index.ts [3L] Motor WhatsApp: WAHA. */
@@ -132,7 +135,7 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 
 ## api/src/types/
 - ai.ts [49L] Resposta pronta (texto + mídia opcional) que a IA dispara ao reconhecer a pergun
-- flow.ts [234L]
+- flow.ts [236L]
 
 ## api/src/utils/
 - flattenJsonPaths.test.ts [86L]
@@ -163,7 +166,7 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 - wppconnect-config-fix.sh [47L] Cole ESTE BLOCO INTEIRO no console EasyPanel do serviço wppconnect (aba Console 
 
 ## prisma/
-- schema.prisma [270L]
+- schema.prisma [279L]
 
 ## prisma/migrations/
 - migration_lock.toml [3L]
@@ -243,6 +246,9 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 ## prisma/migrations/0025_chat_model_gpt4o/
 - migration.sql [9L]
 
+## prisma/migrations/0026_email_deliverability/
+- migration.sql [9L]
+
 ## web/
 - eslint.config.js [12L]
 - index.html [16L]
@@ -269,20 +275,20 @@ Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, buil
 - AiAssistantPanel.tsx [1343L] — AiAssistantPanel(), StatCard(), TagSelectModal()
 
 ## web/src/components/email/
-- EmailBlockEditor.tsx [427L] — BlockShell(), VarChips(), BlockEditor(), blockTitle(), EmailBlockEditor()
+- EmailBlockEditor.tsx [438L] — BlockShell(), VarChips(), BlockEditor(), blockTitle(), EmailBlockEditor()
 - EmailBuilder.tsx [201L] — ToolbarButton(), EmailBuilder()
-- EmailEditorModal.tsx [108L] — EmailEditorModal()
-- EmailSettingsPanel.tsx [192L] — EmailSettingsPanel()
-- emailBlocks.ts [245L] — newBlockId(), createBlock(), alignStyle(), paragraphHtmlToText(), textToParagraphHtml(), escapeForHtml(), blocksToHtml(), parseButtonFromParagraph(), htmlToBlocks(), reorderBlocks(), htmlPreviewText()
+- EmailEditorModal.tsx [120L] — EmailEditorModal()
+- EmailSettingsPanel.tsx [284L] — EmailSettingsPanel()
+- emailBlocks.ts [250L] — newBlockId(), createBlock(), alignStyle(), paragraphHtmlToText(), textToParagraphHtml(), escapeForHtml(), blocksToHtml(), parseButtonFromParagraph(), htmlToBlocks(), reorderBlocks(), htmlPreviewText()
 
 ## web/src/components/flow/
 - FlowNode.tsx [472L] Alturas fixas — handles calculados em px para alinhar com o nome da oferta. */ — branchCodesPreview(), handleTopForRow(), OfferOutputRow(), RoundRobinOutputRow(), FlowNodeComponent()
-- FlowNodeProperties.tsx [1582L] Texto bruto do input — permite digitar vírgulas entre códigos. */ — offerCodesInputValue(), parseOfferCodes(), FlowNodeProperties()
+- FlowNodeProperties.tsx [1590L] Texto bruto do input — permite digitar vírgulas entre códigos. */ — offerCodesInputValue(), parseOfferCodes(), FlowNodeProperties()
 - FlowZoomToolbar.tsx [59L] — FlowZoomToolbar()
 - NodeContextMenu.tsx [45L] — NodeContextMenu()
 - TemplateVariablesHelp.tsx [52L] — TemplateVariablesHelp()
 - flowTemplateVars.ts [31L] Variáveis Mustache disponíveis nos blocos de mensagem (conforme executor / Hotma — mustacheSnippet()
-- nodeMeta.ts [209L] — paletteDragType(), hotmartWebhookUrl(), customWebhookUrl(), buildWaMeLink(), defaultNodeData()
+- nodeMeta.ts [210L] — paletteDragType(), hotmartWebhookUrl(), customWebhookUrl(), buildWaMeLink(), defaultNodeData()
 
 ## web/src/components/inbox/
 - ContactProfilePanel.tsx [563L] — formatPhoneDisplay(), ContactProfilePanel()

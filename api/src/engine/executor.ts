@@ -1085,11 +1085,19 @@ async function executeNode(
         to,
         subject,
         html,
+        preheader: data.preheader ? render(data.preheader, vars).trim() : undefined,
         replyTo: data.replyTo ? render(data.replyTo, vars).trim() : undefined
       });
-      await logStep(flowRunId, nodeId, node.type, "ok", `E-mail enviado para ${to}`, {
-        id: result.id
-      });
+      await logStep(
+        flowRunId,
+        nodeId,
+        node.type,
+        "ok",
+        result.skipped
+          ? `E-mail não enviado: ${to} cancelou o recebimento`
+          : `E-mail enviado para ${to}`,
+        { id: result.id, skipped: result.skipped ?? null }
+      );
     } catch (err) {
       await logSendFailure(node.type, err);
     }

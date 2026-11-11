@@ -6,7 +6,24 @@ type EmailSettings = {
   apiKeyMasked: string | null;
   emailFrom: string;
   emailFromName: string;
+  emailReplyTo: string;
+  emailPostalAddress: string;
   encryptionReady: boolean;
+};
+
+type DomainCheck = {
+  domain: string;
+  found: boolean;
+  status: string | null;
+  spf: "verified" | "pending" | "missing";
+  dkim: "verified" | "pending" | "missing";
+  dmarc: "verified" | "pending" | "missing";
+};
+
+const DNS_LABEL: Record<DomainCheck["spf"], string> = {
+  verified: "no ar",
+  pending: "aguardando o DNS",
+  missing: "ausente"
 };
 
 export function EmailSettingsPanel() {
@@ -14,6 +31,9 @@ export function EmailSettingsPanel() {
   const [apiKey, setApiKey] = useState("");
   const [emailFrom, setEmailFrom] = useState("");
   const [emailFromName, setEmailFromName] = useState("");
+  const [emailReplyTo, setEmailReplyTo] = useState("");
+  const [emailPostalAddress, setEmailPostalAddress] = useState("");
+  const [domain, setDomain] = useState<DomainCheck | null>(null);
   const [testTo, setTestTo] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -23,6 +43,8 @@ export function EmailSettingsPanel() {
     setSettings(data);
     setEmailFrom(data.emailFrom);
     setEmailFromName(data.emailFromName);
+    setEmailReplyTo(data.emailReplyTo ?? "");
+    setEmailPostalAddress(data.emailPostalAddress ?? "");
   }
 
   useEffect(() => {
@@ -38,6 +60,8 @@ export function EmailSettingsPanel() {
         body: JSON.stringify({
           emailFrom,
           emailFromName,
+          emailReplyTo,
+          emailPostalAddress,
           ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {})
         })
       });
@@ -69,6 +93,20 @@ export function EmailSettingsPanel() {
     }
   }
 
+  async function checkDomain() {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const report = await api<DomainCheck>("/api/settings/email/domain");
+      setDomain(report);
+    } catch (e) {
+      setDomain(null);
+      setMessage(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function sendTest() {
     setBusy(true);
     setMessage(null);
@@ -89,9 +127,9 @@ export function EmailSettingsPanel() {
     <div className="space-y-5 rounded-2xl border border-[var(--line)] bg-[var(--surface-1)] p-5">
       <div>
         <h2 className="text-base font-semibold text-white">E-mail (Resend)</h2>
-        <p className="mt-1 text-sm text-zinc-500">
-          Configure a API do Resend para o bloco &quot;Enviar e-mail&quot; nos fluxos. O domínio do
-          remetente precisa estar verificado no painel da Resend.
+        <p className="mt-1 text-sm text-zinc-400">
+          A Resend assina o domínio. O Zap manda texto junto do HTML, o cancelar em um clique e o
+          rodapé com quem envia. SPF, DKIM e DMARC ficam no DNS do domínio.
         </p>
       </div>
 
@@ -151,6 +189,26 @@ export function EmailSettingsPanel() {
           />
         </div>
 
+        <div>
+          <label className="text-xs text-zinc-400">Reply-To padrão</label>
+          <input
+            value={emailReplyTo}
+            onChange={(e) => setEmailReplyTo(e.target.value)}
+            placeholder="suporte@seudominio.com"
+            className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
+          />
+        </div>
+
+        <div>
+          <label className="text-xs text-zinc-400">Endereço no rodapé</label>
+          <input
+            value={emailPostalAddress}
+            onChange={(e) => setEmailPostalAddress(e.target.value)}
+            placeholder="Rua, número, cidade"
+            className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
+          />
+        </div>
+
         <button
           type="button"
           onClick={() => void save()}
@@ -159,6 +217,40 @@ export function EmailSettingsPanel() {
         >
           Salvar
         </button>
+      </div>
+
+      <div className="space-y-2 border-t border-zinc-800 pt-4">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm font-medium text-white">Domínio do remetente</p>
+          <button
+            type="button"
+            onClick={() => void checkDomain()}
+            disabled={busy || !settings?.hasApiKey}
+            className="rounded-xl border border-zinc-700 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-800 disabled:opacity-50"
+          >
+            Conferir na Resend
+          </button>
+        </div>
+        {domain && (
+          <ul className="space-y-1 text-sm text-zinc-300">
+            <li>
+              {domain.domain || "sem domínio"} — {domain.found ? domain.status || "encontrado" : "não está na Resend"}
+            </li>
+            <li>SPF: {DNS_LABEL[domain.spf]}</li>
+            <li>DKIM: {DNS_LABEL[domain.dkim]}</li>
+            <li>
+              DMARC: {domain.dmarc === "missing"
+                ? "a Resend não publica. Crie um TXT em _dmarc no DNS do domínio."
+                : DNS_LABEL[domain.dmarc]}
+            </li>
+          </ul>
+        )}
+        <p className="text-sm text-zinc-400">
+          Todo envio já sai com texto simples, cabeçalho de cancelar e o link no rodapé.
+          {emailPostalAddress.trim()
+            ? " O endereço do rodapé está preenchido."
+            : " Falta o endereço no rodapé."}
+        </p>
       </div>
 
       <div className="border-t border-zinc-800 pt-4 space-y-3">

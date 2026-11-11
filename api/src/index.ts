@@ -18,6 +18,7 @@ import { crmRoutes } from "./routes/crm.js";
 import { mediaRoutes } from "./routes/media.js";
 import { dashboardRoutes } from "./routes/dashboard.js";
 import { aiRoutes } from "./routes/ai.js";
+import { emailPublicRoutes } from "./routes/emailPublic.js";
 import { bootstrapDatabase } from "./bootstrap.js";
 import { UPLOAD_DIR, ensureUploadDir } from "./services/uploads.js";
 
@@ -54,6 +55,7 @@ await app.register(sensible);
 
 app.get("/api/health", async () => ({ ok: true, service: "zap-automation" }));
 
+await app.register(emailPublicRoutes);
 await app.register(authRoutes);
 await app.register(webhookRoutes);
 await app.register(flowRoutes);

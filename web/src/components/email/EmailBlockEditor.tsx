@@ -12,6 +12,8 @@ import {
 type Props = {
   html: string;
   onChange: (html: string) => void;
+  subject?: string;
+  preheader?: string;
 };
 
 const BLOCK_PALETTE: { type: EmailBlock["type"]; label: string; hint: string }[] = [
@@ -215,7 +217,7 @@ function BlockEditor({
       return (
         <div className="space-y-3">
           <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 p-3">
-            <p className="text-[10px] uppercase tracking-wide text-zinc-600 mb-2">Preview</p>
+            <p className="mb-2 text-xs text-zinc-500">Como o botão chega</p>
             <div style={{ textAlign: block.align }}>
               <span
                 style={{
@@ -293,8 +295,11 @@ function BlockEditor({
             value={block.alt}
             onChange={(e) => onChange({ ...block, alt: e.target.value })}
             className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white"
-            placeholder="Texto alternativo"
+            placeholder="Texto alternativo (obrigatório para a imagem)"
           />
+          {!block.alt.trim() && (
+            <p className="text-xs text-amber-200">Sem descrição, filtros tratam a imagem como risco.</p>
+          )}
           {block.src.startsWith("http") && (
             <img
               src={block.src}
@@ -354,7 +359,7 @@ function blockTitle(block: EmailBlock): string {
   }
 }
 
-export function EmailBlockEditor({ html, onChange }: Props) {
+export function EmailBlockEditor({ html, onChange, subject, preheader }: Props) {
   const [blocks, setBlocks] = useState<EmailBlock[]>(() => htmlToBlocks(html));
   const [dragId, setDragId] = useState<string | null>(null);
 
@@ -373,53 +378,59 @@ export function EmailBlockEditor({ html, onChange }: Props) {
   };
 
   return (
-    <div className="flex flex-col lg:flex-row gap-4 min-h-0 flex-1">
-      <aside className="lg:w-44 shrink-0 space-y-2">
-        <p className="text-[10px] uppercase tracking-wide text-zinc-600 px-1">Adicionar bloco</p>
-        {BLOCK_PALETTE.map((item) => (
-          <button
-            key={item.type}
-            type="button"
-            onClick={() => commit([...blocks, createBlock(item.type)])}
-            className="w-full rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-left hover:border-emerald-500/30 hover:bg-zinc-900 transition"
-          >
-            <span className="block text-sm text-zinc-200">{item.label}</span>
-            <span className="block text-[10px] text-zinc-600">{item.hint}</span>
-          </button>
-        ))}
-      </aside>
-
-      <div className="flex-1 min-w-0 space-y-3 overflow-y-auto max-h-[min(58vh,520px)] pr-1">
-        {blocks.length === 0 && (
-          <p className="text-sm text-zinc-600 text-center py-8">
-            Adicione blocos pela barra à esquerda.
-          </p>
-        )}
-        {blocks.map((block, index) => (
-          <BlockShell
-            key={block.id}
-            index={index}
-            title={blockTitle(block)}
-            blockId={block.id}
-            onRemove={() => commit(blocks.filter((b) => b.id !== block.id))}
-            onDragStart={setDragId}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(targetId) => {
-              if (dragId) commit(reorderBlocks(blocks, dragId, targetId));
-              setDragId(null);
-            }}
-          >
-            <BlockEditor block={block} onChange={(patch) => updateBlock(block.id, patch)} />
-          </BlockShell>
-        ))}
+    <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+      <div className="min-w-0 flex-1 space-y-3">
+        <div className="flex flex-wrap gap-1.5">
+          {BLOCK_PALETTE.map((item) => (
+            <button
+              key={item.type}
+              type="button"
+              title={item.hint}
+              onClick={() => commit([...blocks, createBlock(item.type)])}
+              className="rounded-full border border-zinc-700 px-3 py-1.5 text-sm text-zinc-200 hover:border-emerald-500/40 hover:bg-zinc-900"
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <div className="max-h-[min(58vh,520px)] space-y-3 overflow-y-auto pr-1">
+          {blocks.length === 0 && (
+            <p className="py-8 text-center text-sm text-zinc-400">
+              Adicione um bloco para começar o e-mail.
+            </p>
+          )}
+          {blocks.map((block, index) => (
+            <BlockShell
+              key={block.id}
+              index={index}
+              title={blockTitle(block)}
+              blockId={block.id}
+              onRemove={() => commit(blocks.filter((b) => b.id !== block.id))}
+              onDragStart={setDragId}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(targetId) => {
+                if (dragId) commit(reorderBlocks(blocks, dragId, targetId));
+                setDragId(null);
+              }}
+            >
+              <BlockEditor block={block} onChange={(patch) => updateBlock(block.id, patch)} />
+            </BlockShell>
+          ))}
+        </div>
       </div>
 
-      <aside className="lg:w-72 shrink-0">
-        <p className="text-[10px] uppercase tracking-wide text-zinc-600 mb-2">Preview do e-mail</p>
-        <div
-          className="rounded-xl border border-zinc-700 bg-white p-4 text-sm text-zinc-900 min-h-[200px] max-h-[min(58vh,520px)] overflow-y-auto"
-          dangerouslySetInnerHTML={{ __html: previewHtml }}
-        />
+      <aside className="w-full shrink-0 lg:w-[340px]">
+        <p className="mb-2 text-sm text-zinc-300">Como chega na caixa</p>
+        <div className="overflow-hidden rounded-2xl border border-zinc-700 bg-[#f4f4f5]">
+          <div className="border-b border-zinc-200 bg-white px-4 py-3">
+            <p className="text-sm font-medium text-zinc-900">{subject?.trim() || "Sem assunto"}</p>
+            <p className="mt-0.5 text-xs text-zinc-500">{preheader?.trim() || "Sem linha de pré-visualização"}</p>
+          </div>
+          <div
+            className="max-h-[min(52vh,480px)] overflow-y-auto px-4 py-4 text-sm text-zinc-900"
+            dangerouslySetInnerHTML={{ __html: previewHtml }}
+          />
+        </div>
       </aside>
     </div>
   );

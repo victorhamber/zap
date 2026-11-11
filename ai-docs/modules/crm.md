@@ -28,6 +28,7 @@ Propósito: funil curto no contato que já existe, radar, retomada e a IA que j�
 - O funil mostra 20 cards por coluna e pede o motivo antes de marcar Perdido. A aba Conexão oficial avisa que o número no ar é o do QR.
 - O atendimento usa `gpt-4o`. Quem ainda estava em `gpt-4o-mini` migra na 0025. O áudio continua no Whisper.
 - O dashboard abre na faixa do funil. Os números do dia ficam numa linha. No desktop a conversa é lista 320, fio e ficha 300. O editor usa o mesmo zinco, paleta sólida e canvas pontilhado.
+- O e-mail do fluxo, o cancelamento e o rodapé estão em `modules/email.md`.
 
 ## Como testar
 - `npx tsx --test api/src/services/contactStage.test.ts api/src/services/coldFollowUp.test.ts`

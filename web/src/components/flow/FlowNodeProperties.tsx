@@ -577,7 +577,14 @@ export function FlowNodeProperties({
               onChange={(e) => onUpdate({ subject: e.target.value })}
               className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
             />
-            <label className="text-xs text-zinc-500">Reply-To (opcional)</label>
+            <label className="text-xs text-zinc-500">Pré-visualização (a linha depois do assunto)</label>
+            <input
+              value={String(config.preheader ?? "")}
+              onChange={(e) => onUpdate({ preheader: e.target.value })}
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
+              placeholder="Seu acesso está pronto"
+            />
+            <label className="text-xs text-zinc-500">Reply-To (opcional, senão usa o das configurações)</label>
             <input
               value={String(config.replyTo ?? "")}
               onChange={(e) => onUpdate({ replyTo: e.target.value })}
@@ -604,8 +611,9 @@ export function FlowNodeProperties({
               open={emailEditorOpen}
               html={String(config.html ?? "")}
               subject={String(config.subject ?? "")}
+              preheader={String(config.preheader ?? "")}
               onClose={() => setEmailEditorOpen(false)}
-              onSave={(html) => onUpdate({ html })}
+              onSave={(html, preheader) => onUpdate({ html, preheader })}
             />
           </>
         )}

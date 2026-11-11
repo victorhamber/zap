@@ -200,6 +200,7 @@ export function defaultNodeData(type: string): Record<string, unknown> {
         to: "{{email}}",
         subject: "Olá {{name}}!",
         html: "<p>Olá <strong>{{name}}</strong>,</p><p>Sua mensagem aqui.</p>",
+        preheader: "",
         replyTo: ""
       };
     default:

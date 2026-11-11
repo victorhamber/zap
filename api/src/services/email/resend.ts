@@ -1,12 +1,22 @@
 import { Resend } from "resend";
 import { prisma } from "../../prisma.js";
+import { env } from "../../env.js";
 import { decryptSecret, encryptSecret, maskSecret, isEncryptionConfigured } from "../secretCrypto.js";
+import {
+  htmlToPlainText,
+  summarizeResendDomains,
+  unsubscribeUrl,
+  wrapEmailHtml,
+  type DomainCheck
+} from "./deliverability.js";
 
 export type EmailSettingsDto = {
   hasApiKey: boolean;
   apiKeyMasked: string | null;
   emailFrom: string;
   emailFromName: string;
+  emailReplyTo: string;
+  emailPostalAddress: string;
   encryptionReady: boolean;
 };
 
@@ -34,6 +44,8 @@ export async function getEmailSettingsDto(): Promise<EmailSettingsDto> {
     apiKeyMasked,
     emailFrom: row.emailFrom ?? "",
     emailFromName: row.emailFromName ?? "",
+    emailReplyTo: row.emailReplyTo ?? "",
+    emailPostalAddress: row.emailPostalAddress ?? "",
     encryptionReady: isEncryptionConfigured()
   };
 }
@@ -43,6 +55,8 @@ export async function saveEmailSettings(input: {
   removeApiKey?: boolean;
   emailFrom?: string;
   emailFromName?: string;
+  emailReplyTo?: string;
+  emailPostalAddress?: string;
 }): Promise<EmailSettingsDto> {
   const row = await getSettingsRow();
   let resendApiKeyEnc = row.resendApiKeyEnc;
@@ -60,13 +74,21 @@ export async function saveEmailSettings(input: {
     input.emailFrom !== undefined ? input.emailFrom.trim() : (row.emailFrom ?? "");
   const emailFromName =
     input.emailFromName !== undefined ? input.emailFromName.trim() : (row.emailFromName ?? "");
+  const emailReplyTo =
+    input.emailReplyTo !== undefined ? input.emailReplyTo.trim() : (row.emailReplyTo ?? "");
+  const emailPostalAddress =
+    input.emailPostalAddress !== undefined
+      ? input.emailPostalAddress.trim()
+      : (row.emailPostalAddress ?? "");
 
   await prisma!.appSettings.update({
     where: { id: "default" },
     data: {
       resendApiKeyEnc,
       emailFrom: emailFrom || null,
-      emailFromName: emailFromName || null
+      emailFromName: emailFromName || null,
+      emailReplyTo: emailReplyTo || null,
+      emailPostalAddress: emailPostalAddress || null
     }
   });
 
@@ -75,8 +97,11 @@ export async function saveEmailSettings(input: {
 
 async function loadResendClient(): Promise<{
   client: Resend;
+  apiKey: string;
   from: string;
   fromName: string;
+  replyTo: string;
+  postalAddress: string;
 }> {
   const row = await getSettingsRow();
   if (!row.resendApiKeyEnc) {
@@ -94,8 +119,11 @@ async function loadResendClient(): Promise<{
   }
   return {
     client: new Resend(apiKey),
+    apiKey,
     from,
-    fromName: String(row.emailFromName ?? "").trim()
+    fromName: String(row.emailFromName ?? "").trim(),
+    replyTo: String(row.emailReplyTo ?? "").trim(),
+    postalAddress: String(row.emailPostalAddress ?? "").trim()
   };
 }
 
@@ -110,17 +138,45 @@ export async function sendTransactionalEmail(params: {
   to: string;
   subject: string;
   html: string;
+  preheader?: string;
   replyTo?: string;
-}): Promise<{ id: string | null }> {
-  const { client, from, fromName } = await loadResendClient();
-  const wrappedHtml = wrapEmailHtml(params.html);
+}): Promise<{ id: string | null; skipped?: "unsubscribed" }> {
+  const to = params.to.trim().toLowerCase();
+  if (prisma) {
+    const blocked = await prisma.emailSuppression.findUnique({ where: { email: to } });
+    if (blocked) return { id: null, skipped: "unsubscribed" };
+  }
+
+  const { client, from, fromName, replyTo: defaultReplyTo, postalAddress } = await loadResendClient();
+  const replyTo = (params.replyTo || defaultReplyTo).trim();
+  const cancelHref = unsubscribeUrl(env.APP_PUBLIC_URL, to, env.JWT_SECRET);
+  const wrappedHtml = wrapEmailHtml({
+    bodyHtml: params.html,
+    preheader: params.preheader,
+    from,
+    fromName,
+    postalAddress,
+    unsubscribeHref: cancelHref
+  });
+  const text = [
+    htmlToPlainText(params.html),
+    "",
+    "Não quero mais receber:",
+    cancelHref
+  ].join("\n");
+  const mailto = replyTo || from;
 
   const { data, error } = await client.emails.send({
     from: formatFrom(from, fromName),
-    to: [params.to],
+    to: [to],
     subject: params.subject,
     html: wrappedHtml,
-    ...(params.replyTo ? { replyTo: params.replyTo } : {})
+    text,
+    headers: {
+      "List-Unsubscribe": `<mailto:${mailto}?subject=Cancelar%20e-mails>, <${cancelHref}>`,
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+    },
+    ...(replyTo ? { replyTo } : {})
   });
 
   if (error) {
@@ -142,31 +198,14 @@ export async function sendTestEmail(to: string): Promise<{ id: string | null }> 
   });
 }
 
-/** Envelope simples e-mail-safe (largura ~600px). */
-export function wrapEmailHtml(bodyHtml: string): string {
-  const inner = String(bodyHtml ?? "").trim();
-  if (/<html[\s>]/i.test(inner)) return inner;
-  return `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>E-mail</title>
-</head>
-<body style="margin:0;padding:0;background:#f4f4f5;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#18181b;">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f4f5;padding:24px 12px;">
-    <tr>
-      <td align="center">
-        <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e4e4e7;">
-          <tr>
-            <td style="padding:28px 28px 32px;font-size:15px;line-height:1.55;">
-              ${inner}
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
+export async function inspectSendingDomain(): Promise<DomainCheck> {
+  const { apiKey, from } = await loadResendClient();
+  const response = await fetch("https://api.resend.com/domains", {
+    headers: { Authorization: `Bearer ${apiKey}` }
+  });
+  if (!response.ok) {
+    throw new Error("A Resend não devolveu os domínios. Confira a API key.");
+  }
+  const payload: unknown = await response.json();
+  return summarizeResendDomains(payload, from);
 }

@@ -6,20 +6,23 @@ type Props = {
   open: boolean;
   html: string;
   subject?: string;
+  preheader?: string;
   onClose: () => void;
-  onSave: (html: string) => void;
+  onSave: (html: string, preheader: string) => void;
 };
 
-export function EmailEditorModal({ open, html, subject, onClose, onSave }: Props) {
+export function EmailEditorModal({ open, html, subject, preheader, onClose, onSave }: Props) {
   const [draft, setDraft] = useState(html);
+  const [previewLine, setPreviewLine] = useState(preheader ?? "");
   const [editorKey, setEditorKey] = useState(0);
 
   useEffect(() => {
     if (open) {
       setDraft(html);
+      setPreviewLine(preheader ?? "");
       setEditorKey((k) => k + 1);
     }
-  }, [open, html]);
+  }, [open, html, preheader]);
 
   useEffect(() => {
     if (!open) return;
@@ -51,15 +54,9 @@ export function EmailEditorModal({ open, html, subject, onClose, onSave }: Props
       >
         <header className="flex items-start justify-between gap-4 border-b border-zinc-800 px-5 py-4 shrink-0">
           <div>
-            <h2 className="text-lg font-semibold text-white">Editor de e-mail</h2>
-            <p className="text-sm text-zinc-500 mt-0.5">
-              Monte o corpo com blocos arrastáveis, títulos e botões visuais.
-              {subject ? (
-                <>
-                  {" "}
-                  Assunto: <span className="text-zinc-400">{subject}</span>
-                </>
-              ) : null}
+            <h2 className="text-lg font-semibold text-white">E-mail</h2>
+            <p className="text-sm text-zinc-400 mt-0.5">
+              {subject?.trim() || "Sem assunto"} — o rodapé com remetente e cancelar entra no envio.
             </p>
           </div>
           <button
@@ -73,7 +70,22 @@ export function EmailEditorModal({ open, html, subject, onClose, onSave }: Props
         </header>
 
         <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
-          <EmailBlockEditor key={editorKey} html={html} onChange={setDraft} />
+          <label className="mb-3 block text-sm text-zinc-300">
+            Linha de pré-visualização
+            <input
+              value={previewLine}
+              onChange={(e) => setPreviewLine(e.target.value)}
+              placeholder="A frase curta que aparece ao lado do assunto na caixa de entrada"
+              className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
+            />
+          </label>
+          <EmailBlockEditor
+            key={editorKey}
+            html={html}
+            subject={subject}
+            preheader={previewLine}
+            onChange={setDraft}
+          />
         </div>
 
         <footer className="flex items-center justify-between gap-3 border-t border-zinc-800 px-5 py-4 shrink-0 bg-zinc-950/95">
@@ -91,7 +103,7 @@ export function EmailEditorModal({ open, html, subject, onClose, onSave }: Props
             <button
               type="button"
               onClick={() => {
-                onSave(draft);
+                onSave(draft, previewLine);
                 onClose();
               }}
               className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500"

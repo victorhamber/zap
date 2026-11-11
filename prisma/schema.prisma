@@ -34,6 +34,10 @@ model AppSettings {
   /** Remetente verificado no Resend (ex.: ola@seudominio.com). */
   emailFrom            String?
   emailFromName        String?
+  /** Resposta padrão quando o nó não traz Reply-To. */
+  emailReplyTo         String?
+  /** Endereço físico no rodapé. Caixas exigem identificação do remetente. */
+  emailPostalAddress   String?
   /** Horas de silêncio antes de retomar um contato em "em_conversa". 0 desliga. Espelha o 1º passo. */
   followUpHours        Int       @default(24)
   /** Fluxo disparado nessa retomada. Vazio = não dispara. Espelha o 1º passo. */
@@ -227,6 +231,11 @@ model ScheduledJob {
 
   @@index([flowRunId])
   @@index([runAt, status])
+}
+
+model EmailSuppression {
+  email     String   @id
+  createdAt DateTime @default(now())
 }
 
 model Contact {

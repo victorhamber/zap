@@ -64,10 +64,11 @@ function paragraphHtmlToText(html: string): string {
 
 function textToParagraphHtml(text: string): string {
   const lines = text.split("\n");
+  const style = `margin:0 0 14px;font-size:15px;line-height:1.6;color:#18181b;`;
   if (lines.length <= 1) {
-    return `<p>${escapeForHtml(lines[0] ?? "")}</p>`;
+    return `<p style="${style}">${escapeForHtml(lines[0] ?? "")}</p>`;
   }
-  return lines.map((line) => `<p>${escapeForHtml(line)}</p>`).join("");
+  return lines.map((line) => `<p style="${style}">${escapeForHtml(line)}</p>`).join("");
 }
 
 function escapeForHtml(text: string): string {
@@ -82,9 +83,13 @@ export function blocksToHtml(blocks: EmailBlock[]): string {
   const parts: string[] = [];
   for (const block of blocks) {
     switch (block.type) {
-      case "heading":
-        parts.push(`<h${block.level}>${escapeForHtml(block.text)}</h${block.level}>`);
+      case "heading": {
+        const size = block.level === 1 ? 28 : block.level === 2 ? 22 : 18;
+        parts.push(
+          `<h${block.level} style="margin:0 0 12px;font-size:${size}px;line-height:1.3;font-weight:600;color:#18181b;">${escapeForHtml(block.text)}</h${block.level}>`
+        );
         break;
+      }
       case "paragraph": {
         const raw = block.html.trim();
         if (!raw) break;
@@ -110,7 +115,7 @@ export function blocksToHtml(blocks: EmailBlock[]): string {
       case "image":
         if (!block.src.trim()) break;
         parts.push(
-          `<p style="text-align:center"><img src="${block.src.trim()}" alt="${escapeForHtml(block.alt)}" style="max-width:100%;height:auto;border-radius:8px" /></p>`
+          `<p style="text-align:center;margin:0 0 14px;"><img src="${block.src.trim()}" alt="${escapeForHtml(block.alt.trim() || "Imagem")}" style="max-width:100%;height:auto;border-radius:8px" /></p>`
         );
         break;
       case "divider":

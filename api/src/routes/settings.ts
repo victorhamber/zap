@@ -12,7 +12,8 @@ import {
 import {
   getEmailSettingsDto,
   saveEmailSettings,
-  sendTestEmail
+  sendTestEmail,
+  inspectSendingDomain
 } from "../services/email/resend.js";
 
 export async function settingsRoutes(app: FastifyInstance) {
@@ -325,8 +326,18 @@ export async function settingsRoutes(app: FastifyInstance) {
         removeApiKey?: boolean;
         emailFrom?: string;
         emailFromName?: string;
+        emailReplyTo?: string;
+        emailPostalAddress?: string;
       };
       return await saveEmailSettings(body);
+    } catch (e: any) {
+      return reply.status(400).send({ error: e?.message ?? String(e) });
+    }
+  });
+
+  app.get("/api/settings/email/domain", async (_req, reply) => {
+    try {
+      return await inspectSendingDomain();
     } catch (e: any) {
       return reply.status(400).send({ error: e?.message ?? String(e) });
     }

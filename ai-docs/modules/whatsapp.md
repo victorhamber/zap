@@ -22,7 +22,7 @@ Propósito: único motor WhatsApp do Zap, o WAHA NOWEB.
 - A sessão ativa é `appSettings.wppSession` (`getActiveWppSessionName`). Inbox, fluxo e log usam esse nome. O env só entra se a linha não existir. Não criar outra sessão.
 - Grupo (`@g.us`): `mentions: ["all"]` em texto, imagem e vídeo. Link do YouTube: `POST /api/send/link-custom-preview` com oEmbed; se falhar, `sendText` com `linkPreviewHighQuality`.
 - O intervalo do fluxo continua 45–120 s. Não usar a sessão `postiz` nem a do Desk.
-- Mensagem direta recebida chama `noteInbound`. Compra Hotmart aprovada chama `notePurchase` com o nome do produto. O funil mora em `modules/crm.md`.
+- Mensagem direta recebida chama `noteInbound`. Compra Hotmart aprovada chama `notePurchase` com o nome do produto. O funil mora em `modules/crm.md`. O e-mail do fluxo mora em `modules/email.md`.
 
 ## Como testar
 - `GET /api/webhooks/waha` → `{ ok: true, provider: "waha" }`.

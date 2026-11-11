@@ -174,8 +174,10 @@ export type SendEmailNodeData = {
   /** Destinatário Mustache — default `{{email}}`. */
   to: string;
   subject: string;
-  /** HTML do corpo (builder TipTap). */
+  /** HTML do corpo (blocos do editor). */
   html: string;
+  /** Linha invisível que a caixa mostra depois do assunto. */
+  preheader?: string;
   replyTo?: string;
 };
 
