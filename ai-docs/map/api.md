@@ -21,7 +21,7 @@
 - auth.ts [54L] — signToken(), verifyToken(), assertTokenValid(), requireAuth()
 
 ## api/src/routes/
-- ai.ts [226L] — aiRoutes()
+- ai.ts [252L] — aiRoutes()
 - auth.ts [98L] Janela e teto de tentativas de login por IP. */ — loginThrottle(), registerFailedLogin(), authRoutes()
 - broadcast.ts [42L] — broadcastRoutes()
 - crm.ts [56L] — crmRoutes()
@@ -61,8 +61,8 @@
 - inbox.ts [1342L] — readChatKey(), markChatReadLocally(), isChatReadLocally(), markInboxChatAsRead(), extractWaId(), isValidWaId(), chatIdToPhone(), isPhoneLikeText(), resolveChatId(), detectKind(), coerceDisplayText(), pickChatDisplayName(), +32
 - inboxArchive.test.ts [26L]
 - inboxMediaDownload.ts [36L] Baixa a mídia de uma mensagem já gravada. Grupo não baixa sozinho. */ — downloadInboxMessageOnDemand()
-- inboxStore.ts [1697L] — isButtonPlaceholderBody(), isPrismaUniqueConflict(), digitsOnly(), chatIdVariants(), messageSyncJidCandidates(), chatIdVariantsResolved(), resolveAllChatIdsForContact(), preferPrimaryChatId(), canonicalizeChatId(), findPrimaryChatIdForPhone(), findPrimaryChatIdForContact(), getSessionName(), +49
-- inboxSync.ts [79L] — syncRecentMessagesFromWpp()
+- inboxStore.ts [1655L] — isButtonPlaceholderBody(), isPrismaUniqueConflict(), digitsOnly(), chatIdVariants(), messageSyncJidCandidates(), chatIdVariantsResolved(), resolveAllChatIdsForContact(), preferPrimaryChatId(), canonicalizeChatId(), findPrimaryChatIdForPhone(), findPrimaryChatIdForContact(), getSessionName(), +49
+- inboxSync.ts [61L] — syncRecentMessagesFromWpp()
 - inboxTemplateRepair.ts [91L] Reprocessa mensagens antigas gravadas com o texto genérico de template/botão — maskMissingParameters(), repairTemplatePlaceholders()
 - mediaConvert.ts [50L] WhatsApp PTT exige OGG/Opus — gravação do navegador vem em WebM. */ — convertWebmDataUrlToOgg(), persistInboundMedia()
 - mediaLibrary.ts [275L] — getSessionName(), isSafeUploadFilename(), inferKind(), formatBytes(), listMediaLibrary(), clearQuickReplyMedia(), deleteMediaFile(), deleteMediaFiles(), deleteAllMediaFiles()
@@ -87,6 +87,8 @@
 - chatState.ts [226L] — resolveCanonicalChatId(), findChatState(), getChatState(), setChatModeAuto(), setChatModeHuman(), resolveChatModeForInbound(), setPendingReply(), clearPendingReply(), saveConversationMemory(), saveConversationSummary(), expectedReplyJobId(), logAiEvent(), +1
 - conversationMemory.ts [195L] "manual" (painel) e "webhook" (celular) são o atendente humano — rotular — speakerLabel(), formatTs(), formatHistoryLine(), dedupeHistoryRows(), fetchChatHistoryRows(), refreshConversationMemory(), buildChatContextForReply()
 - crypto.ts [14L] — encryptApiKey(), decryptApiKey(), maskApiKey()
+- draftCopy.test.ts [23L]
+- draftCopy.ts [190L] Rascunho de mensagem ou e-mail. Imagem entra inteira. Vídeo entra por quadros e  — escapeHtml(), uploadNameFromUrl(), parseDraftJson(), systemPrompt(), imageDataUrl(), watchVideo(), draftCopy()
 - enqueue.ts [336L] — modalityAllowed(), lockKey(), enqueueAiPipeline(), runEnqueueSerialized(), retryAiPipelineForContact(), drainNewerInboundForReply(), finishReplyScheduling(), isLikelyAiOrFlowEcho(), runEnqueue()
 - historyLearn.ts [145L] — learnStaggerMs(), queueHistoryLearning()
 - knowledgeImport.test.ts [38L]
@@ -99,7 +101,7 @@
 - mediaExtract.ts [262L] Máx. de frames enviados à Vision — só em temp, nunca persistidos no VPS. */ — ffmpegBin(), modalityFromType(), detectModality(), safeRmDir(), extractTextFromMessage(), extractVideoForAi(), resolveMediaUrl(), loadMediaBuffer(), resolveImageDataUrl(), extractInboundTextForReply()
 - mediaResponses.test.ts [86L]
 - mediaResponses.ts [117L] Sanitiza a lista recebida do painel para gravar (gera id, remove linhas vazias). — normalizeMediaResponsesForSave(), parseMediaResponses(), usableMediaResponses(), buildMediaResponsesBlock(), extractMediaResponseMarker(), stripMediaResponseMarker(), findMediaResponse()
-- openaiClient.ts [292L] — OpenAiApiError, isOpenAiRateLimitError(), parseRetryAfterMs(), sleep(), openaiFetch(), openaiChat(), openaiVision(), openaiTranscribe(), extractKnowledge(), generateReply()
+- openaiClient.ts [332L] — OpenAiApiError, isOpenAiRateLimitError(), parseRetryAfterMs(), sleep(), openaiFetch(), openaiChat(), openaiVision(), openaiChatParts(), openaiTranscribe(), extractKnowledge(), generateReply()
 - purge.ts [34L] Remove memória e conhecimento da IA para um contato (todos os chatId variantes). — purgeAiForContact(), purgeAiForSession()
 - replyContext.ts [223L] — resolveChatIdVariants(), resolveLeadStageForAi(), resolveLeadTagsForAi(), buildChatHistoryForAi(), fetchKnowledgeSnippetsForAi(), hasManualReplyAfterInbound(), hasAiReplyAfterInbound(), collectInboundBatchForReply(), getRecentAiReplies()
 - replyService.ts [637L] — aiOutboundTimestamp(), sendAiChatText(), dispatchMediaResponse(), resolveClientNameForAi(), parseOfficialLinks(), processReplyJob(), simulateReply()

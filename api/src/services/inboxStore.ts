@@ -127,21 +127,12 @@ export async function resolveAllChatIdsForContact(
     for (const r of rows) out.add(r.chatId);
   }
 
-  const primary = preferPrimaryChatId([...out]);
-  if (primary) {
-    for (const lid of getLidsMappedToPhone(session, primary)) {
-      out.add(lid);
+    const primary = preferPrimaryChatId([...out]);
+    if (primary) {
+      for (const lid of getLidsMappedToPhone(session, primary)) {
+        out.add(lid);
+      }
     }
-    const lidRows = await prisma.inboxMessage.findMany({
-      where: { session: normSession, chatId: { endsWith: "@lid" } },
-      select: { chatId: true },
-      distinct: ["chatId"]
-    });
-    for (const r of lidRows) {
-      const mapped = getMappedPhoneJid(normSession, r.chatId);
-      if (mapped && out.has(mapped)) out.add(r.chatId);
-    }
-  }
 
   return [...out];
 }
@@ -1516,44 +1507,11 @@ export async function listStoredMessages(
 
   dedupedRows.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
 
-  const { isInboundMediaType, downloadMediaForStoredMessage } = await import("./wppMedia.js");
-  const hydrateCandidates = dedupedRows
-    .filter(
-      (r) =>
-        !isGroupLikeJid(r.chatId) &&
-        !r.mediaUrl &&
-        r.waMessageId &&
-        isInboundMediaType(r.type === "ptt" ? "audio" : r.type)
-    )
-    .slice(-8);
-  const hydratedUrls = new Map<string, string>();
-
-  for (const r of hydrateCandidates) {
-    try {
-      const downloaded = await downloadMediaForStoredMessage({
-        chatId: r.chatId,
-        waMessageId: r.waMessageId!,
-        type: r.type === "ptt" ? "audio" : r.type
-      });
-      if (downloaded) {
-        const publicUrl = toPublicMediaUrl(downloaded) ?? downloaded;
-        hydratedUrls.set(r.id, publicUrl);
-        await updateInboxMessageMedia(r.waMessageId!, downloaded);
-      }
-    } catch {
-      /* mídia indisponível */
-    }
-  }
-
   const messages: NormalizedMessage[] = [];
   for (const r of dedupedRows) {
     let body = r.body;
     let mediaUrl = toPublicMediaUrl(r.mediaUrl) ?? r.mediaUrl;
     const normalizedType = r.type === "ptt" ? "audio" : r.type;
-
-    if (!mediaUrl && hydratedUrls.has(r.id)) {
-      mediaUrl = hydratedUrls.get(r.id) ?? null;
-    }
 
     if (!mediaUrl && isLikelyBase64Payload(body)) {
       mediaUrl =

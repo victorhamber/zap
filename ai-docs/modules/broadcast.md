@@ -11,7 +11,7 @@ Propósito: disparo imediato para grupos e, se marcado, e-mail dos contatos. Nã
 - Usado por: menu Broadcast.
 
 ## Fluxo
-1. A pessoa escreve a mensagem, pode anexar arquivo (do computador ou da biblioteca), marca grupos e, se quiser, o e-mail.
+1. A pessoa escreve a mensagem, pode pedir o texto à IA, anexar arquivo (do computador ou da biblioteca), marcar grupos e, se quiser, o e-mail.
 2. Os grupos vêm de `/groups` e também dos chats `@g.us`, para a lista não ficar vazia quando o endpoint de grupos não devolve nada.
 3. O worker manda o primeiro grupo agora. Imagem e vídeo levam a legenda e a menção oculta. Áudio sai sem menção; o texto, se houver, vai na mensagem seguinte. Documento sai sem menção. O próximo grupo espera `groupGapMs` (25–70 s, sorteado de novo).
 4. O e-mail usa a faixa que já existe, 15–45 s, também sorteada. Imagem entra no corpo. Os outros arquivos entram como link. Quem cancelou não recebe.

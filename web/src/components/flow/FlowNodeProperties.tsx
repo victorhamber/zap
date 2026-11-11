@@ -5,6 +5,7 @@ import { hotmartWebhookUrl, customWebhookUrl, buildWaMeLink, NODE_LABELS } from 
 import { TemplateVariablesHelp } from "./TemplateVariablesHelp";
 import { EmailEditorModal } from "../email/EmailEditorModal";
 import { htmlPreviewText } from "../email/emailBlocks";
+import { AiCopyButton } from "../ai/AiCopyButton";
 
 type Props = {
   selectedNode: Node;
@@ -367,7 +368,10 @@ export function FlowNodeProperties({
         {nodeType === "send_text" && (
           <>
             <TemplateVariablesHelp onInsert={(s) => insertVariable(s, "text")} />
-            <label className="text-xs text-zinc-500">Mensagem</label>
+            <div className="flex items-center justify-between gap-2">
+              <label className="text-xs text-zinc-500">Mensagem</label>
+              <AiCopyButton channel="whatsapp" audience="person" onApply={(d) => d.text && onUpdate({ text: d.text })} />
+            </div>
             <textarea
               ref={textRef}
               rows={8}
@@ -393,7 +397,10 @@ export function FlowNodeProperties({
                   compact
                   onInsert={(s) => insertVariable(s, "caption")}
                 />
-                <label className="text-xs text-zinc-500">Legenda</label>
+                <div className="flex items-center justify-between gap-2">
+                  <label className="text-xs text-zinc-500">Legenda</label>
+                  <AiCopyButton channel="whatsapp" audience="person" onApply={(d) => d.text && onUpdate({ caption: d.text })} />
+                </div>
                 <textarea
                   ref={captionRef}
                   rows={5}
@@ -429,7 +436,10 @@ export function FlowNodeProperties({
             {String(config.mediaType ?? "text") === "text" ? (
               <>
                 <TemplateVariablesHelp onInsert={(s) => insertVariable(s, "text")} />
-                <label className="text-xs text-zinc-500">Mensagem</label>
+                <div className="flex items-center justify-between gap-2">
+                  <label className="text-xs text-zinc-500">Mensagem</label>
+                  <AiCopyButton channel="whatsapp" audience="group" onApply={(d) => d.text && onUpdate({ text: d.text })} />
+                </div>
                 <textarea
                   ref={textRef}
                   rows={6}
@@ -449,7 +459,10 @@ export function FlowNodeProperties({
                 {String(config.mediaType) !== "audio" && (
                   <>
                     <TemplateVariablesHelp compact onInsert={(s) => insertVariable(s, "caption")} />
-                    <label className="text-xs text-zinc-500">Legenda</label>
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="text-xs text-zinc-500">Legenda</label>
+                      <AiCopyButton channel="whatsapp" audience="group" onApply={(d) => d.text && onUpdate({ caption: d.text })} />
+                    </div>
                     <textarea
                       ref={captionRef}
                       rows={4}
@@ -591,7 +604,20 @@ export function FlowNodeProperties({
               className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-white"
               placeholder="suporte@seudominio.com"
             />
-            <label className="text-xs text-zinc-500">Corpo do e-mail</label>
+            <div className="flex items-center justify-between gap-2">
+              <label className="text-xs text-zinc-500">Corpo do e-mail</label>
+              <AiCopyButton
+                channel="email"
+                audience="person"
+                onApply={(d) =>
+                  onUpdate({
+                    ...(d.subject ? { subject: d.subject } : {}),
+                    ...(d.preheader ? { preheader: d.preheader } : {}),
+                    ...(d.html ? { html: d.html } : {})
+                  })
+                }
+              />
+            </div>
             <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 space-y-3">
               <p className="text-xs text-zinc-500 leading-relaxed line-clamp-3">
                 {htmlPreviewText(String(config.html ?? ""), 180) || "Nenhum conteúdo ainda."}
@@ -614,6 +640,7 @@ export function FlowNodeProperties({
               preheader={String(config.preheader ?? "")}
               onClose={() => setEmailEditorOpen(false)}
               onSave={(html, preheader) => onUpdate({ html, preheader })}
+              onSubject={(subject) => onUpdate({ subject })}
             />
           </>
         )}

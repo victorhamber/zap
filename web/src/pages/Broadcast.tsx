@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { BroadcastMediaField, type BroadcastMediaPick } from "../components/broadcast/BroadcastMediaField";
+import { AiCopyButton } from "../components/ai/AiCopyButton";
 import { Button, Card, ErrorNotice, PageHeader, SearchInput } from "../components/ui";
 
 type Group = { id: string; name: string };
@@ -95,7 +96,10 @@ export function Broadcast() {
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <Card className="space-y-3 p-4">
           <label className="block text-sm text-zinc-300">
-            Mensagem
+            <span className="flex items-center justify-between gap-2">
+              Mensagem
+              <AiCopyButton channel="whatsapp" audience="group" onApply={(d) => d.text && setText(d.text)} />
+            </span>
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}

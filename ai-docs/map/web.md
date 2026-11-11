@@ -24,6 +24,7 @@
 
 ## web/src/components/ai/
 - AiAssistantPanel.tsx [1347L] — AiAssistantPanel(), StatCard(), TagSelectModal()
+- AiCopyButton.tsx [207L] Ícone que abre o pedido de texto para a IA. */ — AiCopyButton(), AiCopyDialog(), Spark(), readFile()
 - AiProviderModelPicker.tsx [103L] — AiProviderModelPicker()
 - aiCatalog.ts [83L] Catálogo visível no Deskcomm. Só entra em modelChat quem tem apiId da OpenAI. */ — modelLabel(), priceTitle()
 
@@ -33,13 +34,13 @@
 ## web/src/components/email/
 - EmailBlockEditor.tsx [625L] — VarChips(), EmailImageLibrary(), BlockEditor(), blockTitle(), cloneBlock(), EmailBlockEditor()
 - EmailBuilder.tsx [201L] — ToolbarButton(), EmailBuilder()
-- EmailEditorModal.tsx [122L] — EmailEditorModal()
+- EmailEditorModal.tsx [138L] — EmailEditorModal()
 - EmailSettingsPanel.tsx [284L] — EmailSettingsPanel()
 - emailBlocks.ts [250L] — newBlockId(), createBlock(), alignStyle(), paragraphHtmlToText(), textToParagraphHtml(), escapeForHtml(), blocksToHtml(), parseButtonFromParagraph(), htmlToBlocks(), reorderBlocks(), htmlPreviewText()
 
 ## web/src/components/flow/
 - FlowNode.tsx [472L] Alturas fixas — handles calculados em px para alinhar com o nome da oferta. */ — branchCodesPreview(), handleTopForRow(), OfferOutputRow(), RoundRobinOutputRow(), FlowNodeComponent()
-- FlowNodeProperties.tsx [1590L] Texto bruto do input — permite digitar vírgulas entre códigos. */ — offerCodesInputValue(), parseOfferCodes(), FlowNodeProperties()
+- FlowNodeProperties.tsx [1617L] Texto bruto do input — permite digitar vírgulas entre códigos. */ — offerCodesInputValue(), parseOfferCodes(), FlowNodeProperties()
 - FlowZoomToolbar.tsx [59L] — FlowZoomToolbar()
 - NodeContextMenu.tsx [45L] — NodeContextMenu()
 - TemplateVariablesHelp.tsx [52L] — TemplateVariablesHelp()
@@ -65,7 +66,7 @@
 - WppInstancesManager.tsx [499L] — WppInstancesManager()
 
 ## web/src/pages/
-- Broadcast.tsx [171L] — Broadcast()
+- Broadcast.tsx [175L] — Broadcast()
 - Contacts.tsx [319L] — phoneLabel(), Contacts()
 - Dashboard.tsx [574L] — formatEventTime(), formatDay(), BarChart(), ChartSkeleton(), DistributionList(), Dashboard()
 - FlowEditor.tsx [795L] — summaryFor(), toReactFlowNodes(), toReactFlowEdges(), cloneNodeConfig(), FlowEditor()

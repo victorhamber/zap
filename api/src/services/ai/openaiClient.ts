@@ -131,6 +131,46 @@ export async function openaiVision(params: {
   return data.choices?.[0]?.message?.content?.trim() ?? "";
 }
 
+type ChatPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string; detail: "low" } };
+
+/** Texto e imagens na mesma resposta. O rascunho de mensagem usa isto. */
+export async function openaiChatParts(params: {
+  apiKey: string;
+  model: string;
+  system: string;
+  userText: string;
+  imageDataUrls?: string[];
+  temperature?: number;
+  json?: boolean;
+}): Promise<string> {
+  const content: ChatPart[] = [{ type: "text", text: params.userText }];
+  for (const url of params.imageDataUrls ?? []) {
+    content.push({ type: "image_url", image_url: { url, detail: "low" } });
+  }
+  const res = await openaiFetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${params.apiKey}`,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      model: params.model,
+      temperature: params.temperature ?? 0.7,
+      messages: [
+        { role: "system", content: params.system },
+        { role: "user", content }
+      ],
+      ...(params.json ? { response_format: { type: "json_object" } } : {})
+    })
+  });
+  const data = (await res.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+  return data.choices?.[0]?.message?.content?.trim() ?? "";
+}
+
 export async function openaiTranscribe(params: {
   apiKey: string;
   model: string;

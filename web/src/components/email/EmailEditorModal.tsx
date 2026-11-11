@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { EmailBlockEditor } from "./EmailBlockEditor";
+import { AiCopyButton } from "../ai/AiCopyButton";
 
 type Props = {
   open: boolean;
@@ -9,9 +10,10 @@ type Props = {
   preheader?: string;
   onClose: () => void;
   onSave: (html: string, preheader: string) => void;
+  onSubject?: (subject: string) => void;
 };
 
-export function EmailEditorModal({ open, html, subject, preheader, onClose, onSave }: Props) {
+export function EmailEditorModal({ open, html, subject, preheader, onClose, onSave, onSubject }: Props) {
   const [draft, setDraft] = useState(html);
   const [previewLine, setPreviewLine] = useState(preheader ?? "");
   const [editorKey, setEditorKey] = useState(0);
@@ -59,14 +61,28 @@ export function EmailEditorModal({ open, html, subject, preheader, onClose, onSa
               {subject?.trim() || "Sem assunto"} — o rodapé com remetente e cancelar entra no envio.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-2 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
-            aria-label="Fechar"
-          >
-            ✕
-          </button>
+          <div className="flex items-center gap-1">
+            <AiCopyButton
+              channel="email"
+              audience="person"
+              onApply={(result) => {
+                if (result.html) {
+                  setDraft(result.html);
+                  setEditorKey((k) => k + 1);
+                }
+                if (result.preheader) setPreviewLine(result.preheader);
+                if (result.subject) onSubject?.(result.subject);
+              }}
+            />
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg p-2 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+              aria-label="Fechar"
+            >
+              ✕
+            </button>
+          </div>
         </header>
 
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 py-4">
@@ -82,7 +98,7 @@ export function EmailEditorModal({ open, html, subject, preheader, onClose, onSa
           <div className="min-h-[480px] flex-1">
             <EmailBlockEditor
               key={editorKey}
-              html={html}
+              html={draft}
               subject={subject}
               preheader={previewLine}
               onChange={setDraft}

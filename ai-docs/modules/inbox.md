@@ -5,7 +5,7 @@ Propósito: lista, conversa e ficha no painel. A etapa do contato está em `modu
 ## Invariantes e armadilhas
 - Desktop: lista | conversa | ficha. Celular: a ficha abre em overlay. A seta do cabeçalho recolhe; a faixa estreita à direita abre de novo.
 - Etiquetas só na ficha (`ContactProfilePanel`). O topo da conversa não repete a faixa. O botão Tags abre o gerenciador.
-- Mídia de grupo não grava o arquivo inteiro. A bolha mostra a miniatura jpeg que o WhatsApp já manda. Baixar (`POST /api/inbox/messages/download`) traz o vídeo ou o áudio. Conversa direta continua baixando sozinha.
+- Mídia de grupo não grava o arquivo inteiro. A bolha mostra a miniatura jpeg que o WhatsApp já manda. Baixar (`POST /api/inbox/messages/download`) traz o vídeo ou o áudio. Abrir a conversa lê o banco e não espera o download. A mídia que falta fica no Baixar.
 - Link do YouTube na bolha usa a miniatura do YouTube, sem gravar arquivo.
 - Tipo da mídia: mimetype, depois extensão, depois `payload.type`. `hasMedia` sem isso vira documento. Se a linha antiga era `document` ou `chat` e o sync traz imagem, vídeo, áudio ou sticker, `saveInboxMessage` troca o tipo.
 - Foto: `getChatPictureDataUrl`. URL quebrada cai nas iniciais (`WhatsAppAvatar`).

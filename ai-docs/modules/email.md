@@ -13,7 +13,7 @@ Propósito: e-mail de fluxo pela Resend, com o que a caixa exige para não trata
 - Usado por: nó `send_email` do fluxo e a aba E-mail nas configurações.
 
 ## Fluxo
-1. O editor grava HTML e a linha de pré-visualização no nó. A tela tem paleta, o e-mail no centro e as propriedades do bloco selecionado. O popup rola. A imagem pode vir da biblioteca ou de um link. Sem coluna, rede social, HTML cru nem envio de teste.
+1. O editor grava HTML e a linha de pré-visualização no nó. A tela tem paleta, o e-mail no centro e as propriedades do bloco selecionado. O popup rola. A imagem pode vir da biblioteca ou de um link. O ícone de IA escreve assunto, prévia e corpo a partir de um pedido, e pode olhar imagem ou vídeo. Sem coluna, rede social, HTML cru nem envio de teste.
 2. O envio espera a fila que já existia, consulta o cancelamento e só então chama a Resend.
 3. O rodapé leva nome, From, endereço (se preenchido) e o link de cancelar.
 

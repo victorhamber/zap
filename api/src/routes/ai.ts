@@ -222,4 +222,30 @@ export async function aiRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: message });
     }
   });
+
+  app.post("/api/ai/draft", async (req, reply) => {
+    const session = await getActiveSessionName();
+    const body = req.body as {
+      channel?: string;
+      audience?: string;
+      goal?: string;
+      brief?: string;
+      mediaUrl?: string;
+    };
+    try {
+      const { draftCopy } = await import("../services/ai/draftCopy.js");
+      const draft = await draftCopy({
+        session,
+        channel: body.channel === "email" ? "email" : "whatsapp",
+        audience: body.audience === "person" ? "person" : "group",
+        goal: body.goal ?? "",
+        brief: body.brief ?? "",
+        mediaUrl: body.mediaUrl
+      });
+      return { ok: true, ...draft };
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      return reply.status(400).send({ ok: false, error: message });
+    }
+  });
 }
