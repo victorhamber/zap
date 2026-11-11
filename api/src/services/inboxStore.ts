@@ -424,6 +424,8 @@ type SessionInboxState = {
   hiddenContacts?: string[];
   /** Arquivados: somem da lista e voltam quando a pessoa manda mensagem. */
   archivedContacts?: string[];
+  /** Hora do arquivo por chave. Mensagem mais antiga não reabre. */
+  archivedAt?: Record<string, number>;
 };
 
 function parseInboxSessionState(raw: unknown): Record<string, SessionInboxState> {
@@ -658,6 +660,13 @@ export async function getArchivedInboxContactKeys(session?: string): Promise<Set
   return out;
 }
 
+/** Histórico anterior ao Fechar/Arquivar não reabre. Sem marca de hora, reabre. */
+export function messageReopensArchive(messageAt: number, archivedAt?: number): boolean {
+  if (!archivedAt || !Number.isFinite(archivedAt)) return true;
+  if (!Number.isFinite(messageAt) || messageAt <= 0) return false;
+  return messageAt > archivedAt;
+}
+
 export async function archiveContactFromInbox(
   session: string,
   phone: string,
@@ -667,21 +676,30 @@ export async function archiveContactFromInbox(
   const map = await readInboxSessionMap();
   const entry = map[norm] ?? {};
   const archived = new Set(entry.archivedContacts ?? []);
-  for (const k of await collectHiddenKeysForContact(session, phone, chatId)) archived.add(k);
-  map[norm] = { ...entry, archivedContacts: [...archived] };
+  const at = { ...(entry.archivedAt ?? {}) };
+  const now = Date.now();
+  for (const k of await collectHiddenKeysForContact(session, phone, chatId)) {
+    archived.add(k);
+    at[k] = now;
+  }
+  map[norm] = { ...entry, archivedContacts: [...archived], archivedAt: at };
   await writeInboxSessionMap(map);
 }
 
 export async function unarchiveContactFromInbox(
   session: string,
   phone: string,
-  chatId?: string
+  chatId?: string,
+  messageAt?: Date
 ): Promise<void> {
   const norm = session.trim().toLowerCase();
   const map = await readInboxSessionMap();
   const entry = map[norm];
   if (!entry?.archivedContacts?.length) return;
   const remove = new Set(await collectHiddenKeysForContact(session, phone, chatId));
+  const stamps = entry.archivedAt ?? {};
+  const mark = Math.max(0, ...[...remove].map((k) => stamps[k] ?? 0));
+  if (!messageReopensArchive(messageAt?.getTime() ?? 0, mark || undefined)) return;
   if (chatId?.trim()) {
     const cid = normalizeDirectJid(chatId);
     remove.add(`id:${cid}`);
@@ -696,7 +714,13 @@ export async function unarchiveContactFromInbox(
     }
   }
   const archived = entry.archivedContacts.filter((k) => !remove.has(k));
-  map[norm] = { ...entry, archivedContacts: archived.length > 0 ? archived : undefined };
+  const at = { ...(entry.archivedAt ?? {}) };
+  for (const k of remove) delete at[k];
+  map[norm] = {
+    ...entry,
+    archivedContacts: archived.length > 0 ? archived : undefined,
+    archivedAt: Object.keys(at).length > 0 ? at : undefined
+  };
   await writeInboxSessionMap(map);
 }
 
@@ -1149,6 +1173,8 @@ export async function saveInboxMessage(params: {
   sessionName?: string;
   ownerPhone?: string | null;
   peerJids?: string[];
+  /** Falso no sync do histórico: mensagem antiga não reabre Fechar/Arquivar. */
+  reopenArchive?: boolean;
 }): Promise<SaveInboxMessageResult | null> {
   if (!prisma) return null;
 
@@ -1256,7 +1282,7 @@ export async function saveInboxMessage(params: {
       waMessageId
     };
 
-    if (!params.fromMe) {
+    if (!params.fromMe && params.reopenArchive !== false) {
       // Em grupo, o "telefone" do peer é de um participante — reexibir por ele
       // ressuscitava a conversa privada apagada dessa pessoa. Grupo reexibe a si.
       // Sempre passa chatId: pickPhoneJid pode falhar em @lid puro e o unhide
@@ -1265,7 +1291,7 @@ export async function saveInboxMessage(params: {
         ? chatId
         : pickPhoneJid([chatId, ...(params.peerJids ?? []), params.chatId]) ?? chatId;
       await unhideContactFromInbox(session, unhidePhone, chatId).catch(() => {});
-      await unarchiveContactFromInbox(session, unhidePhone, chatId).catch(() => {});
+      await unarchiveContactFromInbox(session, unhidePhone, chatId, timestamp).catch(() => {});
     }
 
     const { enqueueAiPipeline } = await import("./ai/enqueue.js");

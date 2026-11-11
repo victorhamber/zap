@@ -69,7 +69,8 @@ export async function syncRecentMessagesFromWpp(
       waMessageId: parsed.waMessageId,
       timestamp: new Date(parsed.timestamp),
       sessionName: session,
-      peerJids: [target.jid, parsed.chatId].filter(Boolean)
+      peerJids: [target.jid, parsed.chatId].filter(Boolean),
+      reopenArchive: false
     });
     saved++;
   }

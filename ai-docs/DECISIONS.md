@@ -46,3 +46,9 @@
 - Decisão: a barra assume a IA, grava a etapa do funil, arquiva numa lista própria e fecha (IA parada + arquivo). A estrela sugere o texto no campo; quem envia é a pessoa. Nota interna continua fora do WhatsApp.
 - Alternativas: copiar agenda e equipe do Deskcomm. Recusado.
 - Consequência: arquivado volta só com mensagem nova da pessoa. Fechar deixa a IA parada mesmo depois disso.
+
+## 2026-11-11 — Editor de e-mail no formato do Send Master
+- Contexto: o Send Master, deixado na pasta, tem construtor com paleta, canvas e propriedades. O Zap já monta o HTML do fluxo em blocos.
+- Decisão: o editor do nó usa esse formato. Continuam título, texto, lista, botão, imagem, divisor e espaço. Coluna, rede social, HTML cru e envio de teste não entram.
+- Alternativas: copiar o plugin WordPress. Recusado.
+- Consequência: o rodapé com remetente e cancelar segue no envio, não como bloco.

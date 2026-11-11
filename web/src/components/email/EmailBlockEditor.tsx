@@ -1,9 +1,10 @@
-import { useCallback, useMemo, useState, type DragEvent, type ReactNode } from "react";
+import { useCallback, useRef, useState, type DragEvent } from "react";
 import { FLOW_TEMPLATE_VARIABLES, mustacheSnippet } from "../flow/flowTemplateVars";
 import {
   blocksToHtml,
   createBlock,
   htmlToBlocks,
+  newBlockId,
   reorderBlocks,
   type EmailBlock,
   type ButtonAlign
@@ -16,15 +17,30 @@ type Props = {
   preheader?: string;
 };
 
-const BLOCK_PALETTE: { type: EmailBlock["type"]; label: string; hint: string }[] = [
-  { type: "heading", label: "Título", hint: "H1 / H2 / H3" },
-  { type: "paragraph", label: "Texto", hint: "Parágrafo" },
-  { type: "list", label: "Lista", hint: "Bullet points" },
-  { type: "button", label: "Botão", hint: "CTA visual" },
-  { type: "image", label: "Imagem", hint: "URL da imagem" },
-  { type: "divider", label: "Divisor", hint: "Linha horizontal" },
-  { type: "spacer", label: "Espaço", hint: "Margem vertical" }
+const PALETTE: { title: string; items: { type: EmailBlock["type"]; label: string }[] }[] = [
+  {
+    title: "Básicos",
+    items: [
+      { type: "heading", label: "Título" },
+      { type: "paragraph", label: "Texto" },
+      { type: "list", label: "Lista" },
+      { type: "button", label: "Botão" },
+      { type: "divider", label: "Divisor" },
+      { type: "spacer", label: "Espaço" }
+    ]
+  },
+  { title: "Mídia", items: [{ type: "image", label: "Imagem" }] }
 ];
+
+const BLOCK_TYPES = new Set<EmailBlock["type"]>([
+  "heading",
+  "paragraph",
+  "list",
+  "button",
+  "image",
+  "divider",
+  "spacer"
+]);
 
 const BUTTON_PRESETS = [
   { label: "Verde", bg: "#10b981", text: "#ffffff" },
@@ -32,68 +48,6 @@ const BUTTON_PRESETS = [
   { label: "Preto", bg: "#18181b", text: "#ffffff" },
   { label: "Outline", bg: "#ffffff", text: "#18181b" }
 ];
-
-function BlockShell({
-  index,
-  title,
-  blockId,
-  onRemove,
-  onDragStart,
-  onDragOver,
-  onDrop,
-  children
-}: {
-  index: number;
-  title: string;
-  blockId: string;
-  onRemove: () => void;
-  onDragStart: (id: string) => void;
-  onDragOver: (e: DragEvent) => void;
-  onDrop: (id: string) => void;
-  children: ReactNode;
-}) {
-  return (
-    <div
-      className="group rounded-xl border border-zinc-700/80 bg-zinc-900/60 overflow-hidden"
-      onDragOver={onDragOver}
-      onDrop={(e) => {
-        e.preventDefault();
-        onDrop(blockId);
-      }}
-    >
-      <div className="flex items-center gap-2 border-b border-zinc-800/80 bg-zinc-950/50 px-2 py-1.5">
-        <button
-          type="button"
-          draggable
-          onDragStart={() => onDragStart(blockId)}
-          className="cursor-grab touch-none rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 active:cursor-grabbing"
-          title="Arrastar bloco"
-        >
-          <svg viewBox="0 0 16 16" className="h-4 w-4" fill="currentColor">
-            <circle cx="5" cy="4" r="1.2" />
-            <circle cx="11" cy="4" r="1.2" />
-            <circle cx="5" cy="8" r="1.2" />
-            <circle cx="11" cy="8" r="1.2" />
-            <circle cx="5" cy="12" r="1.2" />
-            <circle cx="11" cy="12" r="1.2" />
-          </svg>
-        </button>
-        <span className="text-[11px] font-medium text-zinc-400 flex-1">
-          {index + 1}. {title}
-        </span>
-        <button
-          type="button"
-          onClick={onRemove}
-          className="rounded p-1 text-zinc-600 hover:bg-red-500/10 hover:text-red-400 opacity-0 group-hover:opacity-100 transition"
-          title="Remover bloco"
-        >
-          ✕
-        </button>
-      </div>
-      <div className="p-3">{children}</div>
-    </div>
-  );
-}
 
 function VarChips({ onInsert }: { onInsert: (snippet: string) => void }) {
   return (
@@ -359,78 +313,245 @@ function blockTitle(block: EmailBlock): string {
   }
 }
 
-export function EmailBlockEditor({ html, onChange, subject, preheader }: Props) {
-  const [blocks, setBlocks] = useState<EmailBlock[]>(() => htmlToBlocks(html));
-  const [dragId, setDragId] = useState<string | null>(null);
+function cloneBlock(block: EmailBlock): EmailBlock {
+  if (block.type === "list") return { ...block, id: newBlockId(), items: [...block.items] };
+  return { ...block, id: newBlockId() };
+}
 
-  const previewHtml = useMemo(() => blocksToHtml(blocks), [blocks]);
+export function EmailBlockEditor({ html, onChange, subject, preheader }: Props) {
+  const origin = useRef<EmailBlock[]>([]);
+  const [blocks, setBlocks] = useState<EmailBlock[]>(() => {
+    const start = htmlToBlocks(html);
+    origin.current = start;
+    return start;
+  });
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const historyRef = useRef<EmailBlock[][] | null>(null);
+  const historyIndex = useRef(0);
+  const pending = useRef<number | null>(null);
+  const latest = useRef(blocks);
+  latest.current = blocks;
+
+  const selected = blocks.find((b) => b.id === selectedId) ?? null;
+
+  const remember = useCallback((next: EmailBlock[]) => {
+    const base = historyRef.current ?? [origin.current];
+    const cut = base.slice(0, historyIndex.current + 1);
+    const last = cut[cut.length - 1];
+    if (last && JSON.stringify(last) === JSON.stringify(next)) {
+      historyRef.current = cut;
+      return;
+    }
+    cut.push(next);
+    if (cut.length > 40) cut.shift();
+    historyRef.current = cut;
+    historyIndex.current = cut.length - 1;
+    setCanUndo(historyIndex.current > 0);
+    setCanRedo(false);
+  }, []);
 
   const commit = useCallback(
-    (next: EmailBlock[]) => {
+    (next: EmailBlock[], immediate = false) => {
+      latest.current = next;
       setBlocks(next);
       onChange(blocksToHtml(next));
+      if (pending.current) window.clearTimeout(pending.current);
+      if (immediate) {
+        remember(next);
+        return;
+      }
+      pending.current = window.setTimeout(() => remember(next), 500);
     },
-    [onChange]
+    [onChange, remember]
   );
 
-  const updateBlock = (id: string, patch: EmailBlock) => {
-    commit(blocks.map((b) => (b.id === id ? patch : b)));
-  };
+  function applyHistory(index: number) {
+    const snap = historyRef.current?.[index];
+    if (!snap) return;
+    historyIndex.current = index;
+    latest.current = snap;
+    setBlocks(snap);
+    onChange(blocksToHtml(snap));
+    setCanUndo(index > 0);
+    setCanRedo(index < (historyRef.current?.length ?? 1) - 1);
+  }
+
+  function undo() {
+    if (pending.current) {
+      window.clearTimeout(pending.current);
+      pending.current = null;
+      remember(latest.current);
+    }
+    if (historyIndex.current <= 0) return;
+    applyHistory(historyIndex.current - 1);
+  }
+
+  function redo() {
+    const stack = historyRef.current;
+    if (!stack || historyIndex.current >= stack.length - 1) return;
+    applyHistory(historyIndex.current + 1);
+  }
+
+  function addBlock(type: EmailBlock["type"], beforeId?: string) {
+    const created = createBlock(type);
+    if (!beforeId) {
+      commit([...blocks, created], true);
+    } else {
+      const idx = blocks.findIndex((b) => b.id === beforeId);
+      const next = [...blocks];
+      next.splice(idx < 0 ? next.length : idx, 0, created);
+      commit(next, true);
+    }
+    setSelectedId(created.id);
+  }
+
+  function onDrop(e: DragEvent, beforeId?: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    const raw = e.dataTransfer.getData("text/zap-block") as EmailBlock["type"];
+    if (BLOCK_TYPES.has(raw)) {
+      addBlock(raw, beforeId);
+      setDragId(null);
+      return;
+    }
+    if (dragId && beforeId) commit(reorderBlocks(blocks, dragId, beforeId), true);
+    setDragId(null);
+  }
 
   return (
-    <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-      <div className="min-w-0 flex-1 space-y-3">
-        <div className="flex flex-wrap gap-1.5">
-          {BLOCK_PALETTE.map((item) => (
-            <button
-              key={item.type}
-              type="button"
-              title={item.hint}
-              onClick={() => commit([...blocks, createBlock(item.type)])}
-              className="rounded-full border border-zinc-700 px-3 py-1.5 text-sm text-zinc-200 hover:border-emerald-500/40 hover:bg-zinc-900"
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-        <div className="max-h-[min(58vh,520px)] space-y-3 overflow-y-auto pr-1">
-          {blocks.length === 0 && (
-            <p className="py-8 text-center text-sm text-zinc-400">
-              Adicione um bloco para começar o e-mail.
-            </p>
-          )}
-          {blocks.map((block, index) => (
-            <BlockShell
-              key={block.id}
-              index={index}
-              title={blockTitle(block)}
-              blockId={block.id}
-              onRemove={() => commit(blocks.filter((b) => b.id !== block.id))}
-              onDragStart={setDragId}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(targetId) => {
-                if (dragId) commit(reorderBlocks(blocks, dragId, targetId));
-                setDragId(null);
-              }}
-            >
-              <BlockEditor block={block} onChange={(patch) => updateBlock(block.id, patch)} />
-            </BlockShell>
-          ))}
-        </div>
-      </div>
-
-      <aside className="w-full shrink-0 lg:w-[340px]">
-        <p className="mb-2 text-sm text-zinc-300">Como chega na caixa</p>
-        <div className="overflow-hidden rounded-2xl border border-zinc-700 bg-[#f4f4f5]">
-          <div className="border-b border-zinc-200 bg-white px-4 py-3">
-            <p className="text-sm font-medium text-zinc-900">{subject?.trim() || "Sem assunto"}</p>
-            <p className="mt-0.5 text-xs text-zinc-500">{preheader?.trim() || "Sem linha de pré-visualização"}</p>
+    <div className="grid h-full min-h-[440px] grid-cols-1 overflow-hidden rounded-xl border border-zinc-800 lg:grid-cols-[180px_minmax(0,1fr)_280px]">
+      <aside className="overflow-y-auto border-b border-zinc-800 bg-zinc-950 p-3 lg:border-b-0 lg:border-r">
+        <p className="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500">Elementos</p>
+        {PALETTE.map((group) => (
+          <div key={group.title} className="mb-4">
+            <p className="mb-1.5 text-[11px] text-zinc-500">{group.title}</p>
+            <div className="space-y-1">
+              {group.items.map((item) => (
+                <button
+                  key={item.type}
+                  type="button"
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData("text/zap-block", item.type);
+                    e.dataTransfer.effectAllowed = "copy";
+                  }}
+                  onClick={() => addBlock(item.type)}
+                  className="w-full cursor-grab rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-1.5 text-left text-sm text-zinc-200 hover:border-zinc-600"
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
           </div>
-          <div
-            className="max-h-[min(52vh,480px)] overflow-y-auto px-4 py-4 text-sm text-zinc-900"
-            dangerouslySetInnerHTML={{ __html: previewHtml }}
-          />
+        ))}
+      </aside>
+
+      <section className="flex min-h-0 flex-col bg-zinc-900">
+        <div className="flex items-center gap-1 border-b border-zinc-800 px-2 py-1.5">
+          <button type="button" disabled={!canUndo} onClick={undo} className="rounded px-2 py-1 text-sm text-zinc-300 disabled:opacity-30" title="Desfazer">
+            ↶
+          </button>
+          <button type="button" disabled={!canRedo} onClick={redo} className="rounded px-2 py-1 text-sm text-zinc-300 disabled:opacity-30" title="Refazer">
+            ↷
+          </button>
+          <button
+            type="button"
+            className="ml-auto rounded px-2 py-1 text-xs text-zinc-400 hover:text-zinc-200"
+            onClick={() => {
+              if (!window.confirm("Limpar todos os blocos deste e-mail?")) return;
+              setSelectedId(null);
+              commit([], true);
+            }}
+          >
+            Limpar
+          </button>
         </div>
+        <div
+          className="min-h-0 flex-1 overflow-y-auto bg-[#e7e5e4] p-4"
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => onDrop(e)}
+        >
+          <div className="mx-auto max-w-xl overflow-hidden rounded-lg bg-white shadow-sm">
+            <div className="border-b border-zinc-200 px-5 py-3">
+              <p className="text-sm font-medium text-zinc-900">{subject?.trim() || "Sem assunto"}</p>
+              <p className="mt-0.5 text-xs text-zinc-500">
+                {preheader?.trim() || "Sem linha de pré-visualização"}
+              </p>
+            </div>
+            <div className="space-y-1 px-5 py-4">
+              {blocks.length === 0 && (
+                <p className="py-10 text-center text-sm text-zinc-400">Arraste um elemento para começar</p>
+              )}
+              {blocks.map((block) => {
+                const on = block.id === selectedId;
+                return (
+                  <div
+                    key={block.id}
+                    draggable
+                    onDragStart={() => setDragId(block.id)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => onDrop(e, block.id)}
+                    onClick={() => setSelectedId(block.id)}
+                    className={`cursor-pointer rounded-md px-1 ${on ? "ring-2 ring-emerald-500" : "hover:ring-1 hover:ring-zinc-300"}`}
+                  >
+                    <div
+                      className="pointer-events-none text-zinc-900"
+                      dangerouslySetInnerHTML={{ __html: blocksToHtml([block]) }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <aside className="overflow-y-auto border-t border-zinc-800 bg-zinc-950 p-3 lg:border-l lg:border-t-0">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Propriedades</p>
+          {selected && (
+            <div className="flex gap-1">
+              <button
+                type="button"
+                className="rounded px-1.5 py-0.5 text-[11px] text-zinc-400 hover:bg-zinc-900"
+                onClick={() => {
+                  const copy = cloneBlock(selected);
+                  const idx = blocks.findIndex((b) => b.id === selected.id);
+                  const next = [...blocks];
+                  next.splice(idx + 1, 0, copy);
+                  commit(next, true);
+                  setSelectedId(copy.id);
+                }}
+              >
+                Duplicar
+              </button>
+              <button
+                type="button"
+                className="rounded px-1.5 py-0.5 text-[11px] text-red-300 hover:bg-zinc-900"
+                onClick={() => {
+                  commit(blocks.filter((b) => b.id !== selected.id), true);
+                  setSelectedId(null);
+                }}
+              >
+                Remover
+              </button>
+            </div>
+          )}
+        </div>
+        {!selected && (
+          <p className="px-2 py-8 text-center text-sm text-zinc-500">
+            Selecione um elemento para editar
+          </p>
+        )}
+        {selected && (
+          <div>
+            <p className="mb-2 text-sm text-zinc-200">{blockTitle(selected)}</p>
+            <BlockEditor block={selected} onChange={(patch) => commit(blocks.map((b) => (b.id === selected.id ? patch : b)))} />
+          </div>
+        )}
       </aside>
     </div>
   );

@@ -69,8 +69,8 @@ export function EmailEditorModal({ open, html, subject, preheader, onClose, onSa
           </button>
         </header>
 
-        <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
-          <label className="mb-3 block text-sm text-zinc-300">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden px-5 py-4">
+          <label className="block shrink-0 text-sm text-zinc-300">
             Linha de pré-visualização
             <input
               value={previewLine}
@@ -79,18 +79,20 @@ export function EmailEditorModal({ open, html, subject, preheader, onClose, onSa
               className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
             />
           </label>
-          <EmailBlockEditor
-            key={editorKey}
-            html={html}
-            subject={subject}
-            preheader={previewLine}
-            onChange={setDraft}
-          />
+          <div className="min-h-0 flex-1">
+            <EmailBlockEditor
+              key={editorKey}
+              html={html}
+              subject={subject}
+              preheader={previewLine}
+              onChange={setDraft}
+            />
+          </div>
         </div>
 
         <footer className="flex items-center justify-between gap-3 border-t border-zinc-800 px-5 py-4 shrink-0 bg-zinc-950/95">
           <p className="text-[11px] text-zinc-600 hidden sm:block">
-            Arraste pelo ícone ≡ para reordenar blocos
+            Arraste o bloco no e-mail para reordenar. O rodapé entra no envio.
           </p>
           <div className="flex gap-2 ml-auto">
             <button

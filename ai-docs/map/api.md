@@ -55,9 +55,10 @@
 - groupsFlowTrigger.ts [210L] — normalizeGroupId(), readTriggerGroupsData(), getTriggerGroupsFromFlow(), dispatchGroupsFlow(), countActiveGroupsRuns(), ensureGroupsFlowRunning(), groupsFlowHasScheduleNodes(), restartGroupsFlow()
 - inbox.test.ts [171L] Cenário do bug: a Evolution marcou um contato direto como isGroup.
 - inbox.ts [1342L] — readChatKey(), markChatReadLocally(), isChatReadLocally(), markInboxChatAsRead(), extractWaId(), isValidWaId(), chatIdToPhone(), isPhoneLikeText(), resolveChatId(), detectKind(), coerceDisplayText(), pickChatDisplayName(), +32
+- inboxArchive.test.ts [26L]
 - inboxMediaDownload.ts [35L] Baixa a mídia de uma mensagem já gravada. Grupo não baixa sozinho. */ — downloadInboxMessageOnDemand()
-- inboxStore.ts [1671L] — isButtonPlaceholderBody(), isPrismaUniqueConflict(), digitsOnly(), chatIdVariants(), messageSyncJidCandidates(), chatIdVariantsResolved(), resolveAllChatIdsForContact(), preferPrimaryChatId(), canonicalizeChatId(), findPrimaryChatIdForPhone(), findPrimaryChatIdForContact(), getSessionName(), +48
-- inboxSync.ts [78L] — syncRecentMessagesFromWpp()
+- inboxStore.ts [1697L] — isButtonPlaceholderBody(), isPrismaUniqueConflict(), digitsOnly(), chatIdVariants(), messageSyncJidCandidates(), chatIdVariantsResolved(), resolveAllChatIdsForContact(), preferPrimaryChatId(), canonicalizeChatId(), findPrimaryChatIdForPhone(), findPrimaryChatIdForContact(), getSessionName(), +49
+- inboxSync.ts [79L] — syncRecentMessagesFromWpp()
 - inboxTemplateRepair.ts [91L] Reprocessa mensagens antigas gravadas com o texto genérico de template/botão — maskMissingParameters(), repairTemplatePlaceholders()
 - mediaConvert.ts [50L] WhatsApp PTT exige OGG/Opus — gravação do navegador vem em WebM. */ — convertWebmDataUrlToOgg(), persistInboundMedia()
 - mediaLibrary.ts [275L] — getSessionName(), isSafeUploadFilename(), inferKind(), formatBytes(), listMediaLibrary(), clearQuickReplyMedia(), deleteMediaFile(), deleteMediaFiles(), deleteAllMediaFiles()

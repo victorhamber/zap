@@ -28,9 +28,9 @@
 - aiCatalog.ts [83L] Catálogo visível no Deskcomm. Só entra em modelChat quem tem apiId da OpenAI. */ — modelLabel(), priceTitle()
 
 ## web/src/components/email/
-- EmailBlockEditor.tsx [438L] — BlockShell(), VarChips(), BlockEditor(), blockTitle(), EmailBlockEditor()
+- EmailBlockEditor.tsx [559L] — VarChips(), BlockEditor(), blockTitle(), cloneBlock(), EmailBlockEditor()
 - EmailBuilder.tsx [201L] — ToolbarButton(), EmailBuilder()
-- EmailEditorModal.tsx [120L] — EmailEditorModal()
+- EmailEditorModal.tsx [122L] — EmailEditorModal()
 - EmailSettingsPanel.tsx [284L] — EmailSettingsPanel()
 - emailBlocks.ts [250L] — newBlockId(), createBlock(), alignStyle(), paragraphHtmlToText(), textToParagraphHtml(), escapeForHtml(), blocksToHtml(), parseButtonFromParagraph(), htmlToBlocks(), reorderBlocks(), htmlPreviewText()
 
@@ -62,7 +62,7 @@
 - WppInstancesManager.tsx [499L] — WppInstancesManager()
 
 ## web/src/pages/
-- Contacts.tsx [96L] — Contacts()
+- Contacts.tsx [319L] — phoneLabel(), Contacts()
 - Dashboard.tsx [574L] — formatEventTime(), formatDay(), BarChart(), ChartSkeleton(), DistributionList(), Dashboard()
 - FlowEditor.tsx [795L] — summaryFor(), toReactFlowNodes(), toReactFlowEdges(), cloneNodeConfig(), FlowEditor()
 - FlowRuns.tsx [269L] — statusBadge(), formatDateTime(), FlowRuns()
