@@ -23,10 +23,12 @@ export const WhatsAppAvatar = memo(function WhatsAppAvatar({
   className = ""
 }: Props) {
   const [url, setUrl] = useState<string | null>(null);
+  const [broken, setBroken] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setUrl(null);
+    setBroken(false);
     const el = ref.current;
     if (!el) return;
 
@@ -76,8 +78,15 @@ export const WhatsAppAvatar = memo(function WhatsAppAvatar({
       style={{ width: px, height: px }}
       aria-hidden
     >
-      {url ? (
-        <img src={url} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />
+      {url && !broken ? (
+        <img
+          src={url}
+          alt=""
+          className="h-full w-full object-cover"
+          loading="lazy"
+          decoding="async"
+          onError={() => setBroken(true)}
+        />
       ) : (
         initials(name)
       )}

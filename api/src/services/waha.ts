@@ -883,17 +883,35 @@ export async function getConnectedInstanceProfile(): Promise<{
   }
 }
 
+async function dataUrlFromImageResponse(res: Response): Promise<string | null> {
+  const mime = res.headers.get("content-type")?.split(";")[0] || "";
+  if (mime.startsWith("image/")) {
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length < 32) return null;
+    return `data:${mime};base64,${buf.toString("base64")}`;
+  }
+  const text = await res.text();
+  let url = "";
+  try {
+    const json = JSON.parse(text) as { url?: unknown };
+    url = typeof json.url === "string" ? json.url.trim() : "";
+  } catch {
+    return null;
+  }
+  if (!url) return null;
+  const saved = await saveRemoteMedia(url);
+  return saved?.dataUrl ?? null;
+}
+
 export async function getChatPictureDataUrl(chatId: string): Promise<string | null> {
   const name = await sessionName();
+  const id = encodeURIComponent(toChatId(chatId));
   const res = await waha(
-    `/api/${encodeURIComponent(name)}/chats/${encodeURIComponent(chatId)}/picture`,
-    { headers: { Accept: "image/jpeg" } }
+    `/api/${encodeURIComponent(name)}/chats/${id}/picture`,
+    { headers: { Accept: "application/json, image/jpeg" } }
   );
   if (!res.ok) return null;
-  const buf = Buffer.from(await res.arrayBuffer());
-  if (buf.length < 32) return null;
-  const mime = res.headers.get("content-type")?.split(";")[0] || "image/jpeg";
-  return `data:${mime};base64,${buf.toString("base64")}`;
+  return dataUrlFromImageResponse(res);
 }
 
 export async function markChatAsRead(chatId: string): Promise<void> {
@@ -931,20 +949,38 @@ export async function saveRemoteMedia(
   return { dataUrl: `data:${mime};base64,${buf.toString("base64")}`, mime };
 }
 
+function mediaUrlFromWahaMessage(o: Record<string, unknown>): string | null {
+  const media = o.media;
+  if (media && typeof media === "object") {
+    const url = (media as Record<string, unknown>).url;
+    if (typeof url === "string" && url) return url;
+  }
+  return null;
+}
+
 export async function mediaUrlForMessage(
   chatId: string,
   waMessageId: string
 ): Promise<string | null> {
+  const name = await sessionName();
+  const chat = encodeURIComponent(toChatId(chatId));
+  const id = encodeURIComponent(waMessageId);
+  try {
+    const one = await wahaJson<Record<string, unknown>>(
+      `/api/${encodeURIComponent(name)}/chats/${chat}/messages/${id}?downloadMedia=true`
+    );
+    const url = mediaUrlFromWahaMessage(one);
+    if (url) return url;
+  } catch {
+    /* a lista abaixo cobre sessão que não aceita o id na URL */
+  }
   const messages = await listChatMessages(chatId, 50);
   for (const item of messages) {
     if (!item || typeof item !== "object") continue;
     const o = item as Record<string, unknown>;
     if (String(o.id ?? "") !== waMessageId) continue;
-    const media = o.media;
-    if (media && typeof media === "object") {
-      const url = (media as Record<string, unknown>).url;
-      if (typeof url === "string" && url) return url;
-    }
+    const url = mediaUrlFromWahaMessage(o);
+    if (url) return url;
   }
   return null;
 }

@@ -1,5 +1,5 @@
 # whatsapp
-Fontes: api/src/services/waha.ts, api/src/services/wahaWebhook.ts, api/src/services/whatsapp/index.ts, api/src/routes/webhooks.ts, api/src/routes/settings.ts, api/src/routes/wpp.ts, api/src/services/inbox.ts, api/src/services/flowDispatch.ts, api/src/engine/executor.ts, api/src/bootstrap.ts, easypanel.md, deploy/easypanel-waha.md
+Fontes: api/src/services/waha.ts, api/src/services/wahaWebhook.ts, api/src/services/wppMedia.ts, api/src/services/inboxSync.ts, api/src/services/whatsapp/index.ts, api/src/routes/webhooks.ts, api/src/routes/settings.ts, api/src/routes/wpp.ts, api/src/services/inbox.ts, api/src/services/flowDispatch.ts, api/src/engine/executor.ts, api/src/bootstrap.ts, web/src/components/inbox/WhatsAppAvatar.tsx, easypanel.md, deploy/easypanel-waha.md
 Propósito: único motor WhatsApp do Zap, o WAHA NOWEB.
 
 ## API pública
@@ -23,6 +23,8 @@ Propósito: único motor WhatsApp do Zap, o WAHA NOWEB.
 - Grupo (`@g.us`): `mentions: ["all"]` em texto, imagem e vídeo. Link do YouTube: `POST /api/send/link-custom-preview` com oEmbed; se falhar, `sendText` com `linkPreviewHighQuality`.
 - O intervalo do fluxo continua 45–120 s. Não usar a sessão `postiz` nem a do Desk.
 - Mensagem direta recebida chama `noteInbound`. Compra Hotmart aprovada chama `notePurchase` com o nome do produto. O funil mora em `modules/crm.md`. O e-mail do fluxo mora em `modules/email.md`.
+- `parseWahaMessage` (`wahaWebhook.ts`) preenche `mediaUrl` com `media.url`. O tipo da mídia segue mimetype, extensão do arquivo e só então `payload.type`. `hasMedia: true` sem nenhum desses vira `document`.
+- Foto de perfil: `GET /api/{sessão}/chats/{id}/picture` devolve JSON `{ url }`, não o arquivo. `getChatPictureDataUrl` baixa essa URL. Mídia de uma mensagem: `GET .../messages/{id}?downloadMedia=true`.
 
 ## Como testar
 - `GET /api/webhooks/waha` → `{ ok: true, provider: "waha" }`.

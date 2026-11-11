@@ -16,14 +16,46 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
+function textOf(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function typeFromMime(mime: string): string | null {
+  const m = mime.toLowerCase();
+  if (m.startsWith("image/")) return "image";
+  if (m.startsWith("video/")) return "video";
+  if (m.startsWith("audio/")) return m.includes("ogg") ? "ptt" : "audio";
+  return null;
+}
+
+function typeFromName(name: string): string | null {
+  const n = name.toLowerCase().split("?")[0] ?? "";
+  if (/\.(jpe?g|png|gif|webp)$/.test(n)) return "image";
+  if (/\.(mp4|mov|webm)$/.test(n)) return "video";
+  if (/\.(ogg|mp3|m4a|opus)$/.test(n)) return "audio";
+  return null;
+}
+
 function mediaType(payload: Record<string, unknown>): string {
   const media = asRecord(payload.media);
-  const mime = String(media?.mimetype ?? payload.mimetype ?? "").toLowerCase();
-  if (mime.startsWith("image/")) return "image";
-  if (mime.startsWith("video/")) return "video";
-  if (mime.startsWith("audio/")) return mime.includes("ogg") ? "ptt" : "audio";
+  const mime = textOf(media?.mimetype ?? payload.mimetype ?? payload.mimeType);
+  const fromMime = typeFromMime(mime);
+  if (fromMime) return fromMime;
+  const filename = textOf(media?.filename ?? payload.filename);
+  const fromName = typeFromName(filename) ?? typeFromName(textOf(media?.url));
+  if (fromName) return fromName;
+  const declared = textOf(payload.type).toLowerCase();
+  if (declared === "image" || declared === "sticker" || declared === "video" || declared === "audio" || declared === "ptt" || declared === "document") {
+    return declared;
+  }
   if (payload.hasMedia === true) return "document";
   return "chat";
+}
+
+function mediaUrlOf(payload: Record<string, unknown>): string | null {
+  const media = asRecord(payload.media);
+  const url = textOf(media?.url).trim();
+  return url || null;
 }
 
 function preview(type: string, body: string): string {
@@ -63,7 +95,7 @@ export function parseWahaMessage(
     text,
     fromMe,
     type,
-    mediaUrl: null,
+    mediaUrl: mediaUrlOf(payload),
     waMessageId: id || null,
     timestamp,
     pushName,

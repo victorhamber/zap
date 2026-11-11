@@ -931,6 +931,7 @@ async function findDuplicateInboxMessage(params: {
   id: string;
   waMessageId: string | null;
   body: string;
+  type: string;
   mediaUrl: string | null;
   timestamp: Date;
   createdAt: Date;
@@ -944,6 +945,7 @@ async function findDuplicateInboxMessage(params: {
         id: true,
         waMessageId: true,
         body: true,
+        type: true,
         mediaUrl: true,
         timestamp: true,
         createdAt: true
@@ -968,6 +970,7 @@ async function findDuplicateInboxMessage(params: {
     id: true,
     waMessageId: true,
     body: true,
+    type: true,
     mediaUrl: true,
     timestamp: true,
     createdAt: true
@@ -1134,6 +1137,15 @@ export async function saveInboxMessage(params: {
     }
     if (mediaUrl && !duplicate.mediaUrl) {
       patch.mediaUrl = mediaUrl;
+    }
+    const incomingType = type === "ptt" ? "audio" : type;
+    const storedType = duplicate.type === "ptt" ? "audio" : duplicate.type;
+    if (
+      (incomingType === "image" || incomingType === "video" || incomingType === "audio" || incomingType === "sticker") &&
+      (storedType === "document" || storedType === "chat")
+    ) {
+      patch.type = incomingType;
+      if (mediaUrl) patch.mediaUrl = mediaUrl;
     }
     // Corrige horário inventado (Date.now no sync) quando chega o timestamp real do WA.
     const newTs = timestamp.getTime();

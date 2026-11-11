@@ -13,6 +13,14 @@ async function persistWahaUrl(url: string): Promise<string | null> {
   return persistInboundMedia(saved.dataUrl, saved.mime);
 }
 
+export async function persistRemoteMediaUrl(url: string): Promise<string | null> {
+  try {
+    return await persistWahaUrl(url);
+  } catch {
+    return null;
+  }
+}
+
 export async function downloadMediaForStoredMessage(params: {
   chatId: string;
   waMessageId: string;

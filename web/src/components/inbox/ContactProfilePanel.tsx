@@ -78,6 +78,7 @@ type Props = {
   onRemoveFromCrm: () => void;
   onOpenGroup: (groupId: string, groupName: string) => void;
   docked?: boolean;
+  onCollapse?: () => void;
 };
 
 export function ContactProfilePanel({
@@ -88,7 +89,8 @@ export function ContactProfilePanel({
   onDeleteConversation,
   onRemoveFromCrm,
   onOpenGroup,
-  docked = false
+  docked = false,
+  onCollapse
 }: Props) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -308,6 +310,19 @@ export function ContactProfilePanel({
         <span className="font-medium text-[#e9edef]">
           {chat.isGroup ? "Info do grupo" : "Info do contato"}
         </span>
+        {docked && onCollapse && (
+          <button
+            type="button"
+            onClick={onCollapse}
+            className="ml-auto p-2 rounded-full text-[#aebac1] hover:bg-[#374955] hover:text-[#e9edef]"
+            title="Recolher info"
+            aria-label="Recolher info do contato"
+          >
+            <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        )}
       </header>
 
       <div className="flex-1 overflow-y-auto">

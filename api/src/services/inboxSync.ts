@@ -2,6 +2,7 @@ import * as wpp from "./whatsapp/index.js";
 import { buildWppSendTarget } from "./wppSend.js";
 import { getInboxSessionName, saveInboxMessage } from "./inboxStore.js";
 import { parseWahaMessage } from "./wahaWebhook.js";
+import { downloadMediaForStoredMessage, isInboundMediaType, persistRemoteMediaUrl } from "./wppMedia.js";
 
 const lastSyncByChat = new Map<string, number>();
 const SYNC_COOLDOWN_MS = 45_000;
@@ -38,12 +39,21 @@ export async function syncRecentMessagesFromWpp(
       text: parsed.text,
       raw: parsed.raw
     });
+    const mediaType = parsed.type === "ptt" ? "audio" : parsed.type;
+    let mediaUrl = parsed.mediaUrl ? await persistRemoteMediaUrl(parsed.mediaUrl) : null;
+    if (!mediaUrl && parsed.waMessageId && isInboundMediaType(mediaType)) {
+      mediaUrl = await downloadMediaForStoredMessage({
+        chatId: parsed.chatId || target.jid,
+        waMessageId: parsed.waMessageId,
+        type: mediaType
+      });
+    }
     await saveInboxMessage({
       chatId: parsed.chatId || target.jid,
       body: messageBody,
       fromMe: parsed.fromMe,
-      type: parsed.type === "ptt" ? "audio" : parsed.type,
-      mediaUrl: parsed.mediaUrl,
+      type: mediaType,
+      mediaUrl,
       waMessageId: parsed.waMessageId,
       timestamp: new Date(parsed.timestamp),
       sessionName: session,

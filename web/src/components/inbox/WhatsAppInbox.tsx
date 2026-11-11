@@ -171,6 +171,13 @@ function isBase64Blob(text: string): boolean {
   return t.length > 80 && (/^data:/.test(t) || /^[A-Za-z0-9+/=]+$/.test(t.slice(0, 120)));
 }
 
+function looksLikeImage(url: string, body: string): boolean {
+  if (url.startsWith("data:image/")) return true;
+  const path = url.split("?")[0]?.toLowerCase() ?? "";
+  if (/\.(jpe?g|png|gif|webp)$/.test(path)) return true;
+  return /\bimagem\b/i.test(body);
+}
+
 function mediaUrlFromMessage(m: Message): string | null {
   const direct = m.mediaUrl?.trim();
   if (direct) return direct;
@@ -198,16 +205,22 @@ const InboxMessageContent = memo(function InboxMessageContent({
     !isBase64Blob(m.body) &&
     !m.body.startsWith("📷") &&
     !m.body.startsWith("🎤") &&
-    !m.body.startsWith("🎬");
-  const isMedia =
-    url &&
+    !m.body.startsWith("🎬") &&
+    !m.body.startsWith("📎") &&
+    !/^documento$/i.test(m.body.trim());
+  const showAsImage =
+    url !== null &&
     (m.type === "image" ||
       m.type === "sticker" ||
+      (m.type === "document" && looksLikeImage(url, m.body)));
+  const isMedia =
+    url &&
+    (showAsImage ||
       m.type === "video" ||
       m.type === "audio" ||
       m.type === "ptt");
 
-  if (isMedia && (m.type === "image" || m.type === "sticker")) {
+  if (isMedia && showAsImage) {
     const caption = showCaption ? m.body : undefined;
     return (
       <div className="space-y-1 -mx-0.5">
@@ -576,6 +589,7 @@ export function WhatsAppInbox() {
   const [forwardMessage, setForwardMessage] = useState<Message | null>(null);
   const [forwardNotice, setForwardNotice] = useState("");
   const [showContactProfile, setShowContactProfile] = useState(false);
+  const [profileCollapsed, setProfileCollapsed] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastMsgCountRef = useRef(0);
   const activeChatIdRef = useRef<string | null>(null);
@@ -1257,8 +1271,6 @@ export function WhatsAppInbox() {
     setSelected(synthetic);
   }
 
-  const activeTags = selected?.contact?.tags ?? [];
-
   const visibleMessages = useMemo(() => {
     const max = 80;
     if (messages.length <= max) return messages;
@@ -1526,30 +1538,6 @@ export function WhatsAppInbox() {
                 {forwardNotice}
               </div>
             )}
-
-            <div className="px-3 py-1.5 bg-[#111b21] border-b border-[#2a3942]/60 flex flex-wrap gap-1.5 items-center max-h-[72px] overflow-y-auto">
-              <span className="text-[11px] text-[#8696a0]">Tags do contato:</span>
-              {tags.length === 0 && (
-                <span className="text-[11px] text-[#8696a0]">Nenhuma tag criada</span>
-              )}
-              {tags.map((tag) => {
-                const on = activeTags.some((t) => t.id === tag.id);
-                return (
-                  <button
-                    key={tag.id}
-                    type="button"
-                    onClick={() => toggleTag(tag.id)}
-                    className={`text-xs px-2 py-1 rounded-full border transition ${
-                      on ? "text-white border-transparent" : "border-[#3b4a54] text-[#8696a0]"
-                    }`}
-                    style={on ? { backgroundColor: tag.color } : undefined}
-                    title={on ? "Remover tag do contato" : "Aplicar tag ao contato"}
-                  >
-                    {tag.name}
-                  </button>
-                );
-              })}
-            </div>
 
             {showTagManager && (
               <div className="px-4 py-3 bg-[#202c33] border-b border-[#2a3942] space-y-3">
@@ -1841,21 +1829,37 @@ export function WhatsAppInbox() {
         )}
       </section>
 
-      {selected && (
-        <div className="hidden h-full w-[300px] shrink-0 lg:flex">
-          <ContactProfilePanel
-            key={selected.id}
-            docked
-            chat={selected}
-            allTags={tags}
-            onClose={() => setShowContactProfile(false)}
-            onContactUpdated={handleProfileContactUpdated}
-            onDeleteConversation={handleProfileDeleteConversation}
-            onRemoveFromCrm={handleProfileRemoveFromCrm}
-            onOpenGroup={handleOpenGroupFromProfile}
-          />
-        </div>
-      )}
+      {selected &&
+        (profileCollapsed ? (
+          <div className="hidden h-full w-12 shrink-0 lg:flex flex-col items-center border-l border-[#2a3942] bg-[#111b21] pt-3">
+            <button
+              type="button"
+              onClick={() => setProfileCollapsed(false)}
+              className="p-2 rounded-full text-[#aebac1] hover:bg-[#374955] hover:text-[#e9edef]"
+              title="Abrir info do contato"
+              aria-label="Abrir info do contato"
+            >
+              <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M15 6l-6 6 6 6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          </div>
+        ) : (
+          <div className="hidden h-full w-[300px] shrink-0 lg:flex">
+            <ContactProfilePanel
+              key={selected.id}
+              docked
+              chat={selected}
+              allTags={tags}
+              onClose={() => setShowContactProfile(false)}
+              onContactUpdated={handleProfileContactUpdated}
+              onDeleteConversation={handleProfileDeleteConversation}
+              onRemoveFromCrm={handleProfileRemoveFromCrm}
+              onOpenGroup={handleOpenGroupFromProfile}
+              onCollapse={() => setProfileCollapsed(true)}
+            />
+          </div>
+        ))}
 
       {forwardMessage && (
         <ForwardMessageModal
