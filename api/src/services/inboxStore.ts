@@ -422,6 +422,8 @@ type SessionInboxState = {
   captureSince?: string;
   /** phoneDedupeKey ou id:@lid — contatos removidos do CRM do inbox */
   hiddenContacts?: string[];
+  /** Arquivados: somem da lista e voltam quando a pessoa manda mensagem. */
+  archivedContacts?: string[];
 };
 
 function parseInboxSessionState(raw: unknown): Record<string, SessionInboxState> {
@@ -639,6 +641,62 @@ export async function unhideContactFromInbox(
   }
   const hidden = entry.hiddenContacts.filter((k) => !remove.has(k));
   map[norm] = { ...entry, hiddenContacts: hidden.length > 0 ? hidden : undefined };
+  await writeInboxSessionMap(map);
+}
+
+export async function getArchivedInboxContactKeys(session?: string): Promise<Set<string>> {
+  const map = await readInboxSessionMap();
+  const out = new Set<string>();
+  if (session) {
+    const entry = map[session.trim().toLowerCase()];
+    for (const k of entry?.archivedContacts ?? []) out.add(k);
+    return out;
+  }
+  for (const entry of Object.values(map)) {
+    for (const k of entry.archivedContacts ?? []) out.add(k);
+  }
+  return out;
+}
+
+export async function archiveContactFromInbox(
+  session: string,
+  phone: string,
+  chatId?: string
+): Promise<void> {
+  const norm = session.trim().toLowerCase();
+  const map = await readInboxSessionMap();
+  const entry = map[norm] ?? {};
+  const archived = new Set(entry.archivedContacts ?? []);
+  for (const k of await collectHiddenKeysForContact(session, phone, chatId)) archived.add(k);
+  map[norm] = { ...entry, archivedContacts: [...archived] };
+  await writeInboxSessionMap(map);
+}
+
+export async function unarchiveContactFromInbox(
+  session: string,
+  phone: string,
+  chatId?: string
+): Promise<void> {
+  const norm = session.trim().toLowerCase();
+  const map = await readInboxSessionMap();
+  const entry = map[norm];
+  if (!entry?.archivedContacts?.length) return;
+  const remove = new Set(await collectHiddenKeysForContact(session, phone, chatId));
+  if (chatId?.trim()) {
+    const cid = normalizeDirectJid(chatId);
+    remove.add(`id:${cid}`);
+    remove.add(`id:${chatId.trim()}`);
+  }
+  const phoneDigits = digitsOnly(phone.replace(/@.*/, ""));
+  if (isValidWhatsAppPhoneDigits(phoneDigits)) {
+    remove.add(`p:${phoneDedupeKey(phoneDigits)}`);
+    for (const lk of expandPhoneLookupKeys(phoneDigits)) {
+      const ld = digitsOnly(lk);
+      if (isValidWhatsAppPhoneDigits(ld)) remove.add(`p:${phoneDedupeKey(ld)}`);
+    }
+  }
+  const archived = entry.archivedContacts.filter((k) => !remove.has(k));
+  map[norm] = { ...entry, archivedContacts: archived.length > 0 ? archived : undefined };
   await writeInboxSessionMap(map);
 }
 
@@ -1207,6 +1265,7 @@ export async function saveInboxMessage(params: {
         ? chatId
         : pickPhoneJid([chatId, ...(params.peerJids ?? []), params.chatId]) ?? chatId;
       await unhideContactFromInbox(session, unhidePhone, chatId).catch(() => {});
+      await unarchiveContactFromInbox(session, unhidePhone, chatId).catch(() => {});
     }
 
     const { enqueueAiPipeline } = await import("./ai/enqueue.js");

@@ -10,6 +10,7 @@ const links: { to: string; label: string; icon: IconName }[] = [
   { to: "/flows", label: "Fluxos", icon: "flow" },
   { to: "/whatsapp", label: "WhatsApp", icon: "chat" },
   { to: "/funil", label: "Funil", icon: "funnel" },
+  { to: "/contacts", label: "Contatos", icon: "users" },
   { to: "/media", label: "Mídias", icon: "media" },
   { to: "/settings", label: "Configurações", icon: "settings" }
 ];

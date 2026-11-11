@@ -39,4 +39,10 @@
 ## 2026-11-11 — Opções do Deskcomm sem equipe
 - Contexto: o print do Deskcomm tem empresa e modelo da IA, sugestão para revisar, nota interna, assumir, arquivar, reservar, convidar e transferir.
 - Decisão: a lista de empresas e modelos aparece no assistente. Só um id OpenAI grava em `modelChat` e `modelVision`. O padrão segue `gpt-4o`. Reservar, convidar e transferir não ganham backend.
-- Consequência: aprovar a sugestão manda só o texto. A nota interna não sai no WhatsApp. Arquivar usa o ocultar que já existia.
+- Consequência: a sugestão não sai sozinha. A nota interna não sai no WhatsApp. O arquivo da conversa está na decisão seguinte.
+
+## 2026-11-11 — Barra da conversa no que o Zap já faz
+- Contexto: reservar, convidar, transferir, lembrar e pessoal só mostravam aviso. Arquivar usava o ocultar do CRM, e a lista reabria o card porque ainda havia mensagem.
+- Decisão: a barra assume a IA, grava a etapa do funil, arquiva numa lista própria e fecha (IA parada + arquivo). A estrela sugere o texto no campo; quem envia é a pessoa. Nota interna continua fora do WhatsApp.
+- Alternativas: copiar agenda e equipe do Deskcomm. Recusado.
+- Consequência: arquivado volta só com mensagem nova da pessoa. Fechar deixa a IA parada mesmo depois disso.

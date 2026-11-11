@@ -1,68 +1,44 @@
-import { useEffect, useState } from "react";
-import { api } from "../../api/client";
-
-type Props = {
-  chatId: string;
-  phone: string;
-  noteMode: boolean;
-  onNoteMode: (value: boolean) => void;
-  onArchived: () => void;
-  onUseSuggestion: (text: string) => void;
-};
+import { useState } from "react";
 
 type Mode = "auto" | "human";
 
-export function ChatTools({ chatId, phone, noteMode, onNoteMode, onArchived, onUseSuggestion }: Props) {
-  const [mode, setMode] = useState<Mode>("auto");
+type Props = {
+  isGroup: boolean;
+  mode: Mode;
+  stage: string | null;
+  onMode: (mode: Mode) => Promise<void>;
+  onStage: (stage: string, lostReason?: string) => Promise<void>;
+  onArchive: () => Promise<void>;
+  onCloseChat: () => Promise<void>;
+};
+
+const STAGES = [
+  { id: "em_conversa", label: "Em conversa" },
+  { id: "comprou", label: "Comprou" },
+  { id: "perdido", label: "Perdido" }
+] as const;
+
+const LOST = [
+  { id: "preco", label: "Preço" },
+  { id: "sumiu", label: "Sumiu" },
+  { id: "ja_tem", label: "Já tem" },
+  { id: "outro", label: "Outro" }
+] as const;
+
+export function ChatTools({ isGroup, mode, stage, onMode, onStage, onArchive, onCloseChat }: Props) {
   const [notice, setNotice] = useState("");
-  const [suggestOpen, setSuggestOpen] = useState(false);
-  const [suggestText, setSuggestText] = useState("");
-  const [feedback, setFeedback] = useState("");
   const [busy, setBusy] = useState(false);
+  const [askLost, setAskLost] = useState(false);
+  const current = stage || "novo";
 
-  useEffect(() => {
-    let cancel = false;
-    void api<{ mode?: Mode }>(`/api/inbox/mode?chatId=${encodeURIComponent(chatId)}`)
-      .then((r) => {
-        if (!cancel && (r.mode === "human" || r.mode === "auto")) setMode(r.mode);
-      })
-      .catch(() => {});
-    return () => {
-      cancel = true;
-    };
-  }, [chatId]);
-
-  async function setHuman(next: Mode) {
-    await api("/api/inbox/mode", {
-      method: "POST",
-      body: JSON.stringify({ chatId, mode: next })
-    });
-    setMode(next);
-    setNotice(next === "human" ? "Você assumiu. A IA não responde até devolver." : "A conversa voltou para a IA.");
-  }
-
-  async function suggest() {
-    setBusy(true);
+  async function run(action: () => Promise<void>, ok: string) {
     setNotice("");
+    setBusy(true);
     try {
-      const history = await api<{ messages?: { body: string; fromMe: boolean }[] }>(
-        `/api/inbox/messages?chatId=${encodeURIComponent(chatId)}&sync=0`
-      );
-      const last = [...(history.messages ?? [])].reverse().find((m) => !m.fromMe && m.body.trim());
-      const inbound = last?.body.trim() || "Olá";
-      const hint = feedback.trim() ? `${inbound}\n\nPreferência de quem atende: ${feedback.trim()}` : inbound;
-      const r = await api<{ ok?: boolean; reply?: string; error?: string }>("/api/ai/test-reply", {
-        method: "POST",
-        body: JSON.stringify({ chatId, inboundText: hint })
-      });
-      if (!r.reply) {
-        setNotice(r.error ?? "A IA não devolveu um texto.");
-        return;
-      }
-      setSuggestText(r.reply);
-      setSuggestOpen(true);
+      await action();
+      setNotice(ok);
     } catch (e: unknown) {
-      setNotice(e instanceof Error ? e.message : "Não foi possível sugerir.");
+      setNotice(e instanceof Error ? e.message : "Não foi possível concluir.");
     } finally {
       setBusy(false);
     }
@@ -71,127 +47,100 @@ export function ChatTools({ chatId, phone, noteMode, onNoteMode, onArchived, onU
   return (
     <div className="border-b border-[#2a3942] bg-[#111b21] px-3 py-2 space-y-2">
       <div className="flex flex-wrap gap-1.5">
-        {[
-          ["Reservar serviço", "O Zap não tem agenda de serviço."],
-          ["Convidar", "O Zap não tem equipe para convidar."],
-          ["Transferir", "O Zap não tem outro atendente para transferir."]
-        ].map(([label, why]) => (
+        {!isGroup && (
           <button
-            key={label}
             type="button"
-            className="rounded-lg bg-[#2a3942] px-2.5 py-1.5 text-xs text-[#e9edef]"
-            onClick={() => setNotice(why)}
+            disabled={busy}
+            className="rounded-lg bg-[#00a884] px-2.5 py-1.5 text-xs font-medium text-[#111b21] disabled:opacity-60"
+            onClick={() =>
+              void run(
+                () => onMode(mode === "human" ? "auto" : "human"),
+                mode === "human" ? "A IA voltou a responder." : "Você assumiu. A IA parou."
+              )
+            }
           >
-            {label}
+            {mode === "human" ? "Devolver para a IA" : "Assumir"}
           </button>
-        ))}
+        )}
+        {!isGroup &&
+          STAGES.map((step) => (
+            <button
+              key={step.id}
+              type="button"
+              disabled={busy}
+              className={`rounded-lg px-2.5 py-1.5 text-xs disabled:opacity-60 ${
+                current === step.id ? "bg-[#00a884] text-[#111b21]" : "bg-[#2a3942] text-[#e9edef]"
+              }`}
+              onClick={() => {
+                if (step.id === "perdido") {
+                  setAskLost(true);
+                  setNotice("Escolha o motivo de perdido.");
+                  return;
+                }
+                setAskLost(false);
+                void run(
+                  () => onStage(step.id),
+                  step.id === "em_conversa"
+                    ? "Etapa Em conversa. A retomada segue o que está em Configurações."
+                    : "Etapa Comprou gravada no contato."
+                );
+              }}
+            >
+              {step.label}
+            </button>
+          ))}
         <button
           type="button"
-          className="rounded-lg bg-[#00a884] px-2.5 py-1.5 text-xs font-medium text-[#111b21]"
-          onClick={() => void setHuman(mode === "human" ? "auto" : "human")}
-        >
-          {mode === "human" ? "Devolver para a IA" : "Assumir"}
-        </button>
-        <button
-          type="button"
-          className="rounded-lg bg-[#2a3942] px-2.5 py-1.5 text-xs text-[#e9edef]"
+          disabled={busy}
+          className="rounded-lg bg-[#2a3942] px-2.5 py-1.5 text-xs text-[#e9edef] disabled:opacity-60"
           onClick={() => {
-            const hours = window.prompt("Lembrar daqui a quantas horas?", "2");
-            const n = Number(hours);
-            if (!hours || !Number.isFinite(n) || n <= 0) return;
-            localStorage.setItem(`zap-remind:${chatId}`, String(Date.now() + n * 3600_000));
-            setNotice(`Lembrete neste navegador para daqui a ${n} h.`);
-          }}
-        >
-          Lembrar
-        </button>
-        <button type="button" className="rounded-lg bg-[#2a3942] px-2.5 py-1.5 text-xs text-[#e9edef]" onClick={() => void setHuman("human")}>
-          Fechar
-        </button>
-        <button
-          type="button"
-          className="rounded-lg bg-[#2a3942] px-2.5 py-1.5 text-xs text-[#e9edef]"
-          onClick={() => {
-            void api("/api/inbox/archive", {
-              method: "POST",
-              body: JSON.stringify({ chatId, phone })
-            }).then(() => onArchived());
+            if (!window.confirm("Arquivar tira a conversa da lista. Ela volta quando a pessoa escrever.")) return;
+            void run(() => onArchive(), "Conversa arquivada.");
           }}
         >
           Arquivar
         </button>
         <button
           type="button"
-          className="rounded-lg bg-[#2a3942] px-2.5 py-1.5 text-xs text-[#e9edef]"
-          onClick={() => {
-            localStorage.setItem(`zap-personal:${chatId}`, "1");
-            setNotice("Marcada como pessoal neste navegador.");
-          }}
-        >
-          Marcar como pessoal
-        </button>
-        <button
-          type="button"
-          className={`rounded-lg px-2.5 py-1.5 text-xs ${noteMode ? "bg-[#00a884] text-[#111b21]" : "bg-[#2a3942] text-[#e9edef]"}`}
-          onClick={() => onNoteMode(!noteMode)}
-        >
-          Nota interna
-        </button>
-        <button
-          type="button"
           disabled={busy}
           className="rounded-lg bg-[#2a3942] px-2.5 py-1.5 text-xs text-[#e9edef] disabled:opacity-60"
-          onClick={() => void suggest()}
+          onClick={() => {
+            const why = isGroup
+              ? "Fechar tira o grupo da lista. Ele volta se chegar mensagem nova."
+              : "Fechar para a IA e tira a conversa da lista. Ela volta se a pessoa escrever, ainda sem a IA.";
+            if (!window.confirm(why)) return;
+            void run(() => onCloseChat(), "Conversa fechada.");
+          }}
         >
-          {busy ? "Sugerindo…" : "Sugerir resposta"}
+          Fechar
         </button>
       </div>
-      {notice && <p className="text-xs text-[#8696a0]">{notice}</p>}
-      {suggestOpen && (
-        <div className="rounded-lg border border-[#2a3942] bg-[#202c33] p-3 space-y-2">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-[#e9edef]">Sugestão para revisar</p>
-            <button type="button" className="text-xs text-[#00a884]" onClick={() => void suggest()}>
-              Sugerir resposta
-            </button>
-          </div>
-          <p className="text-[11px] text-[#8696a0]">
-            Aprovar envia somente este texto. Não altera dados, agenda ou a autonomia do agente.
-          </p>
-          <textarea
-            value={suggestText}
-            onChange={(e) => setSuggestText(e.target.value)}
-            className="min-h-24 w-full rounded-lg border border-[#2a3942] bg-[#111b21] px-3 py-2 text-sm text-[#e9edef]"
-          />
-          <input
-            value={feedback}
-            onChange={(e) => setFeedback(e.target.value)}
-            placeholder="Feedback para a próxima sugestão"
-            className="w-full rounded-lg border border-[#2a3942] bg-[#111b21] px-3 py-2 text-sm text-[#e9edef]"
-          />
-          <div className="flex gap-2">
+      {askLost && !isGroup && (
+        <div className="flex flex-wrap gap-1.5">
+          {LOST.map((reason) => (
             <button
+              key={reason.id}
               type="button"
-              className="rounded-lg bg-[#00a884] px-3 py-1.5 text-xs font-medium text-[#111b21]"
+              disabled={busy}
+              className="rounded-md bg-[#2a3942] px-2 py-1 text-[11px] text-[#e9edef] disabled:opacity-60"
               onClick={() => {
-                const text = suggestText.trim();
-                if (!text) return;
-                onUseSuggestion(text);
-                setSuggestOpen(false);
+                setAskLost(false);
+                void run(() => onStage("perdido", reason.id), `Marcado como perdido: ${reason.label}.`);
               }}
             >
-              Aprovar e enviar
+              {reason.label}
             </button>
-            <button
-              type="button"
-              className="rounded-lg border border-[#3b4a54] px-3 py-1.5 text-xs text-[#e9edef]"
-              onClick={() => setSuggestOpen(false)}
-            >
-              Rejeitar
-            </button>
-          </div>
+          ))}
         </div>
       )}
+      <p className="text-xs text-[#8696a0]">
+        {notice ||
+          (isGroup
+            ? "A IA não responde em grupo. A estrela no campo sugere um texto para você enviar."
+            : mode === "human"
+              ? "Você assumiu. A IA não responde até devolver."
+              : "A IA responde nesta conversa. A estrela no campo sugere um texto para revisar e enviar.")}
+      </p>
     </div>
   );
 }

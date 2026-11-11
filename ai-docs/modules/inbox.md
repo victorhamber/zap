@@ -9,4 +9,5 @@ Propósito: lista, conversa e ficha no painel. A etapa do contato está em `modu
 - Link do YouTube na bolha usa a miniatura do YouTube, sem gravar arquivo.
 - Tipo da mídia: mimetype, depois extensão, depois `payload.type`. `hasMedia` sem isso vira documento. Se a linha antiga era `document` ou `chat` e o sync traz imagem, vídeo, áudio ou sticker, `saveInboxMessage` troca o tipo.
 - Foto: `getChatPictureDataUrl`. URL quebrada cai nas iniciais (`WhatsAppAvatar`).
-- A barra da conversa tem Assumir, Fechar (para a IA), Arquivar (esconde o card), Nota interna e Sugerir resposta. Reservar, convidar e transferir avisam que não há equipe nem agenda. Lembrar e pessoal ficam só neste navegador.
+- A barra grava de verdade: Assumir/Devolver muda `mode` da IA; Em conversa, Comprou e Perdido gravam a etapa do contato; Arquivar some da lista até a pessoa escrever; Fechar para a IA e arquiva. Grupo não tem funil nem IA. A estrela no campo pede a sugestão e deixa o texto para enviar. Nota interna é a aba do campo e não sai no WhatsApp.
+- `GET /api/contacts` devolve a lista já coletada. A tela fica em `/contacts`.

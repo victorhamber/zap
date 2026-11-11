@@ -932,6 +932,7 @@ export async function fetchChats(): Promise<FetchChatsResult> {
 
     const {
       getHiddenInboxContactKeys,
+      getArchivedInboxContactKeys,
       isChatHiddenFromInbox,
       unhideContactFromInbox
     } = await import("./inboxStore.js");
@@ -947,10 +948,15 @@ export async function fetchChats(): Promise<FetchChatsResult> {
       }
       if (unhid) hiddenKeys = await getHiddenInboxContactKeys(session);
     }
-    const visibleChats =
+    const afterHidden =
       hiddenKeys.size === 0
         ? chats
         : chats.filter((c) => !isChatHiddenFromInbox(c, hiddenKeys, session));
+    const archivedKeys = await getArchivedInboxContactKeys(session);
+    const visibleChats =
+      archivedKeys.size === 0
+        ? afterHidden
+        : afterHidden.filter((c) => !isChatHiddenFromInbox(c, archivedKeys, session));
 
     await flushWaLidMap(session);
     return {

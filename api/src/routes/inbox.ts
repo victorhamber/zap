@@ -330,8 +330,8 @@ export async function inboxRoutes(app: FastifyInstance) {
     const body = req.body as { chatId?: string; phone?: string };
     const chatId = (body.chatId ?? "").trim();
     if (!chatId) return reply.status(400).send({ ok: false, message: "chatId obrigatório" });
-    const { hideContactFromInbox, getInboxSessionName } = await import("../services/inboxStore.js");
-    await hideContactFromInbox(await getInboxSessionName(), (body.phone ?? "").trim(), chatId);
+    const { archiveContactFromInbox, getInboxSessionName } = await import("../services/inboxStore.js");
+    await archiveContactFromInbox(await getInboxSessionName(), (body.phone ?? "").trim(), chatId);
     return { ok: true };
   });
 
@@ -630,6 +630,11 @@ export async function inboxRoutes(app: FastifyInstance) {
     if (!prisma) return reply.status(503).send({ error: "Banco indisponível" });
     await prisma.tag.delete({ where: { id: (req.params as { id: string }).id } });
     return { ok: true };
+  });
+
+  app.get("/api/contacts", async () => {
+    const rows = await listContactsWithTags();
+    return { ok: true, contacts: rows.map(contactToJson) };
   });
 
   app.put("/api/contacts/:phone", async (req, reply) => {

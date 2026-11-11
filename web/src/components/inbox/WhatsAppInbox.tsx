@@ -20,7 +20,11 @@ type ContactInfo = {
   id: string;
   phone: string;
   name: string | null;
+  email?: string | null;
   notes?: string | null;
+  stage?: string | null;
+  lostReason?: string | null;
+  productName?: string | null;
   tags: Tag[];
 };
 
@@ -616,6 +620,8 @@ export function WhatsAppInbox() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [noteMode, setNoteMode] = useState(false);
+  const [aiMode, setAiMode] = useState<"auto" | "human">("auto");
+  const [suggesting, setSuggesting] = useState(false);
   const [tags, setTags] = useState<Tag[]>([]);
   const [flows, setFlows] = useState<FlowOption[]>([]);
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>([]);
@@ -921,6 +927,21 @@ export function WhatsAppInbox() {
   }, [selected?.id, pageVisible, loadMessages]);
 
   useEffect(() => {
+    setNoteMode(false);
+    setAiMode("auto");
+    if (!selected || selected.isGroup) return;
+    let cancel = false;
+    void api<{ mode?: string }>(`/api/inbox/mode?chatId=${encodeURIComponent(selected.id)}`)
+      .then((r) => {
+        if (!cancel) setAiMode(r.mode === "human" ? "human" : "auto");
+      })
+      .catch(() => {});
+    return () => {
+      cancel = true;
+    };
+  }, [selected?.id, selected?.isGroup]);
+
+  useEffect(() => {
     if (messages.length > lastMsgCountRef.current) {
       messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
     }
@@ -1027,6 +1048,80 @@ export function WhatsAppInbox() {
     setEditTagName(tag.name);
     setEditTagColor(tag.color);
     setShowTagManager(true);
+  }
+
+  async function changeAiMode(next: "auto" | "human") {
+    if (!selected || selected.isGroup) return;
+    await api("/api/inbox/mode", {
+      method: "POST",
+      body: JSON.stringify({ chatId: selected.id, mode: next })
+    });
+    setAiMode(next);
+  }
+
+  async function archiveSelected() {
+    if (!selected) return;
+    const current = selected;
+    await api("/api/inbox/archive", {
+      method: "POST",
+      body: JSON.stringify({ chatId: current.id, phone: current.phone })
+    });
+    setChats((prev) => prev.filter((c) => c.id !== current.id));
+    setSelected(null);
+    setMessages([]);
+    setNoteMode(false);
+  }
+
+  async function closeSelected() {
+    if (!selected) return;
+    if (!selected.isGroup) await changeAiMode("human");
+    await archiveSelected();
+  }
+
+  async function setConversationStage(stage: string, lostReason?: string) {
+    if (!selected || selected.isGroup) throw new Error("O funil vale para conversa direta.");
+    const phone = (selected.contact?.phone || selected.phone || "").trim();
+    if (!phone) throw new Error("Este contato não tem telefone.");
+    const r = await api<{ ok: boolean; contact: ContactInfo | null }>(
+      `/api/contacts/${encodeURIComponent(phone)}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ stage, ...(lostReason ? { lostReason } : {}) })
+      }
+    );
+    if (!r.contact) throw new Error("Não foi possível gravar a etapa.");
+    handleProfileContactUpdated(r.contact);
+  }
+
+  async function suggestReply() {
+    if (!selected || suggesting) return;
+    setSuggesting(true);
+    setSendError("");
+    try {
+      const last = [...messages]
+        .reverse()
+        .find((m) => !m.fromMe && m.body.trim() && !m.body.startsWith("Nota interna:"));
+      if (!last) {
+        setSendError("Não há mensagem da pessoa nesta conversa para a IA sugerir uma resposta.");
+        return;
+      }
+      const r = await api<{ reply?: string; blocked?: string }>("/api/ai/test-reply", {
+        method: "POST",
+        body: JSON.stringify({ chatId: selected.id, inboundText: last.body.trim() })
+      });
+      const text = r.reply?.trim();
+      if (!text) {
+        setSendError("A IA não devolveu um texto.");
+        return;
+      }
+      setNoteMode(false);
+      setDraft(text);
+      if (r.blocked) setSendError(`Revise antes de enviar: ${r.blocked}`);
+    } catch (e: unknown) {
+      setSendError(e instanceof Error ? e.message : "Não foi possível sugerir.");
+    } finally {
+      setSuggesting(false);
+    }
   }
 
   async function sendMessage() {
@@ -1660,28 +1755,13 @@ export function WhatsAppInbox() {
 
             <ChatTools
               key={selected.id}
-              chatId={selected.id}
-              phone={selected.phone}
-              noteMode={noteMode}
-              onNoteMode={setNoteMode}
-              onArchived={() => {
-                setChats((prev) => prev.filter((c) => c.id !== selected.id));
-                setSelected(null);
-              }}
-              onUseSuggestion={(text) => {
-                setNoteMode(false);
-                void api<{ ok: boolean; message?: string }>("/api/inbox/send", {
-                  method: "POST",
-                  body: JSON.stringify({
-                    chatId: selected.id,
-                    message: text,
-                    isGroup: selected.isGroup
-                  })
-                }).then((r) => {
-                  if (!r.ok) setSendError(r.message ?? "Falha ao enviar a sugestão");
-                  else void loadMessages(selected, true);
-                });
-              }}
+              isGroup={selected.isGroup}
+              mode={aiMode}
+              stage={selected.contact?.stage ?? null}
+              onMode={changeAiMode}
+              onStage={setConversationStage}
+              onArchive={archiveSelected}
+              onCloseChat={closeSelected}
             />
 
             {flowNotice && (
@@ -1962,7 +2042,11 @@ export function WhatsAppInbox() {
             <InboxComposer
               draft={draft}
               onDraftChange={setDraft}
-              placeholder={noteMode ? "Nota interna" : "Mensagem"}
+              placeholder={noteMode ? "Nota interna — não sai no WhatsApp" : "Mensagem"}
+              noteMode={noteMode}
+              onNoteMode={setNoteMode}
+              onSuggest={() => void suggestReply()}
+              suggesting={suggesting}
               onSendText={() => void sendMessage()}
               onSendMedia={(type, url, caption, filename) =>
                 sendMedia(type, url, caption, filename)
@@ -1976,6 +2060,8 @@ export function WhatsAppInbox() {
                 <ContactProfilePanel
                   chat={selected}
                   allTags={tags}
+                  aiModeValue={aiMode}
+                  onAiModeChange={changeAiMode}
                   onClose={() => setShowContactProfile(false)}
                   onContactUpdated={handleProfileContactUpdated}
                   onDeleteConversation={handleProfileDeleteConversation}
@@ -2006,10 +2092,12 @@ export function WhatsAppInbox() {
         ) : (
           <div className="hidden h-full w-[300px] shrink-0 lg:flex">
             <ContactProfilePanel
-              key={selected.id}
+              key={`${selected.id}:${selected.contact?.stage ?? ""}:${selected.contact?.lostReason ?? ""}`}
               docked
               chat={selected}
               allTags={tags}
+              aiModeValue={aiMode}
+              onAiModeChange={changeAiMode}
               onClose={() => setShowContactProfile(false)}
               onContactUpdated={handleProfileContactUpdated}
               onDeleteConversation={handleProfileDeleteConversation}

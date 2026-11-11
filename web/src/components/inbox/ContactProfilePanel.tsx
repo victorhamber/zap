@@ -79,6 +79,8 @@ type Props = {
   onOpenGroup: (groupId: string, groupName: string) => void;
   docked?: boolean;
   onCollapse?: () => void;
+  aiModeValue?: "auto" | "human";
+  onAiModeChange?: (mode: "auto" | "human") => void | Promise<void>;
 };
 
 export function ContactProfilePanel({
@@ -90,7 +92,9 @@ export function ContactProfilePanel({
   onRemoveFromCrm,
   onOpenGroup,
   docked = false,
-  onCollapse
+  onCollapse,
+  aiModeValue,
+  onAiModeChange
 }: Props) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -125,7 +129,7 @@ export function ContactProfilePanel({
       setName(r.profile.name ?? chat.name ?? "");
       setEmail(r.profile.email ?? r.profile.contact?.email ?? "");
       setNotes(r.profile.notes ?? "");
-      if (!chat.isGroup) {
+      if (!chat.isGroup && !onAiModeChange) {
         const mode = await api<{ mode?: string }>(
           `/api/inbox/mode?chatId=${encodeURIComponent(chat.id)}`
         );
@@ -463,7 +467,7 @@ export function ContactProfilePanel({
           <section className="px-4 py-4 border-b border-[#2a3942]/60">
             <h3 className="text-xs uppercase tracking-wide text-[#00a884] mb-2">IA desta conversa</h3>
             <p className="mb-2 text-[11px] text-[#8696a0]">
-              {aiMode === "human"
+              {(aiModeValue ?? aiMode) === "human"
                 ? "Você assumiu. A IA não responde até devolver."
                 : "A IA responde. Ela para sozinha quando a pessoa pede um humano."}
             </p>
@@ -471,14 +475,20 @@ export function ContactProfilePanel({
               type="button"
               className="rounded-lg bg-[#2a3942] px-3 py-1.5 text-xs text-[#e9edef]"
               onClick={() => {
-                const next = aiMode === "human" ? "auto" : "human";
+                const next = (aiModeValue ?? aiMode) === "human" ? "auto" : "human";
+                if (onAiModeChange) {
+                  void Promise.resolve(onAiModeChange(next)).catch((e: unknown) =>
+                    setError(e instanceof Error ? e.message : "Não foi possível mudar a IA.")
+                  );
+                  return;
+                }
                 void api("/api/inbox/mode", {
                   method: "POST",
                   body: JSON.stringify({ chatId: chat.id, mode: next })
                 }).then(() => setAiMode(next));
               }}
             >
-              {aiMode === "human" ? "Devolver para a IA" : "Assumir conversa"}
+              {(aiModeValue ?? aiMode) === "human" ? "Devolver para a IA" : "Assumir conversa"}
             </button>
           </section>
         )}

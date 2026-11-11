@@ -20,6 +20,10 @@ type Props = {
   onUseQuickReply: (reply: QuickReply) => void | Promise<void>;
   disabled?: boolean;
   placeholder?: string;
+  noteMode?: boolean;
+  onNoteMode?: (value: boolean) => void;
+  onSuggest?: () => void;
+  suggesting?: boolean;
 };
 
 async function readFileAsDataUrl(file: File): Promise<string> {
@@ -81,6 +85,14 @@ function IconMic() {
   );
 }
 
+function IconSpark() {
+  return (
+    <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden>
+      <path d="M12 2.2l1.15 5.9L19.2 9.3l-6.05 1.2L12 16.4l-1.15-5.9L4.8 9.3l6.05-1.2L12 2.2zM18.2 14.2l.55 2.7 2.75.55-2.75.55-.55 2.7-.55-2.7-2.75-.55 2.75-.55.55-2.7z" />
+    </svg>
+  );
+}
+
 function IconSend() {
   return (
     <svg viewBox="0 0 24 24" className="w-[20px] h-[20px]" fill="currentColor" aria-hidden>
@@ -130,7 +142,11 @@ export function InboxComposer({
   quickReplies,
   onUseQuickReply,
   disabled,
-  placeholder = "Mensagem"
+  placeholder = "Mensagem",
+  noteMode = false,
+  onNoteMode,
+  onSuggest,
+  suggesting = false
 }: Props) {
   const [attachOpen, setAttachOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -405,6 +421,29 @@ export function InboxComposer({
         </p>
       )}
 
+      {onNoteMode && (
+        <div className="flex items-center gap-2 px-2 pb-1">
+          <button
+            type="button"
+            onClick={() => onNoteMode(false)}
+            className={`rounded-full px-3 py-1 text-xs font-medium ${
+              noteMode ? "text-[#8696a0]" : "bg-[#00a884] text-[#111b21]"
+            }`}
+          >
+            Responder
+          </button>
+          <button
+            type="button"
+            onClick={() => onNoteMode(true)}
+            className={`rounded-full px-3 py-1 text-xs font-medium ${
+              noteMode ? "bg-[#00a884] text-[#111b21]" : "text-[#8696a0]"
+            }`}
+          >
+            Nota interna
+          </button>
+        </div>
+      )}
+
       <footer className="flex items-end gap-2">
         <button
           type="button"
@@ -432,6 +471,18 @@ export function InboxComposer({
           >
             <IconSmile />
           </button>
+          {onSuggest && (
+            <button
+              type="button"
+              disabled={disabled || uploading || suggesting}
+              onClick={onSuggest}
+              className="mb-1 text-[#00a884] hover:text-[#53bdeb] shrink-0 p-1 rounded-full hover:bg-white/5 disabled:opacity-40"
+              title="Sugerir resposta da IA"
+              aria-label="Sugerir resposta da IA"
+            >
+              <IconSpark />
+            </button>
+          )}
           <textarea
             ref={textareaRef}
             value={draft}

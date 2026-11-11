@@ -19,6 +19,7 @@ const Settings = lazy(() => import("./pages/Settings").then((m) => ({ default: m
 const MediaLibrary = lazy(() =>
   import("./pages/MediaLibrary").then((m) => ({ default: m.MediaLibrary }))
 );
+const Contacts = lazy(() => import("./pages/Contacts").then((m) => ({ default: m.Contacts })));
 
 function RouteFallback() {
   return (
@@ -71,6 +72,7 @@ export function App() {
             <Route path="/runs" element={<FlowRuns />} />
             <Route path="/whatsapp" element={<WhatsApp />} />
             <Route path="/funil" element={<Funnel />} />
+            <Route path="/contacts" element={<Contacts />} />
             <Route path="/media" element={<MediaLibrary />} />
             <Route path="/settings" element={<Settings />} />
           </Route>

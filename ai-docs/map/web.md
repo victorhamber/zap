@@ -10,7 +10,7 @@
 - vite.config.ts [36L]
 
 ## web/src/
-- App.tsx [83L] Páginas pesadas em chunks separados — só baixam quando abertas. — RouteFallback(), PrivateRoute(), App()
+- App.tsx [85L] Páginas pesadas em chunks separados — só baixam quando abertas. — RouteFallback(), PrivateRoute(), App()
 - main.tsx [11L]
 - styles.css [334L] Design tokens
 - vite-env.d.ts [3L] <reference types="vite/client" />
@@ -19,7 +19,7 @@
 - client.ts [99L] — getToken(), setToken(), clearToken(), sanitizeErrorMessage(), api(), filenameFromContentDisposition(), downloadApiFile()
 
 ## web/src/components/
-- Layout.tsx [203L] — isActive(), Layout()
+- Layout.tsx [204L] — isActive(), Layout()
 - ui.tsx [435L] Primitivos de UI do painel. — Icon(), Card(), CardHeader(), buttonClass(), Button(), LinkButton(), Badge(), SearchInput(), PageHeader(), Skeleton(), EmptyState(), ErrorNotice()
 
 ## web/src/components/ai/
@@ -44,17 +44,17 @@
 - nodeMeta.ts [210L] — paletteDragType(), hotmartWebhookUrl(), customWebhookUrl(), buildWaMeLink(), defaultNodeData()
 
 ## web/src/components/inbox/
-- ChatTools.tsx [198L] — ChatTools()
-- ContactProfilePanel.tsx [578L] — formatPhoneDisplay(), ContactProfilePanel()
+- ChatTools.tsx [147L] — ChatTools()
+- ContactProfilePanel.tsx [588L] — formatPhoneDisplay(), ContactProfilePanel()
 - ForwardMessageModal.tsx [323L] — isBase64Blob(), mediaUrlFromMessage(), captionFromMessage(), messageToForwardPayload(), chatLabel(), ForwardMessageModal()
-- InboxComposer.tsx [510L] — readFileAsDataUrl(), blobToDataUrl(), uploadDataUrl(), pickAudioMimeType(), IconPlus(), IconSmile(), IconMic(), IconSend(), IconTrash(), InboxComposer()
+- InboxComposer.tsx [561L] — readFileAsDataUrl(), blobToDataUrl(), uploadDataUrl(), pickAudioMimeType(), IconPlus(), IconSmile(), IconMic(), IconSpark(), IconSend(), IconTrash(), InboxComposer()
 - LinkifyText.tsx [67L] — normalizeHref(), splitTrailingPunctuation()
 - MicWaveform.tsx [37L] Barras verticais estilo WhatsApp Web (ondulações do microfone). */
 - TemplateButtons.tsx [181L] Mensagens de template / botão são gravadas como texto + linhas "▸ Rótulo → url". — parseTemplateBody(), hasTemplateButtons(), isOpaqueInteractiveBody(), normalizeHref()
 - WaAudioPlayer.tsx [212L] — formatDuration(), formatSpeed()
 - WaMediaViewer.tsx [101L]
 - WhatsAppAvatar.tsx [96L] — initials()
-- WhatsAppInbox.tsx [2043L] — isRadarChat(), chatKindLabel(), chatMatchesTab(), sanitizeChatName(), canonicalBrazilPhone(), formatPhoneDisplay(), sessionInitials(), IconRefresh(), IconSettings(), IconPlay(), usePageVisible(), isBase64Blob(), +20
+- WhatsAppInbox.tsx [2131L] — isRadarChat(), chatKindLabel(), chatMatchesTab(), sanitizeChatName(), canonicalBrazilPhone(), formatPhoneDisplay(), sessionInitials(), IconRefresh(), IconSettings(), IconPlay(), usePageVisible(), isBase64Blob(), +20
 - useMicWaveform.ts [70L] Níveis de amplitude do microfone (0–1) atualizados via AnalyserNode + rAF. */ — emptyLevels(), useMicWaveform()
 
 ## web/src/components/wpp/
@@ -62,6 +62,7 @@
 - WppInstancesManager.tsx [499L] — WppInstancesManager()
 
 ## web/src/pages/
+- Contacts.tsx [96L] — Contacts()
 - Dashboard.tsx [574L] — formatEventTime(), formatDay(), BarChart(), ChartSkeleton(), DistributionList(), Dashboard()
 - FlowEditor.tsx [795L] — summaryFor(), toReactFlowNodes(), toReactFlowEdges(), cloneNodeConfig(), FlowEditor()
 - FlowRuns.tsx [269L] — statusBadge(), formatDateTime(), FlowRuns()

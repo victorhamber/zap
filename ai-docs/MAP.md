@@ -1,4 +1,4 @@
-# MAP — Atualização Zap · 2026-11-11 · 299 arquivos · 73115 linhas
+# MAP — Atualização Zap · 2026-11-11 · 300 arquivos · 73382 linhas
 > Gerado por ai-docs/tools/map_repo.py — NÃO editar. Use isto em vez de ler o código inteiro: ache o arquivo/símbolo aqui e abra só o trecho.
 Stack: node, wordpress-plugin
 Entradas: npm scripts: dev, dev:api, dev:worker, dev:web, build, build:api, build:web, start; Send Master/gerenciamento-emails-avancado.php; api/src/index.ts; api/src/services/whatsapp/index.ts
@@ -9,4 +9,4 @@ Mapa dividido por pasta (abra só a que precisa):
 - ai-docs/map/api.md — 112 arquivos
 - ai-docs/map/deploy.md — 12 arquivos
 - ai-docs/map/prisma.md — 28 arquivos
-- ai-docs/map/web.md — 53 arquivos
+- ai-docs/map/web.md — 54 arquivos
