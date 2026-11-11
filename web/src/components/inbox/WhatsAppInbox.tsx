@@ -171,6 +171,13 @@ function isBase64Blob(text: string): boolean {
   return t.length > 80 && (/^data:/.test(t) || /^[A-Za-z0-9+/=]+$/.test(t.slice(0, 120)));
 }
 
+function youtubeThumb(text: string): string | null {
+  const match = text.match(
+    /(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|shorts\/|embed\/|live\/))([\w-]{6,})/i
+  );
+  return match?.[1] ? `https://i.ytimg.com/vi/${match[1]}/hqdefault.jpg` : null;
+}
+
 function looksLikeImage(url: string, body: string): boolean {
   if (url.startsWith("data:image/")) return true;
   const path = url.split("?")[0]?.toLowerCase() ?? "";
@@ -195,9 +202,13 @@ function mediaUrlFromMessage(m: Message): string | null {
 }
 
 const InboxMessageContent = memo(function InboxMessageContent({
-  message: m
+  message: m,
+  downloading,
+  onDownload
 }: {
   message: Message;
+  downloading?: boolean;
+  onDownload?: (message: Message) => void;
 }) {
   const url = mediaUrlFromMessage(m);
   const showCaption =
@@ -246,11 +257,33 @@ const InboxMessageContent = memo(function InboxMessageContent({
       </div>
     );
   }
-  if ((m.type === "audio" || m.type === "ptt") && !url) {
+  if (
+    !url &&
+    (m.type === "image" ||
+      m.type === "sticker" ||
+      m.type === "video" ||
+      m.type === "audio" ||
+      m.type === "ptt")
+  ) {
+    const label =
+      m.type === "video" ? "Vídeo" : m.type === "audio" || m.type === "ptt" ? "Áudio" : "Imagem";
     return (
-      <p className="text-sm text-[var(--wa-text-secondary)] italic">
-        🎤 Áudio — aguardando download da mídia…
-      </p>
+      <div className="space-y-2 px-1 py-1 min-w-[180px]">
+        <p className="text-sm text-[var(--wa-text-secondary)]">{label}</p>
+        {showCaption && (
+          <p className="text-sm whitespace-pre-wrap">
+            <LinkifyText text={m.body} />
+          </p>
+        )}
+        <button
+          type="button"
+          disabled={downloading || !onDownload}
+          onClick={() => onDownload?.(m)}
+          className="rounded-lg bg-[#00a884] px-3 py-1.5 text-xs font-medium text-[#111b21] disabled:opacity-60"
+        >
+          {downloading ? "Baixando…" : "Baixar"}
+        </button>
+      </div>
     );
   }
   if (isMedia && (m.type === "audio" || m.type === "ptt")) {
@@ -289,10 +322,16 @@ const InboxMessageContent = memo(function InboxMessageContent({
   if (hasTemplateButtons(m.body) || isOpaqueInteractiveBody(m.body)) {
     return <TemplateMessageBody body={m.body} />;
   }
+  const thumb = youtubeThumb(m.body);
   return (
-    <p className="text-sm whitespace-pre-wrap">
-      <LinkifyText text={m.body || "—"} />
-    </p>
+    <div className="space-y-1">
+      {thumb && (
+        <img src={thumb} alt="" className="max-h-48 w-full rounded-md object-cover" />
+      )}
+      <p className="text-sm whitespace-pre-wrap">
+        <LinkifyText text={m.body || "—"} />
+      </p>
+    </div>
   );
 });
 
@@ -473,10 +512,14 @@ function IconForward({ className = "w-4 h-4" }: { className?: string }) {
 
 const MessageRow = memo(function MessageRow({
   message: m,
-  onForward
+  onForward,
+  downloading,
+  onDownload
 }: {
   message: Message;
   onForward?: (message: Message) => void;
+  downloading?: boolean;
+  onDownload?: (message: Message) => void;
 }) {
   const isVisualMedia =
     m.type === "image" || m.type === "sticker" || m.type === "video" || m.type === "audio" || m.type === "ptt";
@@ -500,7 +543,7 @@ const MessageRow = memo(function MessageRow({
             isVisualMedia ? "max-w-[min(88vw,480px)] px-1.5 py-1" : "max-w-[min(78vw,420px)] px-3 py-1.5"
           } ${m.fromMe ? "wa-bubble-out" : "wa-bubble-in"}`}
         >
-          <InboxMessageContent message={m} />
+          <InboxMessageContent message={m} downloading={downloading} onDownload={onDownload} />
           <div
             className={`text-[10px] mt-0.5 text-right ${
               m.fromMe ? "text-[#99beb7]" : "text-[#8696a0]"
@@ -546,6 +589,7 @@ export function WhatsAppInbox() {
   const messagesCacheRef = useRef<Map<string, Message[]>>(new Map());
   const [selected, setSelected] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [tags, setTags] = useState<Tag[]>([]);
   const [flows, setFlows] = useState<FlowOption[]>([]);
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>([]);
@@ -727,6 +771,38 @@ export function WhatsAppInbox() {
       setMsgHint(e?.message ?? "Erro ao carregar mensagens");
     } finally {
       if (!silent) setLoadingMsgs(false);
+    }
+  }, []);
+
+  const downloadMessageMedia = useCallback(async (message: Message) => {
+    setDownloadingId(message.id);
+    try {
+      const r = await api<{ ok: boolean; url?: string; message?: string }>(
+        "/api/inbox/messages/download",
+        { method: "POST", body: JSON.stringify({ messageId: message.id }) }
+      );
+      if (!r.ok || !r.url) {
+        setSendError(r.message ?? "Não foi possível baixar a mídia.");
+        return;
+      }
+      const url = r.url;
+      setMessages((prev) =>
+        prev.map((row) => (row.id === message.id ? { ...row, mediaUrl: url } : row))
+      );
+      const chatId = activeChatIdRef.current;
+      if (chatId) {
+        const cached = messagesCacheRef.current.get(chatId);
+        if (cached) {
+          messagesCacheRef.current.set(
+            chatId,
+            cached.map((row) => (row.id === message.id ? { ...row, mediaUrl: url } : row))
+          );
+        }
+      }
+    } catch (e: unknown) {
+      setSendError(e instanceof Error ? e.message : "Não foi possível baixar a mídia.");
+    } finally {
+      setDownloadingId(null);
     }
   }, []);
 
@@ -1791,6 +1867,8 @@ export function WhatsAppInbox() {
                   key={m.id}
                   message={m}
                   onForward={setForwardMessage}
+                  downloading={downloadingId === m.id}
+                  onDownload={(message) => void downloadMessageMedia(message)}
                 />
               ))}
               <div ref={messagesEndRef} />

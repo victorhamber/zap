@@ -5,6 +5,7 @@ import { prisma } from "../prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import * as inbox from "../services/inbox.js";
 import { getContactAvatarUrl } from "../services/contactAvatar.js";
+import { downloadInboxMessageOnDemand } from "../services/inboxMediaDownload.js";
 import { saveUploadFromData } from "../services/uploads.js";
 import {
   contactToJson,
@@ -306,6 +307,22 @@ export async function inboxRoutes(app: FastifyInstance) {
       return { latest: last?.timestamp?.getTime() ?? 0 };
     } catch {
       return { latest: 0 };
+    }
+  });
+
+  app.post("/api/inbox/messages/download", async (req, reply) => {
+    const body = req.body as { messageId?: string };
+    const messageId = (body.messageId ?? "").trim();
+    if (!messageId) return reply.status(400).send({ ok: false, message: "messageId obrigatório" });
+    try {
+      const saved = await downloadInboxMessageOnDemand(messageId);
+      if (!saved) {
+        return reply.status(404).send({ ok: false, message: "Mídia indisponível no WhatsApp" });
+      }
+      return { ok: true, url: saved.url, type: saved.type };
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return reply.status(502).send({ ok: false, message });
     }
   });
 

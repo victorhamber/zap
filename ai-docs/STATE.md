@@ -1,5 +1,5 @@
 # Estado — Zap
 Atualizado: 2026-11-11
-Feito: ficha do contato recolhe no desktop. Foto de perfil e imagem da conversa corrigidas; etiquetas só na ficha.
-Próximo: deploy no EasyPanel e reabrir a conversa para a mídia baixar.
+Feito: grupo não grava mídia sozinho; Baixar chama o download de uma mensagem; conversa status some.
+Próximo: deploy no EasyPanel. Abrir a comunidade e clicar em Baixar na imagem.
 Bloqueio: nenhum no código.

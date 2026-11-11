@@ -43,6 +43,12 @@ export function isGroupLikeJid(jid: string | null | undefined): boolean {
   );
 }
 
+/** Status do WhatsApp (não é conversa). O painel mostrava um card "status". */
+export function isStatusBroadcastJid(jid: string | null | undefined): boolean {
+  const t = String(jid ?? "").trim().toLowerCase();
+  return t === "status@broadcast" || t.startsWith("status@");
+}
+
 function jidRank(id: string): number {
   if (!id) return 0;
   if (id.endsWith("@g.us") || id.includes("@newsletter")) return 5;

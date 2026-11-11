@@ -903,11 +903,15 @@ async function dataUrlFromImageResponse(res: Response): Promise<string | null> {
   return saved?.dataUrl ?? null;
 }
 
-export async function getChatPictureDataUrl(chatId: string): Promise<string | null> {
+export async function getChatPictureDataUrl(
+  chatId: string,
+  refresh = false
+): Promise<string | null> {
   const name = await sessionName();
   const id = encodeURIComponent(toChatId(chatId));
+  const refreshQuery = refresh ? "?refresh=true" : "";
   const res = await waha(
-    `/api/${encodeURIComponent(name)}/chats/${id}/picture`,
+    `/api/${encodeURIComponent(name)}/chats/${id}/picture${refreshQuery}`,
     { headers: { Accept: "application/json, image/jpeg" } }
   );
   if (!res.ok) return null;

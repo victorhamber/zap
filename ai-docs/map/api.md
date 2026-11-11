@@ -27,11 +27,11 @@
 - dashboard.ts [213L] — funnelSnapshot(), countRadar(), startOfToday(), daysAgo(), localDayKey(), last7DayKeys(), bucketByDay(), dashboardRoutes()
 - emailPublic.ts [65L] — page(), emailPublicRoutes()
 - flows.ts [299L] — flowRoutes()
-- inbox.ts [743L] — sortQuickReplies(), normalizeQuickReply(), parseQuickReplies(), sanitizeQuickRepliesForSave(), preferMergedChatId(), mergeInboxChatRows(), dedupeInboxChatRows(), inboxRoutes()
+- inbox.ts [760L] — sortQuickReplies(), normalizeQuickReply(), parseQuickReplies(), sanitizeQuickRepliesForSave(), preferMergedChatId(), mergeInboxChatRows(), dedupeInboxChatRows(), inboxRoutes()
 - media.ts [47L] — mediaRoutes()
 - runs.ts [31L] — runRoutes()
 - settings.ts [360L] — settingsRoutes()
-- webhooks.ts [626L] — triggerInboundFlows(), whatsappWebhookAuthorized(), rejectWebhook(), webhookRoutes()
+- webhooks.ts [629L] — triggerInboundFlows(), whatsappWebhookAuthorized(), rejectWebhook(), webhookRoutes()
 - wpp.ts [372L] — buildKeepSessionNames(), listServerSessionNames(), wppRoutes()
 
 ## api/src/services/
@@ -39,7 +39,7 @@
 - broadcastFlowTrigger.ts [100L] — normalizeContactPhone(), queueBroadcastRun(), dispatchBroadcastFlow()
 - coldFollowUp.test.ts [74L]
 - coldFollowUp.ts [121L] — parseFollowUpSteps(), nextFollowUp(), runColdFollowUps()
-- contactAvatar.ts [27L] sem foto */ — getContactAvatarUrl()
+- contactAvatar.ts [35L] — getContactAvatarUrl()
 - contactProfile.ts [109L] — inboxSession(), getContactProfile(), getContactSharedGroups()
 - contactStage.test.ts [23L]
 - contactStage.ts [97L] — isLostReason(), isFunnelStage(), nextStage(), setContactStage(), noteInbound(), notePurchase(), stageLabelForPhone()
@@ -53,10 +53,11 @@
 - flowVariables.test.ts [17L]
 - flowVariables.ts [68L] E-mail válido para Mustache / Resend. */ — normalizeFlowEmail(), enrichFlowVariables(), persistContactFromFlowVariables()
 - groupsFlowTrigger.ts [210L] — normalizeGroupId(), readTriggerGroupsData(), getTriggerGroupsFromFlow(), dispatchGroupsFlow(), countActiveGroupsRuns(), ensureGroupsFlowRunning(), groupsFlowHasScheduleNodes(), restartGroupsFlow()
-- inbox.test.ts [166L] Cenário do bug: a Evolution marcou um contato direto como isGroup.
-- inbox.ts [1335L] — readChatKey(), markChatReadLocally(), isChatReadLocally(), markInboxChatAsRead(), extractWaId(), isValidWaId(), chatIdToPhone(), isPhoneLikeText(), resolveChatId(), detectKind(), coerceDisplayText(), pickChatDisplayName(), +32
-- inboxStore.ts [1604L] — isButtonPlaceholderBody(), isPrismaUniqueConflict(), digitsOnly(), chatIdVariants(), messageSyncJidCandidates(), chatIdVariantsResolved(), resolveAllChatIdsForContact(), preferPrimaryChatId(), canonicalizeChatId(), findPrimaryChatIdForPhone(), findPrimaryChatIdForContact(), getSessionName(), +45
-- inboxSync.ts [66L] — syncRecentMessagesFromWpp()
+- inbox.test.ts [171L] Cenário do bug: a Evolution marcou um contato direto como isGroup.
+- inbox.ts [1336L] — readChatKey(), markChatReadLocally(), isChatReadLocally(), markInboxChatAsRead(), extractWaId(), isValidWaId(), chatIdToPhone(), isPhoneLikeText(), resolveChatId(), detectKind(), coerceDisplayText(), pickChatDisplayName(), +32
+- inboxMediaDownload.ts [35L] Baixa a mídia de uma mensagem já gravada. Grupo não baixa sozinho. */ — downloadInboxMessageOnDemand()
+- inboxStore.ts [1612L] — isButtonPlaceholderBody(), isPrismaUniqueConflict(), digitsOnly(), chatIdVariants(), messageSyncJidCandidates(), chatIdVariantsResolved(), resolveAllChatIdsForContact(), preferPrimaryChatId(), canonicalizeChatId(), findPrimaryChatIdForPhone(), findPrimaryChatIdForContact(), getSessionName(), +45
+- inboxSync.ts [71L] — syncRecentMessagesFromWpp()
 - inboxTemplateRepair.ts [91L] Reprocessa mensagens antigas gravadas com o texto genérico de template/botão — maskMissingParameters(), repairTemplatePlaceholders()
 - mediaConvert.ts [50L] WhatsApp PTT exige OGG/Opus — gravação do navegador vem em WebM. */ — convertWebmDataUrlToOgg(), persistInboundMedia()
 - mediaLibrary.ts [275L] — getSessionName(), isSafeUploadFilename(), inferKind(), formatBytes(), listMediaLibrary(), clearQuickReplyMedia(), deleteMediaFile(), deleteMediaFiles(), deleteAllMediaFiles()
@@ -64,10 +65,10 @@
 - secretCrypto.ts [59L] Chave de 32 bytes: AI_ENCRYPTION_KEY (hex) ou derivada do JWT_SECRET já usado no — resolveEncryptionKey(), isEncryptionConfigured(), encryptSecret(), decryptSecret(), maskSecret()
 - tagFlowTrigger.ts [190L] — matchTagTrigger(), queueTagFlow(), dispatchTagTriggerFlows(), dispatchTagFlowToContactsWithTag(), dispatchTagFlowToExistingContacts()
 - uploads.ts [204L] — ensureUploadDir(), publicUploadUrl(), uploadUrlForWpp(), rewriteUploadUrlForWpp(), uploadFilenameFromUrl(), isPersistedUploadUrl(), toPublicMediaUrl(), readUploadFileBase64(), loadUploadMediaBase64(), fetchRemoteMediaBase64(), getUploadFileSize(), saveUploadFromData()
-- waJid.ts [135L] Normalização de JIDs WhatsApp (Evolution / Baileys LID vs telefone). */ — isGenericSelfChatName(), digitsOnly(), isGroupLikeJid(), jidRank(), pickBestJid(), canonicalEvolutionChatId(), normalizeDirectJid(), isLikelyInternalLidDigits(), isLikelyInternalLidJid(), isValidWhatsAppPhoneDigits(), isOwnerPhoneDigits(), evolutionSendNumber()
+- waJid.ts [141L] Normalização de JIDs WhatsApp (Evolution / Baileys LID vs telefone). */ — isGenericSelfChatName(), digitsOnly(), isGroupLikeJid(), isStatusBroadcastJid(), jidRank(), pickBestJid(), canonicalEvolutionChatId(), normalizeDirectJid(), isLikelyInternalLidDigits(), isLikelyInternalLidJid(), isValidWhatsAppPhoneDigits(), isOwnerPhoneDigits(), +1
 - waLidMap.test.ts [61L]
 - waLidMap.ts [267L] Mapeia @lid interno → telefone real (@s.whatsapp.net). */ — storeKey(), mapFile(), legacyMapFile(), jidCandidates(), pickPhoneJid(), pickLidJid(), applyWaJidMapping(), loadWaLidMap(), persistWaLidMap(), recordWaJidMappingSync(), recordWaJidMapping(), flushWaLidMap(), +6
-- waha.ts [1025L] Cliente HTTP do WAHA. Único motor de WhatsApp do Zap. — baseUrl(), apiKey(), reachableBaseUrl(), webhookUrl(), sessionConfig(), waha(), readBody(), formatWppError(), wahaJson(), normalizeSessionName(), sessionName(), getActiveWppSessionName(), +71
+- waha.ts [1029L] Cliente HTTP do WAHA. Único motor de WhatsApp do Zap. — baseUrl(), apiKey(), reachableBaseUrl(), webhookUrl(), sessionConfig(), waha(), readBody(), formatWppError(), wahaJson(), normalizeSessionName(), sessionName(), getActiveWppSessionName(), +71
 - wahaWebhook.ts [114L] — asRecord(), textOf(), typeFromMime(), typeFromName(), mediaType(), mediaUrlOf(), preview(), parseWahaMessage(), wahaSessionStatus()
 - wppHumanize.ts [13L] Pequenos intervalos entre chamadas ao WPP para parecer uso humano (não elimina r — wppHumanDelay()
 - wppMedia.ts [64L] — isInboundMediaType(), persistWahaUrl(), persistRemoteMediaUrl(), downloadMediaForStoredMessage(), downloadInboundMedia()

@@ -90,6 +90,11 @@ describe("nome do chat não pega o remetente da última mensagem", () => {
     assert.match(chat.name, /^Grupo/);
   });
 
+  it("status do WhatsApp não vira conversa", () => {
+    const chats = normalizeChats([{ id: "status@broadcast", name: "status" }]);
+    assert.equal(chats.length, 0);
+  });
+
   it("grupo não expõe o 120363… como telefone", () => {
     const [chat] = normalizeChats([{ id: "120363123456789012@g.us", subject: "Grupo Y" }]);
     assert.ok(chat);

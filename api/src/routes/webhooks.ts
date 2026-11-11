@@ -19,6 +19,7 @@ import { asString } from "../utils/jsonPathLite.js";
 import { normalizePhone } from "../utils/phone.js";
 import { addContactTagsByNames, getContactTagNames } from "../services/contacts.js";
 import { downloadInboundMedia, isInboundMediaType } from "../services/wppMedia.js";
+import { isGroupLikeJid } from "../services/waJid.js";
 import {
   parseWppWebhookMessage,
   saveInboxMessage,
@@ -393,6 +394,7 @@ export async function webhookRoutes(app: FastifyInstance) {
         saved &&
         parsed.waMessageId &&
         isInboundMediaType(parsed.type) &&
+        !isGroupLikeJid(parsed.chatId) &&
         !webhookMediaAlreadyInline(parsed)
       ) {
         const waId = parsed.waMessageId;
@@ -521,6 +523,7 @@ export async function webhookRoutes(app: FastifyInstance) {
       if (
         parsed.waMessageId &&
         isInboundMediaType(parsed.type) &&
+        !isGroupLikeJid(parsed.chatId) &&
         !webhookMediaAlreadyInline(parsed)
       ) {
         const waId = parsed.waMessageId;

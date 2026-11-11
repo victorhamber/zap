@@ -29,7 +29,7 @@ Propósito: funil curto no contato que já existe, radar, retomada e a IA que j�
 - O atendimento usa `gpt-4o`. Quem ainda estava em `gpt-4o-mini` migra na 0025. O áudio continua no Whisper.
 - O visual adota paleta sóbria e moderna em grafite (#0a0b0f), bordas nítidas de 1px, sem gradientes neon de IA. Cards, funil, dashboard e formulários usam componentes unificados de ui.tsx.
 - Foto do contato: `getChatPictureDataUrl` (`waha.ts`) lê o JSON `{ url }` do WAHA e baixa a imagem. Se a URL quebrar, `WhatsAppAvatar` cai para as iniciais.
-- Mensagem com mídia: o tipo sai de mimetype, depois do nome do arquivo, depois de `payload.type`. `hasMedia` sem isso continua documento. No sync, a URL do WAHA é gravada no disco. Se a linha antiga era `document` ou `chat` e a nova é imagem, vídeo, áudio ou sticker, `saveInboxMessage` troca o tipo (`inboxStore.ts`).
+- Mensagem com mídia: o tipo sai de mimetype, depois do nome do arquivo, depois de `payload.type`. `hasMedia` sem isso continua documento. No sync, a URL do WAHA é gravada no disco só em conversa direta. Grupo mostra Imagem, Vídeo ou Áudio com Baixar, que chama `POST /api/inbox/messages/download`. Link do YouTube na bolha usa a miniatura do YouTube, sem gravar arquivo. Se a linha antiga era `document` ou `chat` e a nova é imagem, vídeo, áudio ou sticker, `saveInboxMessage` troca o tipo (`inboxStore.ts`).
 - Etiquetas do contato só na ficha (`ContactProfilePanel`). O topo da conversa não repete a faixa. O botão Tags continua abrindo o gerenciador. No desktop a ficha recolhe pela seta do cabeçalho e volta pela faixa estreita à direita.
 - O e-mail do fluxo, o cancelamento e o rodapé estão em `modules/email.md`.
 

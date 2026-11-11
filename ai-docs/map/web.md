@@ -51,7 +51,7 @@
 - WaAudioPlayer.tsx [212L] — formatDuration(), formatSpeed()
 - WaMediaViewer.tsx [101L]
 - WhatsAppAvatar.tsx [96L] — initials()
-- WhatsAppInbox.tsx [1884L] — isRadarChat(), chatKindLabel(), chatMatchesTab(), sanitizeChatName(), canonicalBrazilPhone(), formatPhoneDisplay(), sessionInitials(), IconRefresh(), IconSettings(), IconPlay(), usePageVisible(), isBase64Blob(), +19
+- WhatsAppInbox.tsx [1962L] — isRadarChat(), chatKindLabel(), chatMatchesTab(), sanitizeChatName(), canonicalBrazilPhone(), formatPhoneDisplay(), sessionInitials(), IconRefresh(), IconSettings(), IconPlay(), usePageVisible(), isBase64Blob(), +20
 - useMicWaveform.ts [70L] Níveis de amplitude do microfone (0–1) atualizados via AnalyserNode + rAF. */ — emptyLevels(), useMicWaveform()
 
 ## web/src/components/wpp/

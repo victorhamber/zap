@@ -8,6 +8,7 @@ import {
   digitsOnly,
   isGenericSelfChatName,
   isGroupLikeJid,
+  isStatusBroadcastJid,
   isLikelyInternalLidJid,
   isOwnerPhoneDigits,
   isValidWhatsAppPhoneDigits,
@@ -355,7 +356,7 @@ function parseChatItem(item: unknown, session?: string): NormalizedChat | null {
     : normalizeDirectJid(
         resolveChatId(rawId, kindHint === "group" || kindHint === "community")
       );
-  if (!isValidWaId(resolvedId)) return null;
+  if (!isValidWaId(resolvedId) || isStatusBroadcastJid(resolvedId)) return null;
 
   const kindEarly = detectKind(resolvedId, o);
   if (

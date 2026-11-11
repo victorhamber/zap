@@ -11,6 +11,7 @@ import {
 import { phoneDedupeKey, expandPhoneLookupKeys, canonicalBrazilPhone } from "../utils/phone.js";
 import {
   isGroupLikeJid,
+  isStatusBroadcastJid,
   isValidWhatsAppPhoneDigits,
   normalizeDirectJid,
   isLikelyInternalLidJid
@@ -1292,6 +1293,7 @@ export async function listStoredChatSummaries(): Promise<NormalizedChat[]> {
     if (!latest) continue;
 
     const primary = primaryByKey.get(mapKey) ?? idList[0];
+    if (isStatusBroadcastJid(primary)) continue;
     const isGroup = isGroupLikeJid(primary);
     const phoneDigits = digitsOnly(primary.replace(/@.*/, "")) || primary.replace(/@.*/, "");
 
@@ -1431,7 +1433,13 @@ export async function listStoredMessages(
 
   const { isInboundMediaType, downloadMediaForStoredMessage } = await import("./wppMedia.js");
   const hydrateCandidates = dedupedRows
-    .filter((r) => !r.mediaUrl && r.waMessageId && isInboundMediaType(r.type === "ptt" ? "audio" : r.type))
+    .filter(
+      (r) =>
+        !isGroupLikeJid(r.chatId) &&
+        !r.mediaUrl &&
+        r.waMessageId &&
+        isInboundMediaType(r.type === "ptt" ? "audio" : r.type)
+    )
     .slice(-8);
   const hydratedUrls = new Map<string, string>();
 
