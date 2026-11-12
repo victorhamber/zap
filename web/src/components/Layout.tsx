@@ -12,6 +12,7 @@ const links: { to: string; label: string; icon: IconName }[] = [
   { to: "/funil", label: "Funil", icon: "funnel" },
   { to: "/contacts", label: "Contatos", icon: "users" },
   { to: "/broadcast", label: "Broadcast", icon: "send" },
+  { to: "/emails", label: "E-mails", icon: "inbox" },
   { to: "/media", label: "Mídias", icon: "media" },
   { to: "/settings", label: "Configurações", icon: "settings" }
 ];

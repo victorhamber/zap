@@ -6,7 +6,7 @@
 ## api/src/
 - bootstrap.ts [89L] — bootstrapDatabase()
 - env.ts [117L] URL interna do Zap na rede Docker. O WAHA chama o webhook por aqui. Ex: http://z — defaultWhatsAppSession()
-- index.ts [142L]
+- index.ts [144L]
 - prisma.ts [6L]
 - queue.ts [177L] — getRedisConnection(), getFlowQueue(), sanitizeQueueJobId(), enqueueFlowJob(), getFlowStartQueue(), enqueueFlowRunStart(), getAiQueue(), aiReplyJobId(), enqueueAiLearnJob(), enqueueAiReplyJob(), cancelAiReplyJob(), getAiQueueCounts()
 - seed.ts [45L] — main()
@@ -26,6 +26,7 @@
 - broadcast.ts [44L] — broadcastRoutes()
 - crm.ts [56L] — crmRoutes()
 - dashboard.ts [213L] — funnelSnapshot(), countRadar(), startOfToday(), daysAgo(), localDayKey(), last7DayKeys(), bucketByDay(), dashboardRoutes()
+- emailDispatch.ts [18L] — emailDispatchRoutes()
 - emailPublic.ts [65L] — page(), emailPublicRoutes()
 - flows.ts [299L] — flowRoutes()
 - inbox.ts [790L] — sortQuickReplies(), normalizeQuickReply(), parseQuickReplies(), sanitizeQuickRepliesForSave(), preferMergedChatId(), mergeInboxChatRows(), dedupeInboxChatRows(), inboxRoutes()
@@ -115,7 +116,10 @@
 ## api/src/services/email/
 - deliverability.test.ts [66L]
 - deliverability.ts [174L] — escapeHtml(), decodeEntities(), htmlToPlainText(), signUnsubscribeToken(), readUnsubscribeToken(), unsubscribeUrl(), wrapEmailHtml(), recordState(), summarizeResendDomains()
+- listEmailDispatches.ts [70L] — listEmailDispatches()
 - resend.ts [212L] — getSettingsRow(), getEmailSettingsDto(), saveEmailSettings(), loadResendClient(), formatFrom(), sendTransactionalEmail(), sendTestEmail(), inspectSendingDomain()
+- summarizeEmailSteps.test.ts [26L]
+- summarizeEmailSteps.ts [48L] — emailStepOutcome(), summarizeEmailSteps()
 
 ## api/src/services/whatsapp/
 - index.ts [3L] Motor WhatsApp: WAHA. */

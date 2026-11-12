@@ -8,7 +8,7 @@ Propósito: disparo imediato para grupos e, se marcado, e-mail dos contatos. Nã
 
 ## Depende de / Usado por
 - Depende: `sendText` do WAHA, `sendTransactionalEmail`, fila `zap-broadcast` no worker.
-- Usado por: menu Broadcast.
+- Usado por: menu Broadcast. A página de e-mails do fluxo está em `modules/email.md`.
 
 ## Fluxo
 1. A pessoa monta uma mensagem só: texto, imagem e vídeo, nesta ordem. A imagem e o vídeo aparecem na prévia. Pode pedir o texto à IA, subir arquivo ou pegar da biblioteca, marcar grupos e, se quiser, o e-mail.

@@ -10,7 +10,7 @@
 - vite.config.ts [36L]
 
 ## web/src/
-- App.tsx [87L] Páginas pesadas em chunks separados — só baixam quando abertas. — RouteFallback(), PrivateRoute(), App()
+- App.tsx [91L] Páginas pesadas em chunks separados — só baixam quando abertas. — RouteFallback(), PrivateRoute(), App()
 - main.tsx [11L]
 - styles.css [334L] Design tokens
 - vite-env.d.ts [3L] <reference types="vite/client" />
@@ -19,7 +19,7 @@
 - client.ts [99L] — getToken(), setToken(), clearToken(), sanitizeErrorMessage(), api(), filenameFromContentDisposition(), downloadApiFile()
 
 ## web/src/components/
-- Layout.tsx [205L] — isActive(), Layout()
+- Layout.tsx [206L] — isActive(), Layout()
 - ui.tsx [435L] Primitivos de UI do painel. — Icon(), Card(), CardHeader(), buttonClass(), Button(), LinkButton(), Badge(), SearchInput(), PageHeader(), Skeleton(), EmptyState(), ErrorNotice()
 
 ## web/src/components/ai/
@@ -72,6 +72,7 @@
 - Broadcast.tsx [190L] — Broadcast()
 - Contacts.tsx [319L] — phoneLabel(), Contacts()
 - Dashboard.tsx [574L] — formatEventTime(), formatDay(), BarChart(), ChartSkeleton(), DistributionList(), Dashboard()
+- EmailAnalytics.tsx [137L] — when(), EmailAnalytics()
 - FlowEditor.tsx [801L] — summaryFor(), toReactFlowNodes(), toReactFlowEdges(), cloneNodeConfig(), FlowEditor()
 - FlowRuns.tsx [270L] — statusBadge(), formatDateTime(), FlowRuns()
 - FlowsList.tsx [254L] — webhookShortcutForFlow(), formatUpdatedAt(), FlowsList()

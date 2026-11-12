@@ -1,12 +1,12 @@
 # email
-Fontes: api/src/services/email/resend.ts, api/src/services/email/deliverability.ts, api/src/services/email/deliverability.test.ts, api/src/routes/emailPublic.ts, api/src/routes/settings.ts, api/src/engine/executor.ts, api/src/index.ts, api/src/types/flow.ts, prisma/schema.prisma, prisma/migrations/0026_email_deliverability/migration.sql, web/src/components/email/EmailSettingsPanel.tsx, web/src/components/email/EmailEditorModal.tsx, web/src/components/email/EmailBlockEditor.tsx, web/src/components/email/emailBlocks.ts, web/src/components/flow/FlowNodeProperties.tsx, web/src/components/flow/nodeMeta.ts
+Fontes: api/src/services/email/resend.ts, api/src/services/email/deliverability.ts, api/src/services/email/deliverability.test.ts, api/src/services/email/summarizeEmailSteps.ts, api/src/services/email/summarizeEmailSteps.test.ts, api/src/services/email/listEmailDispatches.ts, api/src/routes/emailPublic.ts, api/src/routes/emailDispatch.ts, api/src/routes/settings.ts, api/src/engine/executor.ts, api/src/index.ts, api/src/types/flow.ts, prisma/schema.prisma, prisma/migrations/0026_email_deliverability/migration.sql, web/src/components/email/EmailSettingsPanel.tsx, web/src/components/email/EmailEditorModal.tsx, web/src/components/email/EmailBlockEditor.tsx, web/src/components/email/emailBlocks.ts, web/src/components/flow/FlowNodeProperties.tsx, web/src/components/flow/nodeMeta.ts, web/src/pages/EmailAnalytics.tsx, web/src/App.tsx, web/src/components/Layout.tsx
 Propósito: e-mail de fluxo pela Resend, com o que a caixa exige para não tratar como spam.
 
 ## API pública
 - `sendTransactionalEmail` manda HTML e texto, Reply-To, `List-Unsubscribe` e o POST de um clique.
 - `GET/POST /api/email/unsubscribe?t=` é público. Grava o endereço em `EmailSuppression` e o próximo envio ignora.
 - `GET /api/settings/email/domain` lê SPF, DKIM e DMARC do domínio do From na Resend.
-- `PUT /api/settings/email` também grava Reply-To padrão e o endereço do rodapé.
+- `GET /api/email/dispatches` lista o que o fluxo registrou: enviado, cancelado ou falha, por fluxo.
 
 ## Depende de / Usado por
 - Depende: Resend, `APP_PUBLIC_URL`, `JWT_SECRET` (assina o link de cancelar).
