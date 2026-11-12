@@ -441,87 +441,9 @@ export function FlowNodeProperties({
         {nodeType === "send_groups" && (
           <>
             <p className="text-xs text-zinc-500 leading-relaxed">
-              Envia a mesma mensagem para vários grupos, com intervalo seguro entre cada envio
-              (anti-ban).
+              Só marca os grupos. Texto, imagem, vídeo e áudio ficam no bloco seguinte.
+              Tudo que vier depois sai só nesses grupos, e não no privado.
             </p>
-            <label className="text-xs text-zinc-500">Tipo de mensagem</label>
-            <select
-              value={String(config.mediaType ?? "text")}
-              onChange={(e) => onUpdate({ mediaType: e.target.value })}
-              className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-white"
-            >
-              <option value="text">Texto</option>
-              <option value="image">Imagem</option>
-              <option value="video">Vídeo</option>
-              <option value="audio">Áudio</option>
-            </select>
-
-            {String(config.mediaType ?? "text") === "text" ? (
-              <>
-                <TemplateVariablesHelp onInsert={(s) => insertVariable(s, "text")} />
-                <div className="flex items-center justify-between gap-2">
-                  <label className="text-xs text-zinc-500">Mensagem</label>
-                  <AiCopyButton channel="whatsapp" audience="group" onApply={(d) => d.text && onUpdate({ text: d.text })} />
-                </div>
-                <textarea
-                  ref={textRef}
-                  rows={6}
-                  value={String(config.text ?? "")}
-                  onChange={(e) => onUpdate({ text: e.target.value })}
-                  className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-mono text-white"
-                />
-              </>
-            ) : (
-              <>
-                <label className="text-xs text-zinc-500">URL do arquivo</label>
-                <input
-                  value={String(config.url ?? "")}
-                  onChange={(e) => onUpdate({ url: e.target.value })}
-                  className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-white"
-                />
-                {String(config.mediaType) !== "audio" && (
-                  <>
-                    <TemplateVariablesHelp compact onInsert={(s) => insertVariable(s, "caption")} />
-                    <div className="flex items-center justify-between gap-2">
-                      <label className="text-xs text-zinc-500">Legenda</label>
-                      <AiCopyButton channel="whatsapp" audience="group" onApply={(d) => d.text && onUpdate({ caption: d.text })} />
-                    </div>
-                    <textarea
-                      ref={captionRef}
-                      rows={4}
-                      value={String(config.caption ?? "")}
-                      onChange={(e) => onUpdate({ caption: e.target.value })}
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-mono text-white"
-                    />
-                  </>
-                )}
-              </>
-            )}
-
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-xs text-zinc-500">Intervalo mín. (seg)</label>
-                <input
-                  type="number"
-                  min={5}
-                  max={600}
-                  value={Number(config.staggerMinSec ?? 20)}
-                  onChange={(e) => onUpdate({ staggerMinSec: Number(e.target.value) || 20 })}
-                  className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-white"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-zinc-500">Intervalo máx. (seg)</label>
-                <input
-                  type="number"
-                  min={5}
-                  max={900}
-                  value={Number(config.staggerMaxSec ?? 45)}
-                  onChange={(e) => onUpdate({ staggerMaxSec: Number(e.target.value) || 45 })}
-                  className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-white"
-                />
-              </div>
-            </div>
 
             <label className="text-xs text-zinc-500">Grupos</label>
             <input
@@ -774,9 +696,8 @@ export function FlowNodeProperties({
         {nodeType === "trigger_broadcast" && (
           <>
             <p className="text-xs text-zinc-500 leading-relaxed">
-              O bloco <strong className="text-zinc-400">Enviar para grupos</strong> escolhe o grupo.
-              A mensagem ligada depois dele sai nesse grupo, uma vez, e não no privado do contato.
-              Mensagem que não passa por esse bloco segue para os contatos.
+              O bloco <strong className="text-zinc-400">Selecionar grupos</strong> só marca o destino.
+              Tudo que vier depois sai só nesses grupos, uma vez, e não no privado.
             </p>
             <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 text-xs text-zinc-500 space-y-1">
               <p>Exemplo de fluxo:</p>
@@ -792,7 +713,7 @@ export function FlowNodeProperties({
                   onClick={async () => {
                     if (
                       !window.confirm(
-                        "Disparar agora? A mensagem depois de Enviar para grupos sai no grupo escolhido, uma vez. O que não passa por esse bloco segue para os contatos."
+                        "Disparar agora? Tudo que vier depois de Selecionar grupos sai só nesses grupos, uma vez, e não no privado."
                       )
                     ) {
                       return;
@@ -1514,9 +1435,8 @@ export function FlowNodeProperties({
         {nodeType === "trigger_groups" && (
           <>
             <p className="text-xs text-zinc-500 leading-relaxed">
-              Só escolhe os <strong className="text-zinc-400">grupos de destino</strong>. Depois use
-              nós <strong className="text-zinc-400">Aguardar dia</strong> (Segunda, Terça…) e as
-              mensagens / atrasos para manhã, tarde e noite.
+              Só marca os <strong className="text-zinc-400">grupos de destino</strong>. Texto, imagem
+              e vídeo ficam nos blocos seguintes. Tudo que vier depois sai só nesses grupos.
             </p>
 
             <label className="text-xs text-zinc-500">Grupos</label>

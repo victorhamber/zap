@@ -64,8 +64,7 @@ function summaryFor(type: string, data: Record<string, unknown>): string {
   if (type === "condition_weekday") return "Seg → Dom (7 saídas)";
   if (type === "send_groups") {
     const ids = (data.groupIds as string[] | undefined) ?? [];
-    const media = String(data.mediaType ?? "text");
-    return ids.length ? `${ids.length} grupo(s) · ${media}` : "Selecione grupos";
+    return ids.length ? `${ids.length} grupo(s)` : "Selecione grupos";
   }
   if (type === "send_email") {
     const subject = String(data.subject ?? "").trim();
@@ -444,7 +443,7 @@ export function FlowEditor() {
     if (enabled && !wasEnabled && hasBroadcastTrigger()) {
       if (
         window.confirm(
-          "Publicado! Disparar agora? A mensagem depois de Enviar para grupos sai no grupo escolhido, uma vez. O que não passa por esse bloco segue para os contatos."
+          "Publicado! Disparar agora? Tudo que vier depois de Selecionar grupos sai só nesses grupos, uma vez, e não no privado."
         )
       ) {
         setStatus("Agendando broadcast…");
@@ -482,7 +481,7 @@ export function FlowEditor() {
     }
     if (
       !window.confirm(
-        "Disparar agora? A mensagem depois de Enviar para grupos sai no grupo escolhido, uma vez. O que não passa por esse bloco segue para os contatos."
+        "Disparar agora? Tudo que vier depois de Selecionar grupos sai só nesses grupos, uma vez, e não no privado."
       )
     ) {
       return;

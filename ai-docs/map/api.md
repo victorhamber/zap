@@ -13,7 +13,7 @@
 - worker.ts [134L] — main()
 
 ## api/src/engine/
-- executor.ts [1675L] — delayToMs(), render(), sleepMs(), isRetriableSendError(), sendWithRetries(), sendMediaWithRetries(), persistFlowOutboundMessage(), resolveFlowTriggerType(), resolveSendTarget(), resolveHotmartOfferCode(), resolveHotmartPurchaseId(), extractHotmartVariables(), +17
+- executor.ts [1555L] — delayToMs(), render(), sleepMs(), isRetriableSendError(), sendWithRetries(), sendMediaWithRetries(), persistFlowOutboundMessage(), resolveFlowTriggerType(), resolveSendTarget(), resolveHotmartOfferCode(), resolveHotmartPurchaseId(), extractHotmartVariables(), +17
 - graph.test.ts [32L]
 - graph.ts [124L] — parseGraph(), findTriggerNode(), findFlowTriggerNode(), getFirstActionAfterTrigger(), getLinearNextNodeIds(), getNextNodeId(), getNextNodeIdByHandle(), getNode(), defaultHotmartGraph()
 

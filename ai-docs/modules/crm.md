@@ -27,7 +27,7 @@ Propósito: funil curto no contato que já existe, radar, retomada e a IA que j�
 - Passo sem fluxo não dispara. Não encurtar o intervalo 45–120 s do fluxo. O 1º passo não sai se a pessoa falou por último.
 - O funil mostra 20 cards por coluna e pede o motivo antes de marcar Perdido. A aba Conexão oficial avisa que o número no ar é o do QR.
 - O atendimento continua em `gpt-4o` até alguém escolher outro id OpenAI. A lista mostra as empresas do Deskcomm; nome sem id da OpenAI não grava. Rascunho em `modules/ai.md`.
-- No editor, a mensagem depois de Enviar para grupos sai no grupo escolhido, uma vez. O disparo do fluxo está em `modules/broadcast.md`.
+- No editor, Selecionar grupos só marca o destino. O que vier depois sai nesses grupos. O disparo do fluxo está em `modules/broadcast.md`.
 - O visual adota paleta sóbria em grafite (#0a0b0f), borda de 1px, sem gradiente neon. Cards, funil e formulários usam `ui.tsx`.
 - O e-mail do fluxo, o cancelamento e o rodapé estão em `modules/email.md`. A página E-mails mostra se algum envio saiu. O histórico do fluxo chama o nó combinado de Mensagem.
 

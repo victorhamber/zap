@@ -22,7 +22,7 @@ export const NODE_LABELS: Record<string, string> = {
   send_video: "Vídeo",
   send_message: "Mensagem",
   send_audio: "Áudio",
-  send_groups: "Grupos (envio)",
+  send_groups: "Selecionar grupos",
   send_email: "E-mail"
 };
 
@@ -56,7 +56,7 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
     items: [
       { type: "send_message", label: "Mensagem" },
       { type: "send_audio", label: "Enviar áudio" },
-      { type: "send_groups", label: "Enviar para grupos (avulso)" },
+      { type: "send_groups", label: "Selecionar grupos" },
       { type: "send_email", label: "Enviar e-mail" }
     ]
   },
@@ -189,14 +189,8 @@ export function defaultNodeData(type: string): Record<string, unknown> {
       return { url: "https://", caption: "" };
     case "send_groups":
       return {
-        mediaType: "text",
-        text: "Olá, grupo!",
-        url: "https://",
-        caption: "",
         groupIds: [] as string[],
-        groupLabels: {},
-        staggerMinSec: 20,
-        staggerMaxSec: 45
+        groupLabels: {}
       };
     case "send_email":
       return {

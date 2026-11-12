@@ -40,12 +40,12 @@
 
 ## web/src/components/flow/
 - FlowNode.tsx [472L] Alturas fixas — handles calculados em px para alinhar com o nome da oferta. */ — branchCodesPreview(), handleTopForRow(), OfferOutputRow(), RoundRobinOutputRow(), FlowNodeComponent()
-- FlowNodeProperties.tsx [1639L] Texto bruto do input — permite digitar vírgulas entre códigos. */ — offerCodesInputValue(), parseOfferCodes(), messageParts(), FlowNodeProperties()
+- FlowNodeProperties.tsx [1559L] Texto bruto do input — permite digitar vírgulas entre códigos. */ — offerCodesInputValue(), parseOfferCodes(), messageParts(), FlowNodeProperties()
 - FlowZoomToolbar.tsx [59L] — FlowZoomToolbar()
 - NodeContextMenu.tsx [45L] — NodeContextMenu()
 - TemplateVariablesHelp.tsx [52L] — TemplateVariablesHelp()
 - flowTemplateVars.ts [31L] Variáveis Mustache disponíveis nos blocos de mensagem (conforme executor / Hotma — mustacheSnippet()
-- nodeMeta.ts [213L] — paletteDragType(), hotmartWebhookUrl(), customWebhookUrl(), buildWaMeLink(), defaultNodeData()
+- nodeMeta.ts [207L] — paletteDragType(), hotmartWebhookUrl(), customWebhookUrl(), buildWaMeLink(), defaultNodeData()
 
 ## web/src/components/inbox/
 - ChatTools.tsx [147L] — ChatTools()
@@ -73,7 +73,7 @@
 - Contacts.tsx [319L] — phoneLabel(), Contacts()
 - Dashboard.tsx [574L] — formatEventTime(), formatDay(), BarChart(), ChartSkeleton(), DistributionList(), Dashboard()
 - EmailAnalytics.tsx [137L] — when(), EmailAnalytics()
-- FlowEditor.tsx [801L] — summaryFor(), toReactFlowNodes(), toReactFlowEdges(), cloneNodeConfig(), FlowEditor()
+- FlowEditor.tsx [800L] — summaryFor(), toReactFlowNodes(), toReactFlowEdges(), cloneNodeConfig(), FlowEditor()
 - FlowRuns.tsx [270L] — statusBadge(), formatDateTime(), FlowRuns()
 - FlowsList.tsx [254L] — webhookShortcutForFlow(), formatUpdatedAt(), FlowsList()
 - Funnel.tsx [334L] — Funnel()
