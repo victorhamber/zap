@@ -777,7 +777,8 @@ export function FlowNodeProperties({
               Disparo em massa para <strong className="text-zinc-400">todos os contatos</strong> cadastrados.
               Não filtra por tag aqui — ligue um bloco{" "}
               <strong className="text-zinc-400">Contato tem tag?</strong> (ou outra condição) depois deste
-              gatilho para escolher quem recebe mensagens.
+              gatilho para escolher quem recebe mensagens. O bloco de grupos deste fluxo sai uma vez no
+              disparo, não uma vez por contato.
             </p>
             <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 text-xs text-zinc-500 space-y-1">
               <p>Exemplo de fluxo:</p>

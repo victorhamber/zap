@@ -1,5 +1,5 @@
 # Estado — Zap
 Atualizado: 2026-11-12
-Feito: o broadcast mostra a imagem na mensagem e o primeiro grupo sai na hora; no fluxo, texto, imagem e vídeo são um nó só.
-Próximo: conferir um disparo de teste no grupo vazio. O QR da sessão `victorhamber` segue pendente se o celular não leu.
-Bloqueio: nenhum no código. Um grupo sem ninguém pode recusar a menção; o envio tenta de novo sem ela.
+Feito: o fluxo Novo fluxo foi pausado. O bloco de grupos do broadcast sai uma vez por disparo, não uma vez por contato.
+Próximo: religar o WhatsApp só depois deste deploy. O QR da sessão `victorhamber` continua desligado de propósito.
+Bloqueio: nenhum no código. A fila que ainda estava andando para de enviar porque o fluxo está pausado.

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   filterGroupIds,
   groupGapMs,
+  keepBroadcastGroupSend,
   parseBroadcastMedia,
   parseBroadcastParts,
   textToEmailHtml,
@@ -19,6 +20,12 @@ describe("cadência do broadcast", () => {
       assert.ok(gap >= min && gap <= max, `pausa fora da faixa: ${gap}`);
     }
     assert.ok(new Set(gaps).size > 1);
+  });
+
+  it("o lote de grupos fica com a primeira execução", () => {
+    assert.equal(keepBroadcastGroupSend(null, "run-a"), true);
+    assert.equal(keepBroadcastGroupSend("run-a", "run-a"), true);
+    assert.equal(keepBroadcastGroupSend("run-a", "run-b"), false);
   });
 
   it("junta texto e arquivos numa sequência", () => {

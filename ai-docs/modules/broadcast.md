@@ -1,5 +1,5 @@
 # broadcast
-Fontes: api/src/services/broadcastPlan.ts, api/src/services/broadcastPlan.test.ts, api/src/services/broadcastDispatch.ts, api/src/routes/broadcast.ts, api/src/worker.ts, api/src/index.ts, api/src/services/waha.ts, web/src/pages/Broadcast.tsx, web/src/components/message/MessageComposer.tsx, web/src/App.tsx, web/src/components/Layout.tsx
+Fontes: api/src/services/broadcastPlan.ts, api/src/services/broadcastPlan.test.ts, api/src/services/broadcastDispatch.ts, api/src/services/broadcastFlowTrigger.ts, api/src/routes/broadcast.ts, api/src/worker.ts, api/src/index.ts, api/src/services/waha.ts, api/src/engine/executor.ts, web/src/pages/Broadcast.tsx, web/src/components/message/MessageComposer.tsx, web/src/components/flow/FlowNodeProperties.tsx, web/src/App.tsx, web/src/components/Layout.tsx
 Propósito: disparo imediato para grupos e, se marcado, e-mail dos contatos. Não é um fluxo.
 
 ## API pública
@@ -21,6 +21,7 @@ Propósito: disparo imediato para grupos e, se marcado, e-mail dos contatos. Nã
 - A pausa não é fixa. Um grupo que falha não trava os seguintes.
 - Não usa a cadência de 45–120 s do fluxo. Não cria fluxo.
 - O worker precisa estar no ar. Sem Redis a fila não anda.
+- O gatilho Broadcast do fluxo abre uma execução por contato. O bloco Enviar para grupos desse fluxo sai uma vez no disparo. Pausar o fluxo cancela a continuação que ainda estava na fila.
 
 ## Como testar
 - `npx tsx --test api/src/services/broadcastPlan.test.ts`

@@ -62,6 +62,11 @@ export function parseBroadcastParts(raw: unknown): BroadcastPart[] {
   return parts;
 }
 
+/** O mesmo disparo de broadcast só manda os grupos na execução que reservou o lote. */
+export function keepBroadcastGroupSend(owner: string | null, runId: string): boolean {
+  return owner === null || owner === runId;
+}
+
 export function partsFromLegacy(text: string, media: BroadcastMedia | null): BroadcastPart[] {
   const parts: BroadcastPart[] = [];
   const body = text.trim();

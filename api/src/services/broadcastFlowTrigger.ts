@@ -1,7 +1,33 @@
+import { Redis } from "ioredis";
 import { prisma } from "../prisma.js";
 import { parseGraph } from "../engine/graph.js";
+import { getRedisConnection } from "../queue.js";
 import { queueFlowRunStart } from "./flowDispatch.js";
 import { canonicalBrazilPhone } from "../utils/phone.js";
+import { keepBroadcastGroupSend } from "./broadcastPlan.js";
+
+let redis: Redis | null = null;
+
+function redisClient(): Redis | null {
+  const url = getRedisConnection().url;
+  if (!url) return null;
+  if (!redis) redis = new Redis(url, { maxRetriesPerRequest: null });
+  return redis;
+}
+
+/** Reserva o envio aos grupos deste disparo. Outros contatos do mesmo lote não repetem. */
+export async function claimBroadcastGroupSend(
+  flowId: string,
+  batch: string,
+  runId: string
+): Promise<boolean> {
+  const client = redisClient();
+  if (!client) return true;
+  const key = `zap:bcgroups:${flowId}:${batch}`;
+  const won = await client.set(key, runId, "EX", 48 * 60 * 60, "NX");
+  if (won === "OK") return true;
+  return keepBroadcastGroupSend(await client.get(key), runId);
+}
 
 function normalizeContactPhone(phone: string): string | null {
   const raw = phone.trim();
@@ -20,6 +46,7 @@ async function queueBroadcastRun(
     contactPhone: string;
     contactName?: string;
     externalId: string;
+    batch: string;
   }
 ): Promise<string | null> {
   const result = await queueFlowRunStart({
@@ -29,7 +56,8 @@ async function queueBroadcastRun(
     variables: {
       phone: params.contactPhone,
       name: params.contactName ?? "Contato",
-      purchaseId: `broadcast_${Date.now()}_${flowId}`
+      purchaseId: `broadcast_${params.batch}_${flowId}`,
+      broadcastBatch: params.batch
     },
     externalId: params.externalId
   });
@@ -82,7 +110,8 @@ export async function dispatchBroadcastFlow(
       const id = await queueBroadcastRun(flowId, {
         contactPhone: phone,
         contactName: contact.name ?? undefined,
-        externalId: `broadcast_${flowId}_${batchId}_${phone}`
+        externalId: `broadcast_${flowId}_${batchId}_${phone}`,
+        batch: String(batchId)
       });
       if (id) scheduled++;
       else skipped++;

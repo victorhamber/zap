@@ -956,7 +956,28 @@ async function executeNode(
     const groupId = groupIds[index];
     const label = data.groupLabels?.[groupId] || groupId.replace(/@.*/, "");
     const mediaType = data.mediaType ?? "text";
-
+    const batch = String(vars.broadcastBatch ?? "").trim();
+    const resumingThisNode = progressNode === nodeId && index > 0;
+    let skipBecauseBatchAlreadySent = false;
+    if (batch && !resumingThisNode && prisma) {
+      const owner = await prisma.flowRun.findUnique({
+        where: { id: flowRunId },
+        select: { flowId: true }
+      });
+      if (owner) {
+        const { claimBroadcastGroupSend } = await import("../services/broadcastFlowTrigger.js");
+        skipBecauseBatchAlreadySent = !(await claimBroadcastGroupSend(owner.flowId, batch, flowRunId));
+      }
+    }
+    if (skipBecauseBatchAlreadySent) {
+      await logStep(
+        flowRunId,
+        nodeId,
+        node.type,
+        "ok",
+        "Grupos deste disparo já saíram uma vez"
+      );
+    } else {
     try {
       // Cadência global da sessão + envio ao grupo atual.
       await reserveStaggeredStartDelay(await wpp.getActiveWppSessionName(), 2, 6);
@@ -1050,6 +1071,7 @@ async function executeNode(
         where: { id: flowRunId },
         data: { variables: vars as object }
       });
+    }
     }
   } else if (node.type === "send_email") {
     const data = node.data as unknown as SendEmailNodeData;
@@ -1217,7 +1239,14 @@ export async function continueFlowRun(flowRunId: string, startNodeId: string) {
     include: { flow: true }
   });
   if (!run) throw new Error("FlowRun não encontrado");
-  if (run.status === "completed" || run.status === "failed") return;
+  if (run.status === "completed" || run.status === "failed" || run.status === "cancelled") return;
+  if (!run.flow.enabled) {
+    await prisma.flowRun.update({
+      where: { id: flowRunId },
+      data: { status: "cancelled", currentNodeId: null, errorMessage: "Fluxo pausado" }
+    });
+    return;
+  }
 
   const claimed = await prisma.flowRun.updateMany({
     where: { id: flowRunId, status: "waiting" },

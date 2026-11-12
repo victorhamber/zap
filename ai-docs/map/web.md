@@ -40,7 +40,7 @@
 
 ## web/src/components/flow/
 - FlowNode.tsx [472L] Alturas fixas — handles calculados em px para alinhar com o nome da oferta. */ — branchCodesPreview(), handleTopForRow(), OfferOutputRow(), RoundRobinOutputRow(), FlowNodeComponent()
-- FlowNodeProperties.tsx [1640L] Texto bruto do input — permite digitar vírgulas entre códigos. */ — offerCodesInputValue(), parseOfferCodes(), messageParts(), FlowNodeProperties()
+- FlowNodeProperties.tsx [1641L] Texto bruto do input — permite digitar vírgulas entre códigos. */ — offerCodesInputValue(), parseOfferCodes(), messageParts(), FlowNodeProperties()
 - FlowZoomToolbar.tsx [59L] — FlowZoomToolbar()
 - NodeContextMenu.tsx [45L] — NodeContextMenu()
 - TemplateVariablesHelp.tsx [52L] — TemplateVariablesHelp()
