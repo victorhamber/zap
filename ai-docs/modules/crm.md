@@ -28,7 +28,7 @@ Propósito: funil curto no contato que já existe, radar, retomada e a IA que j�
 - O funil mostra 20 cards por coluna e pede o motivo antes de marcar Perdido. A aba Conexão oficial avisa que o número no ar é o do QR.
 - O atendimento continua em `gpt-4o` até alguém escolher outro id OpenAI. A lista mostra as empresas do Deskcomm; nome sem id da OpenAI não grava. Rascunho em `modules/ai.md`.
 - O visual adota paleta sóbria em grafite (#0a0b0f), borda de 1px, sem gradiente neon. Cards, funil e formulários usam `ui.tsx`.
-- O e-mail do fluxo, o cancelamento e o rodapé estão em `modules/email.md`.
+- O e-mail do fluxo, o cancelamento e o rodapé estão em `modules/email.md`. O histórico do fluxo chama o nó combinado de Mensagem.
 
 ## Como testar
 - `npx tsx --test api/src/services/contactStage.test.ts api/src/services/coldFollowUp.test.ts`

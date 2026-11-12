@@ -60,6 +60,7 @@ const STATUS_TONES: Record<string, "success" | "danger" | "info" | "warning" | "
 };
 
 const NODE_LABELS: Record<string, string> = {
+  send_message: "Mensagem",
   send_text: "Mensagem de texto",
   send_image: "Imagem",
   send_video: "Vídeo",

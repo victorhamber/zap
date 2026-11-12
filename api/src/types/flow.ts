@@ -21,6 +21,7 @@ export type NodeType =
   | "send_text"
   | "send_image"
   | "send_video"
+  | "send_message"
   | "send_audio"
   | "send_groups"
   | "send_email";
@@ -148,6 +149,17 @@ export type ScheduleAtNodeData = {
 
 export type SendTextNodeData = {
   text: string;
+};
+
+export type SendMessagePart = {
+  kind: "text" | "image" | "video";
+  text?: string;
+  url?: string;
+  filename?: string;
+};
+
+export type SendMessageNodeData = {
+  parts: SendMessagePart[];
 };
 
 export type SendMediaNodeData = {

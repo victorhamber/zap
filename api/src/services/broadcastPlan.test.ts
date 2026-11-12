@@ -4,6 +4,7 @@ import {
   filterGroupIds,
   groupGapMs,
   parseBroadcastMedia,
+  parseBroadcastParts,
   textToEmailHtml,
   GROUP_GAP_MAX_SEC,
   GROUP_GAP_MIN_SEC
@@ -18,6 +19,17 @@ describe("cadência do broadcast", () => {
       assert.ok(gap >= min && gap <= max, `pausa fora da faixa: ${gap}`);
     }
     assert.ok(new Set(gaps).size > 1);
+  });
+
+  it("junta texto e arquivos numa sequência", () => {
+    const parts = parseBroadcastParts([
+      { kind: "text", text: "Oi" },
+      { kind: "image", url: "https://zap.exemplo/a.jpg", filename: "a.jpg", caption: "Legenda" },
+      { kind: "video", url: "nota-url", filename: "v.mp4" }
+    ]);
+    assert.equal(parts.length, 2);
+    assert.equal(parts[0].kind, "text");
+    assert.equal(parts[1].kind, "image");
   });
 
   it("aceita mídia por link http e recusa o resto", () => {

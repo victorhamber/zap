@@ -20,6 +20,7 @@ export const NODE_LABELS: Record<string, string> = {
   send_text: "Texto",
   send_image: "Imagem",
   send_video: "Vídeo",
+  send_message: "Mensagem",
   send_audio: "Áudio",
   send_groups: "Grupos (envio)",
   send_email: "E-mail"
@@ -53,9 +54,7 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
     id: "messages",
     label: "Mensagens",
     items: [
-      { type: "send_text", label: "Enviar texto" },
-      { type: "send_image", label: "Enviar imagem" },
-      { type: "send_video", label: "Enviar vídeo" },
+      { type: "send_message", label: "Mensagem" },
       { type: "send_audio", label: "Enviar áudio" },
       { type: "send_groups", label: "Enviar para grupos (avulso)" },
       { type: "send_email", label: "Enviar e-mail" }
@@ -180,6 +179,10 @@ export function defaultNodeData(type: string): Record<string, unknown> {
       return { datetime: new Date(Date.now() + 86400000).toISOString().slice(0, 16) };
     case "send_text":
       return { text: "Olá {{name}}!" };
+    case "send_message":
+      return {
+        parts: [{ kind: "text", text: "Olá {{name}}!", url: "", filename: "" }]
+      };
     case "send_image":
     case "send_video":
     case "send_audio":

@@ -13,7 +13,7 @@
 - worker.ts [134L] — main()
 
 ## api/src/engine/
-- executor.ts [1530L] — delayToMs(), render(), sleepMs(), isRetriableSendError(), sendWithRetries(), sendMediaWithRetries(), persistFlowOutboundMessage(), resolveFlowTriggerType(), resolveSendTarget(), resolveHotmartOfferCode(), resolveHotmartPurchaseId(), extractHotmartVariables(), +17
+- executor.ts [1577L] — delayToMs(), render(), sleepMs(), isRetriableSendError(), sendWithRetries(), sendMediaWithRetries(), persistFlowOutboundMessage(), resolveFlowTriggerType(), resolveSendTarget(), resolveHotmartOfferCode(), resolveHotmartPurchaseId(), extractHotmartVariables(), +17
 - graph.test.ts [32L]
 - graph.ts [124L] — parseGraph(), findTriggerNode(), findFlowTriggerNode(), getFirstActionAfterTrigger(), getLinearNextNodeIds(), getNextNodeId(), getNextNodeIdByHandle(), getNode(), defaultHotmartGraph()
 
@@ -23,7 +23,7 @@
 ## api/src/routes/
 - ai.ts [252L] — aiRoutes()
 - auth.ts [98L] Janela e teto de tentativas de login por IP. */ — loginThrottle(), registerFailedLogin(), authRoutes()
-- broadcast.ts [42L] — broadcastRoutes()
+- broadcast.ts [44L] — broadcastRoutes()
 - crm.ts [56L] — crmRoutes()
 - dashboard.ts [213L] — funnelSnapshot(), countRadar(), startOfToday(), daysAgo(), localDayKey(), last7DayKeys(), bucketByDay(), dashboardRoutes()
 - emailPublic.ts [65L] — page(), emailPublicRoutes()
@@ -37,10 +37,10 @@
 
 ## api/src/services/
 - adminUser.ts [33L] Sincroniza admin do .env; ao mudar a senha, invalida JWTs emitidos antes. */ — syncAdminUserFromEnv()
-- broadcastDispatch.ts [165L] — broadcastQueue(), enqueueBroadcast(), listBroadcastEmails(), sendGroupPiece(), startBroadcast(), processBroadcastJob(), startBroadcastWorker()
+- broadcastDispatch.ts [185L] — broadcastQueue(), enqueueBroadcast(), listBroadcastEmails(), sendGroupParts(), startBroadcast(), processBroadcastJob(), startBroadcastWorker()
 - broadcastFlowTrigger.ts [100L] — normalizeContactPhone(), queueBroadcastRun(), dispatchBroadcastFlow()
-- broadcastPlan.test.ts [48L]
-- broadcastPlan.ts [69L] Pausa entre grupos. Cada chamada sorteia um valor diferente. */ — groupGapMs(), emailGapMs(), filterGroupIds(), parseBroadcastMedia(), escapeHtml(), textToEmailHtml()
+- broadcastPlan.test.ts [60L]
+- broadcastPlan.ts [123L] Pausa entre grupos. Cada chamada sorteia um valor diferente. */ — groupGapMs(), emailGapMs(), filterGroupIds(), parseBroadcastParts(), partsFromLegacy(), parseBroadcastMedia(), escapeHtml(), partsToEmailHtml(), textToEmailHtml()
 - coldFollowUp.test.ts [74L]
 - coldFollowUp.ts [121L] — parseFollowUpSteps(), nextFollowUp(), runColdFollowUps()
 - contactAvatar.ts [35L] — getContactAvatarUrl()
@@ -73,7 +73,7 @@
 - waJid.ts [141L] Normalização de JIDs WhatsApp (Evolution / Baileys LID vs telefone). */ — isGenericSelfChatName(), digitsOnly(), isGroupLikeJid(), isStatusBroadcastJid(), jidRank(), pickBestJid(), canonicalEvolutionChatId(), normalizeDirectJid(), isLikelyInternalLidDigits(), isLikelyInternalLidJid(), isValidWhatsAppPhoneDigits(), isOwnerPhoneDigits(), +1
 - waLidMap.test.ts [61L]
 - waLidMap.ts [267L] Mapeia @lid interno → telefone real (@s.whatsapp.net). */ — storeKey(), mapFile(), legacyMapFile(), jidCandidates(), pickPhoneJid(), pickLidJid(), applyWaJidMapping(), loadWaLidMap(), persistWaLidMap(), recordWaJidMappingSync(), recordWaJidMapping(), flushWaLidMap(), +6
-- waha.ts [1164L] Cliente HTTP do WAHA. Único motor de WhatsApp do Zap. — baseUrl(), apiKey(), reachableBaseUrl(), webhookUrl(), sessionConfig(), waha(), readBody(), formatWppError(), wahaJson(), normalizeSessionName(), sessionName(), getActiveWppSessionName(), +78
+- waha.ts [1177L] Cliente HTTP do WAHA. Único motor de WhatsApp do Zap. — baseUrl(), apiKey(), reachableBaseUrl(), webhookUrl(), sessionConfig(), waha(), readBody(), formatWppError(), wahaJson(), normalizeSessionName(), sessionName(), getActiveWppSessionName(), +78
 - wahaMedia.test.ts [38L]
 - wahaWebhook.ts [150L] — asRecord(), textOf(), typeFromMime(), typeFromName(), mediaType(), mediaUrlOf(), bufferFromThumb(), thumbnailDataUrl(), preview(), parseWahaMessage(), wahaSessionStatus()
 - wppHumanize.ts [13L] Pequenos intervalos entre chamadas ao WPP para parecer uso humano (não elimina r — wppHumanDelay()
@@ -128,7 +128,7 @@
 
 ## api/src/types/
 - ai.ts [49L] Resposta pronta (texto + mídia opcional) que a IA dispara ao reconhecer a pergun
-- flow.ts [236L]
+- flow.ts [248L]
 
 ## api/src/utils/
 - flattenJsonPaths.test.ts [86L]

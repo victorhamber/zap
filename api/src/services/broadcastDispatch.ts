@@ -9,8 +9,11 @@ import {
   filterGroupIds,
   groupGapMs,
   parseBroadcastMedia,
-  textToEmailHtml,
-  type BroadcastMedia
+  parseBroadcastParts,
+  partsFromLegacy,
+  partsToEmailHtml,
+  type BroadcastMedia,
+  type BroadcastPart
 } from "./broadcastPlan.js";
 
 const QUEUE = "zap-broadcast";
@@ -21,7 +24,8 @@ export type BroadcastJob = {
   batchId: string;
   text: string;
   subject: string;
-  media: BroadcastMedia | null;
+  parts: BroadcastPart[];
+  media?: BroadcastMedia | null;
   targets: string[];
   index: number;
 };
@@ -60,26 +64,24 @@ export async function listBroadcastEmails(): Promise<string[]> {
   return out;
 }
 
-async function sendGroupPiece(target: string, text: string, media: BroadcastMedia | null) {
-  if (!media) {
-    await sendText(target, text, { isGroup: true });
-    return;
+async function sendGroupParts(target: string, parts: BroadcastPart[]) {
+  for (const part of parts) {
+    if (part.kind === "text") {
+      await sendText(target, part.text, { isGroup: true });
+      continue;
+    }
+    const file = part.filename || undefined;
+    if (part.kind === "image") {
+      await sendImage(target, part.url, part.caption, { isGroup: true, fileName: file });
+    } else if (part.kind === "video") {
+      await sendVideo(target, part.url, part.caption, { isGroup: true, fileName: file });
+    } else if (part.kind === "audio") {
+      await sendAudio(target, part.url, { isGroup: true });
+      if (part.caption) await sendText(target, part.caption, { isGroup: true });
+    } else {
+      await sendDocument(target, part.url, part.caption, file, { isGroup: true });
+    }
   }
-  const file = media.filename || undefined;
-  if (media.kind === "image") {
-    await sendImage(target, media.url, text, { isGroup: true, fileName: file });
-    return;
-  }
-  if (media.kind === "video") {
-    await sendVideo(target, media.url, text, { isGroup: true, fileName: file });
-    return;
-  }
-  if (media.kind === "audio") {
-    await sendAudio(target, media.url, { isGroup: true });
-    if (text) await sendText(target, text, { isGroup: true });
-    return;
-  }
-  await sendDocument(target, media.url, text, file, { isGroup: true });
 }
 
 export async function startBroadcast(input: {
@@ -88,12 +90,18 @@ export async function startBroadcast(input: {
   email: boolean;
   subject: string;
   media?: unknown;
+  parts?: unknown;
 }): Promise<{ groups: number; emails: number }> {
   const text = input.text.trim();
   const media = parseBroadcastMedia(input.media);
-  if (input.media && !media) throw new Error("O arquivo precisa ser imagem, vídeo, áudio ou documento com link http.");
-  if (!text && !media) throw new Error("Escreva a mensagem ou escolha um arquivo.");
-  if (text.length > 4000) throw new Error("A mensagem passa de 4000 caracteres.");
+  const fromParts = parseBroadcastParts(input.parts);
+  const parts = fromParts.length > 0 ? fromParts : partsFromLegacy(text, media);
+  if (input.media && !media && fromParts.length === 0) {
+    throw new Error("O arquivo precisa ser imagem, vídeo, áudio ou documento com link http.");
+  }
+  if (parts.length === 0) throw new Error("Escreva a mensagem ou escolha um arquivo.");
+  const textSize = parts.reduce((sum, part) => sum + (part.kind === "text" ? part.text.length : part.caption.length), 0);
+  if (textSize > 4000) throw new Error("A mensagem passa de 4000 caracteres.");
   const groups = filterGroupIds(input.groupIds);
   if (groups.length > MAX_GROUPS) throw new Error(`No máximo ${MAX_GROUPS} grupos por disparo.`);
   let emails: string[] = [];
@@ -109,14 +117,25 @@ export async function startBroadcast(input: {
 
   const batchId = String(Date.now());
   if (groups.length > 0) {
-    await enqueueBroadcast(
-      { channel: "group", batchId, text, subject: "", media, targets: groups, index: 0 },
-      0
-    );
+    await sendGroupParts(groups[0], parts);
+    if (groups.length > 1) {
+      await enqueueBroadcast(
+        { channel: "group", batchId, text, subject: "", parts, targets: groups, index: 1 },
+        groupGapMs()
+      );
+    }
   }
   if (emails.length > 0) {
     await enqueueBroadcast(
-      { channel: "email", batchId, text, subject: input.subject.trim(), media, targets: emails, index: 0 },
+      {
+        channel: "email",
+        batchId,
+        text,
+        subject: input.subject.trim(),
+        parts,
+        targets: emails,
+        index: 0
+      },
       0
     );
   }
@@ -127,13 +146,14 @@ export async function processBroadcastJob(job: BroadcastJob): Promise<void> {
   const target = job.targets[job.index];
   if (!target) return;
   try {
+    const parts = job.parts?.length ? job.parts : partsFromLegacy(job.text ?? "", job.media ?? null);
     if (job.channel === "group") {
-      await sendGroupPiece(target, job.text, job.media ?? null);
+      await sendGroupParts(target, parts);
     } else {
       await sendTransactionalEmail({
         to: target,
         subject: job.subject,
-        html: textToEmailHtml(job.text, job.media),
+        html: partsToEmailHtml(parts),
         preheader: job.subject
       });
     }

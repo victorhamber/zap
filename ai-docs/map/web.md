@@ -40,12 +40,12 @@
 
 ## web/src/components/flow/
 - FlowNode.tsx [472L] Alturas fixas — handles calculados em px para alinhar com o nome da oferta. */ — branchCodesPreview(), handleTopForRow(), OfferOutputRow(), RoundRobinOutputRow(), FlowNodeComponent()
-- FlowNodeProperties.tsx [1617L] Texto bruto do input — permite digitar vírgulas entre códigos. */ — offerCodesInputValue(), parseOfferCodes(), FlowNodeProperties()
+- FlowNodeProperties.tsx [1640L] Texto bruto do input — permite digitar vírgulas entre códigos. */ — offerCodesInputValue(), parseOfferCodes(), messageParts(), FlowNodeProperties()
 - FlowZoomToolbar.tsx [59L] — FlowZoomToolbar()
 - NodeContextMenu.tsx [45L] — NodeContextMenu()
 - TemplateVariablesHelp.tsx [52L] — TemplateVariablesHelp()
 - flowTemplateVars.ts [31L] Variáveis Mustache disponíveis nos blocos de mensagem (conforme executor / Hotma — mustacheSnippet()
-- nodeMeta.ts [210L] — paletteDragType(), hotmartWebhookUrl(), customWebhookUrl(), buildWaMeLink(), defaultNodeData()
+- nodeMeta.ts [213L] — paletteDragType(), hotmartWebhookUrl(), customWebhookUrl(), buildWaMeLink(), defaultNodeData()
 
 ## web/src/components/inbox/
 - ChatTools.tsx [147L] — ChatTools()
@@ -61,16 +61,19 @@
 - WhatsAppInbox.tsx [2131L] — isRadarChat(), chatKindLabel(), chatMatchesTab(), sanitizeChatName(), canonicalBrazilPhone(), formatPhoneDisplay(), sessionInitials(), IconRefresh(), IconSettings(), IconPlay(), usePageVisible(), isBase64Blob(), +20
 - useMicWaveform.ts [70L] Níveis de amplitude do microfone (0–1) atualizados via AnalyserNode + rAF. */ — emptyLevels(), useMicWaveform()
 
+## web/src/components/message/
+- MessageComposer.tsx [208L] Uma mensagem só: texto, imagem e vídeo no mesmo bloco, com a prévia de como sai. — newId(), emptyTextPart(), MessageComposer(), readFile()
+
 ## web/src/components/wpp/
 - WppConnectPanel.tsx [580L] — WppConnectPanel()
 - WppInstancesManager.tsx [499L] — WppInstancesManager()
 
 ## web/src/pages/
-- Broadcast.tsx [175L] — Broadcast()
+- Broadcast.tsx [190L] — Broadcast()
 - Contacts.tsx [319L] — phoneLabel(), Contacts()
 - Dashboard.tsx [574L] — formatEventTime(), formatDay(), BarChart(), ChartSkeleton(), DistributionList(), Dashboard()
-- FlowEditor.tsx [795L] — summaryFor(), toReactFlowNodes(), toReactFlowEdges(), cloneNodeConfig(), FlowEditor()
-- FlowRuns.tsx [269L] — statusBadge(), formatDateTime(), FlowRuns()
+- FlowEditor.tsx [801L] — summaryFor(), toReactFlowNodes(), toReactFlowEdges(), cloneNodeConfig(), FlowEditor()
+- FlowRuns.tsx [270L] — statusBadge(), formatDateTime(), FlowRuns()
 - FlowsList.tsx [254L] — webhookShortcutForFlow(), formatUpdatedAt(), FlowsList()
 - Funnel.tsx [334L] — Funnel()
 - Login.tsx [117L] — Login()

@@ -652,11 +652,24 @@ function mentionAll(chatId: string): { mentions: ["all"] } | Record<string, neve
 }
 
 async function postSend(path: string, body: Record<string, unknown>): Promise<string | null> {
-  const raw = await wahaJson<unknown>(path, {
-    method: "POST",
-    body: JSON.stringify(body)
-  });
-  return messageIdFrom(raw);
+  try {
+    const raw = await wahaJson<unknown>(path, {
+      method: "POST",
+      body: JSON.stringify(body)
+    });
+    return messageIdFrom(raw);
+  } catch (err) {
+    if (!body.mentions) throw err;
+    const message = err instanceof Error ? err.message : String(err);
+    if (!/mention|participant|todos|\ball\b/i.test(message)) throw err;
+    const next = { ...body };
+    delete next.mentions;
+    const raw = await wahaJson<unknown>(path, {
+      method: "POST",
+      body: JSON.stringify(next)
+    });
+    return messageIdFrom(raw);
+  }
 }
 
 export async function sendText(

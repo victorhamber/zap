@@ -44,6 +44,12 @@ type ContextMenuState =
 
 function summaryFor(type: string, data: Record<string, unknown>): string {
   if (type === "send_text") return String(data.text ?? "").slice(0, 40);
+  if (type === "send_message") {
+    const parts = (data.parts as Array<{ kind?: string; text?: string }> | undefined) ?? [];
+    const text = parts.find((part) => part.kind === "text")?.text ?? "";
+    const kinds = parts.map((part) => part.kind).filter(Boolean);
+    return text ? text.slice(0, 40) : kinds.join(" + ") || "Monte a mensagem";
+  }
   if (type === "trigger_groups") {
     const ids = (data.groupIds as string[] | undefined) ?? [];
     if (!ids.length) return "Selecione grupos";

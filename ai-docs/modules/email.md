@@ -21,7 +21,8 @@ Propósito: e-mail de fluxo pela Resend, com o que a caixa exige para não trata
 - SPF, DKIM e DMARC são do DNS do domínio. O Zap só mostra o que a Resend já verificou. DMARC a Resend não cria.
 - Trocar `JWT_SECRET` invalida links de cancelar já enviados. Os novos e-mails saem com link novo.
 - Quem cancelou não recebe de novo. O passo do fluxo segue, com log de que o envio foi ignorado.
-- O intervalo entre e-mails continua o que já estava em `EMAIL_DISPATCH_MIN_SEC` / `MAX_SEC`. O menu Broadcast usa essa mesma faixa.
+- O intervalo entre e-mails continua o que já estava em `EMAIL_DISPATCH_MIN_SEC` / `MAX_SEC`.
+- No fluxo, texto, imagem e vídeo ficam no nó `send_message`. Áudio continua no nó próprio. Os nós antigos de texto, imagem e vídeo ainda executam. O menu Broadcast usa essa mesma faixa.
 
 ## Como testar
 - `npx tsx --test api/src/services/email/deliverability.test.ts`

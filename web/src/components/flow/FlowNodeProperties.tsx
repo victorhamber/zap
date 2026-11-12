@@ -6,6 +6,7 @@ import { TemplateVariablesHelp } from "./TemplateVariablesHelp";
 import { EmailEditorModal } from "../email/EmailEditorModal";
 import { htmlPreviewText } from "../email/emailBlocks";
 import { AiCopyButton } from "../ai/AiCopyButton";
+import { emptyTextPart, MessageComposer, type ComposerPart } from "../message/MessageComposer";
 
 type Props = {
   selectedNode: Node;
@@ -62,6 +63,21 @@ type CustomWebhookInfo = {
     externalIdPath: string;
   };
 };
+
+function messageParts(raw: unknown): ComposerPart[] {
+  if (!Array.isArray(raw) || raw.length === 0) return [emptyTextPart()];
+  return raw.map((item, index) => {
+    const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+    const kind = row.kind === "image" || row.kind === "video" ? row.kind : "text";
+    return {
+      id: `saved_${index}`,
+      kind,
+      text: String(row.text ?? row.caption ?? ""),
+      url: String(row.url ?? ""),
+      filename: String(row.filename ?? "")
+    };
+  });
+}
 
 export function FlowNodeProperties({
   selectedNode,
@@ -365,6 +381,13 @@ export function FlowNodeProperties({
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3 text-sm">
+        {nodeType === "send_message" && (
+          <MessageComposer
+            parts={messageParts(config.parts)}
+            onChange={(parts) => onUpdate({ parts })}
+          />
+        )}
+
         {nodeType === "send_text" && (
           <>
             <TemplateVariablesHelp onInsert={(s) => insertVariable(s, "text")} />

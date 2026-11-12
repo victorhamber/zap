@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
-import { BroadcastMediaField, type BroadcastMediaPick } from "../components/broadcast/BroadcastMediaField";
+import { emptyTextPart, MessageComposer, type ComposerPart } from "../components/message/MessageComposer";
 import { AiCopyButton } from "../components/ai/AiCopyButton";
 import { Button, Card, ErrorNotice, PageHeader, SearchInput } from "../components/ui";
 
@@ -11,8 +11,7 @@ export function Broadcast() {
   const [emailCount, setEmailCount] = useState(0);
   const [picked, setPicked] = useState<string[]>([]);
   const [query, setQuery] = useState("");
-  const [text, setText] = useState("");
-  const [media, setMedia] = useState<BroadcastMediaPick | null>(null);
+  const [parts, setParts] = useState<ComposerPart[]>([emptyTextPart()]);
   const [emailOn, setEmailOn] = useState(false);
   const [subject, setSubject] = useState("");
   const [error, setError] = useState("");
@@ -55,22 +54,30 @@ export function Broadcast() {
     setError("");
     setNotice("");
     try {
+      const payload = parts
+        .map((part) => ({
+          kind: part.kind,
+          text: part.kind === "text" ? part.text : "",
+          caption: part.kind === "text" ? "" : part.text,
+          url: part.url,
+          filename: part.filename
+        }))
+        .filter((part) => (part.kind === "text" ? part.text.trim() : part.url));
       const r = await api<{ ok: boolean; groups: number; emails: number }>("/api/broadcast", {
         method: "POST",
         body: JSON.stringify({
-          text,
+          text: payload.filter((part) => part.kind === "text").map((part) => part.text).join("\n\n"),
           groupIds: picked,
           email: emailOn,
           subject,
-          media
+          parts: payload
         })
       });
-      const parts = [];
-      if (r.groups > 0) parts.push(`${r.groups} grupo(s) — o primeiro sai agora, os outros com pausa diferente`);
-      if (r.emails > 0) parts.push(`${r.emails} e-mail(s), cada um com uma pausa diferente`);
-      setNotice(parts.join(". ") + ".");
-      setText("");
-      setMedia(null);
+      const noticeParts = [];
+      if (r.groups > 0) noticeParts.push(`${r.groups} grupo(s) — o primeiro sai agora, os outros com pausa diferente`);
+      if (r.emails > 0) noticeParts.push(`${r.emails} e-mail(s), cada um com uma pausa diferente`);
+      setNotice(noticeParts.join(". ") + ".");
+      setParts([emptyTextPart()]);
       setPicked([]);
       setSubject("");
       setEmailOn(false);
@@ -98,17 +105,21 @@ export function Broadcast() {
           <label className="block text-sm text-zinc-300">
             <span className="flex items-center justify-between gap-2">
               Mensagem
-              <AiCopyButton channel="whatsapp" audience="group" onApply={(d) => d.text && setText(d.text)} />
+              <AiCopyButton
+                channel="whatsapp"
+                audience="group"
+                onApply={(d) => {
+                  if (!d.text) return;
+                  setParts((prev) => {
+                    const textPart = prev.find((part) => part.kind === "text");
+                    if (!textPart) return [...prev, { ...emptyTextPart(), text: d.text }];
+                    return prev.map((part) => (part.id === textPart.id ? { ...part, text: d.text } : part));
+                  });
+                }}
+              />
             </span>
-            <textarea
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              rows={8}
-              placeholder="O texto que sai no grupo e, se você marcar, no e-mail."
-              className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white"
-            />
           </label>
-          <BroadcastMediaField media={media} onChange={setMedia} />
+          <MessageComposer parts={parts} onChange={setParts} />
           <label className="flex items-start gap-2 text-sm text-zinc-200">
             <input
               type="checkbox"
@@ -132,7 +143,11 @@ export function Broadcast() {
               />
             </label>
           )}
-          <Button variant="primary" disabled={sending || (!text.trim() && !media)} onClick={() => void send()}>
+          <Button
+            variant="primary"
+            disabled={sending || !parts.some((part) => (part.kind === "text" ? part.text.trim() : part.url))}
+            onClick={() => void send()}
+          >
             {sending ? "Disparando…" : "Disparar agora"}
           </Button>
           <p className="text-xs text-zinc-500">

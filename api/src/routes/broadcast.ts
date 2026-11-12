@@ -23,6 +23,7 @@ export async function broadcastRoutes(app: FastifyInstance) {
       email?: boolean;
       subject?: string;
       media?: unknown;
+      parts?: unknown;
     };
     try {
       const result = await startBroadcast({
@@ -30,7 +31,8 @@ export async function broadcastRoutes(app: FastifyInstance) {
         groupIds: Array.isArray(body.groupIds) ? body.groupIds : [],
         email: body.email === true,
         subject: body.subject ?? "",
-        media: body.media
+        media: body.media,
+        parts: body.parts
       });
       return { ok: true, ...result };
     } catch (err) {

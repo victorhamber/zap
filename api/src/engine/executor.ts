@@ -37,6 +37,7 @@ import type {
   SendEmailNodeData,
   SendGroupsNodeData,
   SendMediaNodeData,
+  SendMessageNodeData,
   SendTextNodeData,
   SplitRoundRobinData,
   StartFlowData,
@@ -889,6 +890,52 @@ async function executeNode(
       await logSendFailure(node.type, err);
     }
     await logStep(flowRunId, nodeId, node.type, "ok", isGroup ? "Áudio enviado ao grupo" : "Áudio enviado");
+  } else if (node.type === "send_message") {
+    const data = node.data as unknown as SendMessageNodeData;
+    const parts = Array.isArray(data.parts) ? data.parts : [];
+    let sent = 0;
+    try {
+      for (const part of parts) {
+        if (part.kind === "text") {
+          const text = render(String(part.text ?? ""), vars);
+          if (!text.trim()) continue;
+          const waMessageId = await wpp.sendText(phone, text, isGroup ? { isGroup: true } : undefined);
+          sent += 1;
+          if (!isGroup) {
+            await persistFlowOutboundMessage({ phone, body: text, type: "chat", waMessageId }).catch(() => undefined);
+          }
+          continue;
+        }
+        if (part.kind !== "image" && part.kind !== "video") continue;
+        const url = render(String(part.url ?? ""), vars).trim();
+        if (!url) continue;
+        const caption = String(part.text ?? "").trim() ? render(String(part.text ?? ""), vars) : undefined;
+        let waMessageId: string | null = null;
+        await sendMediaWithRetries(async () => {
+          waMessageId =
+            part.kind === "image"
+              ? await wpp.sendImage(phone, url, caption, isGroup ? { isGroup: true } : undefined)
+              : await wpp.sendVideo(phone, url, caption, isGroup ? { isGroup: true } : undefined);
+        });
+        sent += 1;
+        if (!isGroup) {
+          await persistFlowOutboundMessage({
+            phone,
+            body: caption?.trim() || (part.kind === "image" ? "📷 Imagem" : "🎬 Vídeo"),
+            type: part.kind,
+            mediaUrl: toPublicMediaUrl(url) ?? url,
+            waMessageId
+          }).catch(() => undefined);
+        }
+      }
+    } catch (err) {
+      await logSendFailure(node.type, err);
+    }
+    if (sent === 0) {
+      await logStep(flowRunId, nodeId, node.type, "failed", "A mensagem está vazia");
+      throw new Error("A mensagem está vazia");
+    }
+    await logStep(flowRunId, nodeId, node.type, "ok", isGroup ? "Mensagem enviada ao grupo" : "Mensagem enviada");
   } else if (node.type === "send_groups") {
     const data = node.data as unknown as SendGroupsNodeData;
     const groupIds = (data.groupIds ?? [])

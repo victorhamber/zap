@@ -33,6 +33,47 @@ export type BroadcastMedia = {
   filename: string;
 };
 
+export type BroadcastPart =
+  | { kind: "text"; text: string }
+  | { kind: BroadcastMediaKind; url: string; filename: string; caption: string };
+
+export function parseBroadcastParts(raw: unknown): BroadcastPart[] {
+  if (!Array.isArray(raw)) return [];
+  const parts: BroadcastPart[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    const kind = String(row.kind ?? "");
+    if (kind === "text") {
+      const text = String(row.text ?? "").trim();
+      if (text) parts.push({ kind: "text", text: text.slice(0, 4000) });
+      continue;
+    }
+    if (!BROADCAST_MEDIA_KINDS.includes(kind as BroadcastMediaKind)) continue;
+    const url = String(row.url ?? "").trim();
+    if (!/^https?:\/\//i.test(url) || url.length > 2000) continue;
+    parts.push({
+      kind: kind as BroadcastMediaKind,
+      url,
+      filename: String(row.filename ?? "").trim().slice(0, 180),
+      caption: String(row.caption ?? "").trim().slice(0, 4000)
+    });
+  }
+  return parts;
+}
+
+export function partsFromLegacy(text: string, media: BroadcastMedia | null): BroadcastPart[] {
+  const parts: BroadcastPart[] = [];
+  const body = text.trim();
+  if (media && (media.kind === "image" || media.kind === "video") && body) {
+    parts.push({ kind: media.kind, url: media.url, filename: media.filename, caption: body });
+    return parts;
+  }
+  if (body) parts.push({ kind: "text", text: body });
+  if (media) parts.push({ kind: media.kind, url: media.url, filename: media.filename, caption: "" });
+  return parts;
+}
+
 export function parseBroadcastMedia(raw: unknown): BroadcastMedia | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
@@ -50,6 +91,19 @@ function escapeHtml(text: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+export function partsToEmailHtml(parts: BroadcastPart[]): string {
+  return parts
+    .map((part) => {
+      if (part.kind === "text") return textToEmailHtml(part.text, null);
+      return textToEmailHtml(part.caption, {
+        kind: part.kind,
+        url: part.url,
+        filename: part.filename
+      });
+    })
+    .join("");
 }
 
 export function textToEmailHtml(text: string, media?: BroadcastMedia | null): string {
