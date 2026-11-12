@@ -444,7 +444,7 @@ export function FlowEditor() {
     if (enabled && !wasEnabled && hasBroadcastTrigger()) {
       if (
         window.confirm(
-          "Publicado! Deseja disparar este broadcast agora para TODOS os contatos?\n\nUse blocos de condição no fluxo (ex.: Contato tem tag?) para filtrar quem recebe mensagens."
+          "Publicado! Disparar agora? A mensagem depois de Enviar para grupos sai no grupo escolhido, uma vez. O que não passa por esse bloco segue para os contatos."
         )
       ) {
         setStatus("Agendando broadcast…");
@@ -482,7 +482,7 @@ export function FlowEditor() {
     }
     if (
       !window.confirm(
-        "Disparar para TODOS os contatos cadastrados? Os envios serão espaçados automaticamente. Filtros do fluxo (tags, ofertas, etc.) serão aplicados para cada contato."
+        "Disparar agora? A mensagem depois de Enviar para grupos sai no grupo escolhido, uma vez. O que não passa por esse bloco segue para os contatos."
       )
     ) {
       return;

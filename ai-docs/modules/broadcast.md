@@ -21,7 +21,7 @@ Propósito: disparo imediato para grupos e, se marcado, e-mail dos contatos. Nã
 - A pausa não é fixa. Um grupo que falha não trava os seguintes.
 - Não usa a cadência de 45–120 s do fluxo. Não cria fluxo.
 - O worker precisa estar no ar. Sem Redis a fila não anda.
-- O gatilho Broadcast do fluxo abre uma execução por contato. O bloco Enviar para grupos desse fluxo sai uma vez no disparo. Pausar o fluxo cancela a continuação que ainda estava na fila.
+- O gatilho Broadcast do fluxo abre uma execução por contato. O bloco Enviar para grupos sai uma vez no disparo. A mensagem ligada depois dele sai nesse mesmo grupo, também uma vez, e não no privado. Pausar o fluxo cancela a continuação que ainda estava na fila.
 
 ## Como testar
 - `npx tsx --test api/src/services/broadcastPlan.test.ts`

@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   filterGroupIds,
+  groupDestinationsBeforeSend,
   groupGapMs,
   keepBroadcastGroupSend,
   parseBroadcastMedia,
@@ -55,6 +56,31 @@ describe("cadência do broadcast", () => {
       textToEmailHtml("", { kind: "audio", url: "https://zap.exemplo/a.ogg", filename: "voz.ogg" }),
       /voz\.ogg/
     );
+  });
+
+  it("a mensagem depois do bloco de grupos aponta para o grupo escolhido", () => {
+    const graph = {
+      nodes: [
+        { id: "t", type: "trigger_broadcast" },
+        {
+          id: "g",
+          type: "send_groups",
+          data: { groupIds: ["15@g.us", "nao-grupo"], groupLabels: { "15@g.us": "Grupo 15" } }
+        },
+        { id: "d", type: "delay" },
+        { id: "m", type: "send_message" },
+        { id: "p", type: "send_text" }
+      ],
+      edges: [
+        { source: "t", target: "g" },
+        { source: "g", target: "d" },
+        { source: "d", target: "m" },
+        { source: "t", target: "p" }
+      ]
+    };
+    assert.deepEqual(groupDestinationsBeforeSend(graph, "m"), [{ id: "15@g.us", label: "Grupo 15" }]);
+    assert.deepEqual(groupDestinationsBeforeSend(graph, "p"), []);
+    assert.deepEqual(groupDestinationsBeforeSend(graph, "g"), []);
   });
 
   it("só aceita grupo @g.us, sem repetir", () => {

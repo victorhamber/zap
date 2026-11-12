@@ -48,6 +48,7 @@ import type {
   TriggerWaLinkData,
   WaitWeekdayData
 } from "../types/flow.js";
+import { groupDestinationsBeforeSend } from "../services/broadcastPlan.js";
 import { humanGapMs, reserveStaggeredStartDelay } from "../services/flowStagger.js";
 import { env } from "../env.js";
 import { sendTransactionalEmail } from "../services/email/resend.js";
@@ -787,6 +788,49 @@ async function executeNode(
     throw err;
   };
 
+  const sendsToChat =
+    node.type === "send_text" ||
+    node.type === "send_image" ||
+    node.type === "send_video" ||
+    node.type === "send_audio" ||
+    node.type === "send_message";
+  let groupChats: { phone: string; isGroup: true; label: string }[] | null = null;
+  if (sendsToChat && !isGroup) {
+    const selectedGroups = groupDestinationsBeforeSend(graph, nodeId);
+    if (selectedGroups.length > 0) {
+      const batch = String(vars.broadcastBatch ?? "").trim();
+      let allowed = true;
+      if (batch && prisma) {
+        const owner = await prisma.flowRun.findUnique({
+          where: { id: flowRunId },
+          select: { flowId: true }
+        });
+        if (owner) {
+          const { claimBroadcastGroupSend } = await import("../services/broadcastFlowTrigger.js");
+          allowed = await claimBroadcastGroupSend(owner.flowId, batch, flowRunId);
+        }
+      }
+      if (!allowed) {
+        await logStep(
+          flowRunId,
+          nodeId,
+          node.type,
+          "ok",
+          "Mensagem do grupo já saiu neste disparo"
+        );
+        await continueAfterNode(graph, flowRunId, nodeId, vars, depth, fanOut);
+        return;
+      }
+      groupChats = selectedGroups.map((group) => ({
+        phone: group.id,
+        isGroup: true,
+        label: group.label
+      }));
+    }
+  }
+  const chats =
+    groupChats ?? [{ phone, isGroup, label: String(vars.groupName ?? phone) }];
+
   if (node.type === "send_text") {
     const data = node.data as unknown as SendTextNodeData;
     const text = render(data.text ?? "", vars);
@@ -794,148 +838,173 @@ async function executeNode(
       await logStep(flowRunId, nodeId, node.type, "failed", "Texto da mensagem vazio");
       throw new Error("Texto da mensagem vazio");
     }
-    try {
-      // Retries (1+3) e variantes BR ficam em wpp.sendText — sem empilhar retry aqui.
-      const waMessageId = await wpp.sendText(phone, text, isGroup ? { isGroup: true } : undefined);
-      if (!isGroup) {
-        try {
-          await persistFlowOutboundMessage({
-            phone,
-            body: text,
-            type: "chat",
-            waMessageId
-          });
-        } catch {
-          /* webhook ou gravação paralela — envio já foi feito */
+    for (let index = 0; index < chats.length; index++) {
+      const chat = chats[index];
+      if (index > 0) await reserveStaggeredStartDelay(await wpp.getActiveWppSessionName(), 2, 6);
+      try {
+        const waMessageId = await wpp.sendText(chat.phone, text, chat.isGroup ? { isGroup: true } : undefined);
+        if (!chat.isGroup) {
+          try {
+            await persistFlowOutboundMessage({
+              phone: chat.phone,
+              body: text,
+              type: "chat",
+              waMessageId
+            });
+          } catch {
+            /* webhook ou gravação paralela — envio já foi feito */
+          }
         }
+      } catch (err) {
+        await logSendFailure(node.type, err);
       }
-    } catch (err) {
-      await logSendFailure(node.type, err);
+      await logStep(
+        flowRunId,
+        nodeId,
+        node.type,
+        "ok",
+        chat.isGroup ? `Mensagem enviada ao grupo ${chat.label}` : "Mensagem enviada"
+      );
     }
-    await logStep(
-      flowRunId,
-      nodeId,
-      node.type,
-      "ok",
-      isGroup ? `Mensagem enviada ao grupo ${String(vars.groupName ?? phone)}` : "Mensagem enviada"
-    );
   } else if (node.type === "send_image") {
     const data = node.data as unknown as SendMediaNodeData;
     const caption = data.caption ? render(data.caption, vars) : undefined;
-    try {
-      let waMessageId: string | null = null;
-      await sendMediaWithRetries(async () => {
-        waMessageId = await wpp.sendImage(phone, data.url, caption, isGroup ? { isGroup: true } : undefined);
-      });
-      if (!isGroup) {
-        try {
-          await persistFlowOutboundMessage({
-            phone,
-            body: caption?.trim() || "📷 Imagem",
-            type: "image",
-            mediaUrl: toPublicMediaUrl(data.url) ?? data.url,
-            waMessageId
-          });
-        } catch {
-          /* gravação paralela com webhook */
+    for (let index = 0; index < chats.length; index++) {
+      const chat = chats[index];
+      if (index > 0) await reserveStaggeredStartDelay(await wpp.getActiveWppSessionName(), 2, 6);
+      try {
+        let waMessageId: string | null = null;
+        await sendMediaWithRetries(async () => {
+          waMessageId = await wpp.sendImage(chat.phone, data.url, caption, chat.isGroup ? { isGroup: true } : undefined);
+        });
+        if (!chat.isGroup) {
+          try {
+            await persistFlowOutboundMessage({
+              phone: chat.phone,
+              body: caption?.trim() || "📷 Imagem",
+              type: "image",
+              mediaUrl: toPublicMediaUrl(data.url) ?? data.url,
+              waMessageId
+            });
+          } catch {
+            /* gravação paralela com webhook */
+          }
         }
+      } catch (err) {
+        await logSendFailure(node.type, err);
       }
-    } catch (err) {
-      await logSendFailure(node.type, err);
+      await logStep(flowRunId, nodeId, node.type, "ok", chat.isGroup ? `Imagem enviada ao grupo ${chat.label}` : "Imagem enviada");
     }
-    await logStep(flowRunId, nodeId, node.type, "ok", isGroup ? "Imagem enviada ao grupo" : "Imagem enviada");
   } else if (node.type === "send_video") {
     const data = node.data as unknown as SendMediaNodeData;
     const caption = data.caption ? render(data.caption, vars) : undefined;
-    try {
-      let waMessageId: string | null = null;
-      await sendMediaWithRetries(async () => {
-        waMessageId = await wpp.sendVideo(phone, data.url, caption, isGroup ? { isGroup: true } : undefined);
-      });
-      if (!isGroup) {
-        try {
-          await persistFlowOutboundMessage({
-            phone,
-            body: caption?.trim() || "🎬 Vídeo",
-            type: "video",
-            mediaUrl: toPublicMediaUrl(data.url) ?? data.url,
-            waMessageId
-          });
-        } catch {
-          /* gravação paralela com webhook */
+    for (let index = 0; index < chats.length; index++) {
+      const chat = chats[index];
+      if (index > 0) await reserveStaggeredStartDelay(await wpp.getActiveWppSessionName(), 2, 6);
+      try {
+        let waMessageId: string | null = null;
+        await sendMediaWithRetries(async () => {
+          waMessageId = await wpp.sendVideo(chat.phone, data.url, caption, chat.isGroup ? { isGroup: true } : undefined);
+        });
+        if (!chat.isGroup) {
+          try {
+            await persistFlowOutboundMessage({
+              phone: chat.phone,
+              body: caption?.trim() || "🎬 Vídeo",
+              type: "video",
+              mediaUrl: toPublicMediaUrl(data.url) ?? data.url,
+              waMessageId
+            });
+          } catch {
+            /* gravação paralela com webhook */
+          }
         }
+      } catch (err) {
+        await logSendFailure(node.type, err);
       }
-    } catch (err) {
-      await logSendFailure(node.type, err);
+      await logStep(flowRunId, nodeId, node.type, "ok", chat.isGroup ? `Vídeo enviado ao grupo ${chat.label}` : "Vídeo enviado");
     }
-    await logStep(flowRunId, nodeId, node.type, "ok", isGroup ? "Vídeo enviado ao grupo" : "Vídeo enviado");
   } else if (node.type === "send_audio") {
     const data = node.data as unknown as SendMediaNodeData;
-    try {
-      const waMessageId = await wpp.sendAudio(phone, data.url, isGroup ? { isGroup: true } : undefined);
-      if (!isGroup) {
-        try {
-          await persistFlowOutboundMessage({
-            phone,
-            body: "🎤 Áudio",
-            type: "audio",
-            mediaUrl: toPublicMediaUrl(data.url) ?? data.url,
-            waMessageId
-          });
-        } catch {
-          /* gravação paralela com webhook */
+    for (let index = 0; index < chats.length; index++) {
+      const chat = chats[index];
+      if (index > 0) await reserveStaggeredStartDelay(await wpp.getActiveWppSessionName(), 2, 6);
+      try {
+        const waMessageId = await wpp.sendAudio(chat.phone, data.url, chat.isGroup ? { isGroup: true } : undefined);
+        if (!chat.isGroup) {
+          try {
+            await persistFlowOutboundMessage({
+              phone: chat.phone,
+              body: "🎤 Áudio",
+              type: "audio",
+              mediaUrl: toPublicMediaUrl(data.url) ?? data.url,
+              waMessageId
+            });
+          } catch {
+            /* gravação paralela com webhook */
+          }
         }
+      } catch (err) {
+        await logSendFailure(node.type, err);
       }
-    } catch (err) {
-      await logSendFailure(node.type, err);
+      await logStep(flowRunId, nodeId, node.type, "ok", chat.isGroup ? `Áudio enviado ao grupo ${chat.label}` : "Áudio enviado");
     }
-    await logStep(flowRunId, nodeId, node.type, "ok", isGroup ? "Áudio enviado ao grupo" : "Áudio enviado");
   } else if (node.type === "send_message") {
     const data = node.data as unknown as SendMessageNodeData;
     const parts = Array.isArray(data.parts) ? data.parts : [];
-    let sent = 0;
-    try {
-      for (const part of parts) {
-        if (part.kind === "text") {
-          const text = render(String(part.text ?? ""), vars);
-          if (!text.trim()) continue;
-          const waMessageId = await wpp.sendText(phone, text, isGroup ? { isGroup: true } : undefined);
-          sent += 1;
-          if (!isGroup) {
-            await persistFlowOutboundMessage({ phone, body: text, type: "chat", waMessageId }).catch(() => undefined);
+    for (let index = 0; index < chats.length; index++) {
+      const chat = chats[index];
+      if (index > 0) await reserveStaggeredStartDelay(await wpp.getActiveWppSessionName(), 2, 6);
+      let sent = 0;
+      try {
+        for (const part of parts) {
+          if (part.kind === "text") {
+            const text = render(String(part.text ?? ""), vars);
+            if (!text.trim()) continue;
+            const waMessageId = await wpp.sendText(chat.phone, text, chat.isGroup ? { isGroup: true } : undefined);
+            sent += 1;
+            if (!chat.isGroup) {
+              await persistFlowOutboundMessage({ phone: chat.phone, body: text, type: "chat", waMessageId }).catch(() => undefined);
+            }
+            continue;
           }
-          continue;
+          if (part.kind !== "image" && part.kind !== "video") continue;
+          const url = render(String(part.url ?? ""), vars).trim();
+          if (!url) continue;
+          const caption = String(part.text ?? "").trim() ? render(String(part.text ?? ""), vars) : undefined;
+          let waMessageId: string | null = null;
+          await sendMediaWithRetries(async () => {
+            waMessageId =
+              part.kind === "image"
+                ? await wpp.sendImage(chat.phone, url, caption, chat.isGroup ? { isGroup: true } : undefined)
+                : await wpp.sendVideo(chat.phone, url, caption, chat.isGroup ? { isGroup: true } : undefined);
+          });
+          sent += 1;
+          if (!chat.isGroup) {
+            await persistFlowOutboundMessage({
+              phone: chat.phone,
+              body: caption?.trim() || (part.kind === "image" ? "📷 Imagem" : "🎬 Vídeo"),
+              type: part.kind,
+              mediaUrl: toPublicMediaUrl(url) ?? url,
+              waMessageId
+            }).catch(() => undefined);
+          }
         }
-        if (part.kind !== "image" && part.kind !== "video") continue;
-        const url = render(String(part.url ?? ""), vars).trim();
-        if (!url) continue;
-        const caption = String(part.text ?? "").trim() ? render(String(part.text ?? ""), vars) : undefined;
-        let waMessageId: string | null = null;
-        await sendMediaWithRetries(async () => {
-          waMessageId =
-            part.kind === "image"
-              ? await wpp.sendImage(phone, url, caption, isGroup ? { isGroup: true } : undefined)
-              : await wpp.sendVideo(phone, url, caption, isGroup ? { isGroup: true } : undefined);
-        });
-        sent += 1;
-        if (!isGroup) {
-          await persistFlowOutboundMessage({
-            phone,
-            body: caption?.trim() || (part.kind === "image" ? "📷 Imagem" : "🎬 Vídeo"),
-            type: part.kind,
-            mediaUrl: toPublicMediaUrl(url) ?? url,
-            waMessageId
-          }).catch(() => undefined);
-        }
+      } catch (err) {
+        await logSendFailure(node.type, err);
       }
-    } catch (err) {
-      await logSendFailure(node.type, err);
+      if (sent === 0) {
+        await logStep(flowRunId, nodeId, node.type, "failed", "A mensagem está vazia");
+        throw new Error("A mensagem está vazia");
+      }
+      await logStep(
+        flowRunId,
+        nodeId,
+        node.type,
+        "ok",
+        chat.isGroup ? `Mensagem enviada ao grupo ${chat.label}` : "Mensagem enviada"
+      );
     }
-    if (sent === 0) {
-      await logStep(flowRunId, nodeId, node.type, "failed", "A mensagem está vazia");
-      throw new Error("A mensagem está vazia");
-    }
-    await logStep(flowRunId, nodeId, node.type, "ok", isGroup ? "Mensagem enviada ao grupo" : "Mensagem enviada");
   } else if (node.type === "send_groups") {
     const data = node.data as unknown as SendGroupsNodeData;
     const groupIds = (data.groupIds ?? [])

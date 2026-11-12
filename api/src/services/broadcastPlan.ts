@@ -67,6 +67,50 @@ export function keepBroadcastGroupSend(owner: string | null, runId: string): boo
   return owner === null || owner === runId;
 }
 
+type GroupGraph = {
+  nodes: { id: string; type: string; data?: Record<string, unknown> }[];
+  edges: { source: string; target: string }[];
+};
+
+/** Grupos do bloco Enviar para grupos que fica antes deste nó. */
+export function groupDestinationsBeforeSend(
+  graph: GroupGraph,
+  nodeId: string
+): { id: string; label: string }[] {
+  const byId = new Map(graph.nodes.map((node) => [node.id, node]));
+  const incoming = new Map<string, string[]>();
+  for (const edge of graph.edges) {
+    const sources = incoming.get(edge.target) ?? [];
+    sources.push(edge.source);
+    incoming.set(edge.target, sources);
+  }
+
+  const seen = new Set<string>();
+  const destinations: { id: string; label: string }[] = [];
+  const stack = [...(incoming.get(nodeId) ?? [])];
+  while (stack.length > 0) {
+    const id = stack.pop();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const node = byId.get(id);
+    if (node?.type === "send_groups") {
+      const raw = node.data?.groupIds;
+      const labels =
+        node.data?.groupLabels && typeof node.data.groupLabels === "object"
+          ? (node.data.groupLabels as Record<string, string>)
+          : {};
+      const ids = filterGroupIds(Array.isArray(raw) ? raw.map((item) => String(item)) : []);
+      for (const groupId of ids) {
+        if (destinations.some((item) => item.id === groupId)) continue;
+        const label = String(labels[groupId] ?? "").trim() || groupId.replace(/@.*/, "");
+        destinations.push({ id: groupId, label });
+      }
+    }
+    for (const source of incoming.get(id) ?? []) stack.push(source);
+  }
+  return destinations;
+}
+
 export function partsFromLegacy(text: string, media: BroadcastMedia | null): BroadcastPart[] {
   const parts: BroadcastPart[] = [];
   const body = text.trim();

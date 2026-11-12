@@ -13,7 +13,7 @@
 - worker.ts [134L] — main()
 
 ## api/src/engine/
-- executor.ts [1606L] — delayToMs(), render(), sleepMs(), isRetriableSendError(), sendWithRetries(), sendMediaWithRetries(), persistFlowOutboundMessage(), resolveFlowTriggerType(), resolveSendTarget(), resolveHotmartOfferCode(), resolveHotmartPurchaseId(), extractHotmartVariables(), +17
+- executor.ts [1675L] — delayToMs(), render(), sleepMs(), isRetriableSendError(), sendWithRetries(), sendMediaWithRetries(), persistFlowOutboundMessage(), resolveFlowTriggerType(), resolveSendTarget(), resolveHotmartOfferCode(), resolveHotmartPurchaseId(), extractHotmartVariables(), +17
 - graph.test.ts [32L]
 - graph.ts [124L] — parseGraph(), findTriggerNode(), findFlowTriggerNode(), getFirstActionAfterTrigger(), getLinearNextNodeIds(), getNextNodeId(), getNextNodeIdByHandle(), getNode(), defaultHotmartGraph()
 
@@ -40,8 +40,8 @@
 - adminUser.ts [33L] Sincroniza admin do .env; ao mudar a senha, invalida JWTs emitidos antes. */ — syncAdminUserFromEnv()
 - broadcastDispatch.ts [185L] — broadcastQueue(), enqueueBroadcast(), listBroadcastEmails(), sendGroupParts(), startBroadcast(), processBroadcastJob(), startBroadcastWorker()
 - broadcastFlowTrigger.ts [129L] Reserva o envio aos grupos deste disparo. Outros contatos do mesmo lote não repe — redisClient(), claimBroadcastGroupSend(), normalizeContactPhone(), queueBroadcastRun(), dispatchBroadcastFlow()
-- broadcastPlan.test.ts [67L]
-- broadcastPlan.ts [128L] Pausa entre grupos. Cada chamada sorteia um valor diferente. */ — groupGapMs(), emailGapMs(), filterGroupIds(), parseBroadcastParts(), keepBroadcastGroupSend(), partsFromLegacy(), parseBroadcastMedia(), escapeHtml(), partsToEmailHtml(), textToEmailHtml()
+- broadcastPlan.test.ts [93L]
+- broadcastPlan.ts [172L] Pausa entre grupos. Cada chamada sorteia um valor diferente. */ — groupGapMs(), emailGapMs(), filterGroupIds(), parseBroadcastParts(), keepBroadcastGroupSend(), groupDestinationsBeforeSend(), partsFromLegacy(), parseBroadcastMedia(), escapeHtml(), partsToEmailHtml(), textToEmailHtml()
 - coldFollowUp.test.ts [74L]
 - coldFollowUp.ts [121L] — parseFollowUpSteps(), nextFollowUp(), runColdFollowUps()
 - contactAvatar.ts [35L] — getContactAvatarUrl()

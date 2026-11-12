@@ -774,11 +774,9 @@ export function FlowNodeProperties({
         {nodeType === "trigger_broadcast" && (
           <>
             <p className="text-xs text-zinc-500 leading-relaxed">
-              Disparo em massa para <strong className="text-zinc-400">todos os contatos</strong> cadastrados.
-              Não filtra por tag aqui — ligue um bloco{" "}
-              <strong className="text-zinc-400">Contato tem tag?</strong> (ou outra condição) depois deste
-              gatilho para escolher quem recebe mensagens. O bloco de grupos deste fluxo sai uma vez no
-              disparo, não uma vez por contato.
+              O bloco <strong className="text-zinc-400">Enviar para grupos</strong> escolhe o grupo.
+              A mensagem ligada depois dele sai nesse grupo, uma vez, e não no privado do contato.
+              Mensagem que não passa por esse bloco segue para os contatos.
             </p>
             <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 text-xs text-zinc-500 space-y-1">
               <p>Exemplo de fluxo:</p>
@@ -794,7 +792,7 @@ export function FlowNodeProperties({
                   onClick={async () => {
                     if (
                       !window.confirm(
-                        "Disparar para TODOS os contatos? Filtros do fluxo serão aplicados para cada um. Envios espaçados automaticamente."
+                        "Disparar agora? A mensagem depois de Enviar para grupos sai no grupo escolhido, uma vez. O que não passa por esse bloco segue para os contatos."
                       )
                     ) {
                       return;
